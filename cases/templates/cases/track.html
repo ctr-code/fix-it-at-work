@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container" style="max-width: 820px">
+    <h1>{{ case.reference }}: {{ case.title }}</h1>
+    <p><span class="badge-status">{{ case.get_status_display }}</span>
+        {% if case.status == 'duplicate' %} - linked to <a href="{% url 'track_case' case.duplicate_of.reference %}">{{ case.duplicate_of.reference }}</a>{% endif %}</p>
+    {% include "cases/_journey.html" %}
+    <div class="panel">
+        <h2 class="h5">Your report</h2>
+        <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
+        <p class="mb-1"><strong>Reported:</strong> {{ case.date_reported|date:"j M Y, H:i" }}</p>
+        {% if case.sla_due and case.is_open %}<p class="mb-1"><strong>We aim to fix it by:</strong> {{ case.sla_due|date:"l j F" }}</p>{% endif %}
+        <p class="mt-2 mb-0">{{ case.description|linebreaksbr }}</p>
+    </div>
+    <h2 class="h5 mt-4">Messages to you</h2>
+    {% for c in sent %}
+    <div class="panel">
+        <div class="d-flex justify-content-between flex-wrap">
+            <strong>{{ c.get_kind_display }}</strong>
+            <span class="text-muted small">{{ c.date_sent|date:"j M Y, H:i" }}</span>
+        </div>
+        <p class="letter mt-2 mb-2" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text }}</p>
+        {% if c.ai_drafted %}<p class="small mb-0 ai-label"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted with AI help and checked by {{ c.approved_by }}</p>{% endif %}
+    </div>
+    {% empty %}<p>No messages yet.</p>{% endfor %}
+</section>
+{% endblock %}

@@ -10,8 +10,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="HACKATHON">
-    <meta name="keywords" content="HACKATHON">
+    <meta name="description" content="Fix It at Work - report a workplace issue and track it to resolution">
     <title>
         {% block head_title %}
         {% endblock head_title %}
@@ -29,16 +28,17 @@
 </head>
 
 <body class="d-flex flex-column min-vh-100">
+    <a class="visually-hidden-focusable skip-link" href="#main">Skip to main content</a>
     {# Navigation bar #}
-    <nav id="navbar" class="navbar navbar-expand-lg fixed-top">
+    <nav id="navbar" class="navbar navbar-expand-lg fixed-top navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="{% url 'index' %}">
-                <img src="{% static 'images/logo-80.png' %}" alt="HACKATHON logo" width="40" height="40"
+                <img src="{% static 'images/logo-80.png' %}" alt="" width="40" height="40"
                     class="logo">
             </a>
             {# Don't share the preceding <a> because this text moves about #}
             <a class="navbar-brand" href="{% url 'index' %}">
-                <span>HACKATHON</span>
+                <span>Fix It at Work</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
@@ -47,25 +47,12 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == home_url %}active" aria-current="page{% endif %}"
-                            href="{{ home_url }}">Home</a>
-                    </li>
-                    {% if user.is_authenticated %}
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == profile_url %}active" aria-current="page{% endif %}"
-                            href="{{ profile_url }}">Profile</a>
-                    </li>
-                    {% else %}
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == signup_url %}active" aria-current="page{% endif %}"
-                            href="{{ signup_url }}">Register</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == login_url %}active" aria-current="page{% endif %}"
-                            href="{{ login_url }}">Login</a>
-                    </li>
-                    {% endif %}
+                    {% with p=request.path %}
+                    <li class="nav-item"><a class="nav-link {% if '/report' in p or '/track' in p %}active{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
+                    <li class="nav-item"><a class="nav-link {% if '/triage' in p or '/cases' in p %}active{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case handler</a></li>
+                    <li class="nav-item"><a class="nav-link {% if '/officer' in p %}active{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Field officer</a></li>
+                    <li class="nav-item"><a class="nav-link {% if '/dashboard' in p %}active{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Manager</a></li>
+                    {% endwith %}
                 </ul>
             </div>
         </div>
@@ -89,7 +76,7 @@
     {% block header %}
     {% endblock header %}
 
-    <main>
+    <main id="main">
         {# Named main to avoid clashing with allauth #}
         {% block main %}
         {# Content Goes here #}
@@ -99,7 +86,7 @@
     {# Footer #}
     <footer class="mt-auto site-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center">
-            <p class="mb-3 mb-md-0">© 2026 team1</p>
+            <p class="mb-3 mb-md-0">© 2026 Cloud Crew &middot; Prototype using fictional data only</p>
             <div class="social-links">
                 <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook"><i
                         class="fab fa-facebook-f"></i></a>
@@ -109,7 +96,7 @@
                         class="fab fa-instagram"></i></a>
                 <a href="https://www.linkedin.com/" target="_blank" rel="noreferrer" aria-label="LinkedIn"><i
                         class="fab fa-linkedin-in"></i></a>
-                <a href="https://github.com/ctr-code/HACKATHON" target="_blank" rel="noreferrer"
+                <a href="https://github.com/ctr-code/fix-it-at-work" target="_blank" rel="noreferrer"
                     aria-label="GitHub"><i class="fab fa-github"></i></a>
             </div>
         </div>

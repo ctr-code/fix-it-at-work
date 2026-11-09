@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block head_title %}Triage {{ case.reference }} - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container">
+    <p class="mt-3 mb-0"><a href="{% url 'triage_queue' %}">&larr; Back to queue</a></p>
+    <h1>Triage {{ case.reference }}</h1>
+    <div class="row g-4">
+        <div class="col-lg-6">
+            {% include "cases/_case_facts.html" %}
+            <div class="ai-box">
+                <p class="ai-label mb-2"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI suggestion - please check</p>
+                <p class="mb-1"><strong>Summary:</strong> {{ case.ai_summary }}</p>
+                <p class="mb-1"><strong>Category:</strong> {{ case.ai_category }} &rarr; {{ case.ai_category.default_team }}</p>
+                <p class="mb-1"><strong>Priority:</strong> {% include "cases/_pri.html" with p=case.ai_priority %}</p>
+                {% if case.ai_duplicate_candidate %}<p class="mb-1"><strong>Possible duplicate:</strong> <a href="{% url 'case_detail' case.ai_duplicate_candidate.reference %}">{{ case.ai_duplicate_candidate.reference }} - {{ case.ai_duplicate_candidate.title }}</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="document.getElementById('id_duplicate_of').value='{{ case.ai_duplicate_candidate.pk }}'; document.getElementById('id_duplicate_of').focus();">Use as duplicate</button></p>{% endif %}
+                <p class="mb-1"><strong>Why:</strong> {{ case.ai_reasoning }}</p>
+                <p class="mb-1 small">Confidence {{ case.ai_confidence }}%</p>
+                <div class="confidence" role="img" aria-label="Confidence {{ case.ai_confidence }} percent"><span style="width: {{ case.ai_confidence }}%"></span></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <form method="post" class="panel">
+                {% csrf_token %}
+                <h2 class="h5">Your decision</h2>
+                <p class="small text-muted">Pre-filled from the AI. Change anything that looks wrong. Your choice is what counts.</p>
+                {{ form|crispy }}
+                <button type="submit" class="btn btn-primary btn-lg w-100"><i class="fa-solid fa-check" aria-hidden="true"></i> Approve and route</button>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% block extra_body %}
+{{ officers_by_team|json_script:"officers-by-team" }}
+<script>
+// Only show officers from the chosen team
+const byTeam = JSON.parse(document.getElementById('officers-by-team').textContent);
+const team = document.getElementById('id_team');
+const officer = document.getElementById('id_officer');
+function filterOfficers() {
+    const allowed = byTeam[team.value] || [];
+    [...officer.options].forEach(o => { o.hidden = Boolean(o.value) && !allowed.includes(Number(o.value)); });
+    if (officer.selectedOptions[0] && officer.selectedOptions[0].hidden) officer.value = '';
+}
+team.addEventListener('change', filterOfficers);
+filterOfficers();
+</script>
+{% endblock %}
