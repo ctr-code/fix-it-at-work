@@ -2,18 +2,11 @@
 {% block head_title %}My jobs - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container" style="max-width: 640px">
-    <h1>{% if officer %}Hi {{ officer.name }}{% else %}Field officer{% endif %}</h1>
-    <form method="get" class="d-flex gap-2 mb-3" aria-label="Choose officer">
-        <label for="officer" class="visually-hidden">I am</label>
-        <select id="officer" name="officer" class="form-select" onchange="this.form.submit()">
-            <option value="">Demo: choose who you are...</option>
-            {% for o in officers %}<option value="{{ o.id }}" {% if officer and o.id == officer.id %}selected{% endif %}>{{ o.name }} - {{ o.team }}</option>{% endfor %}
-        </select>
-        <noscript><button class="btn btn-primary">Go</button></noscript>
-    </form>
+    <h1>My jobs</h1>
+    {% if officer %}<p class="text-muted">{{ officer.name }} &middot; {{ officer.team }} team</p>{% endif %}
 
     {% if officer %}
-    <h2>My jobs <span class="badge bg-secondary">{{ cases|length }}</span></h2>
+    <h2>Assigned to me <span class="badge bg-secondary">{{ cases|length }}</span></h2>
     {% for c in cases %}
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>

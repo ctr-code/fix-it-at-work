@@ -17,10 +17,9 @@
         <datalist id="buildings">{% for b in buildings %}<option value="{{ b }}">{% endfor %}</datalist>
         {{ form.reported_urgency|as_crispy_field }}
         {{ form.photo|as_crispy_field }}
-        <h2 class="h5 mt-4">About you</h2>
+        <h2 class="h5 mt-4">How should we reply?</h2>
+        <p class="small text-muted mb-2">Reporting as <strong>{{ user.get_full_name|default:user.username }}</strong> ({{ user.email }}).</p>
         <div class="row">
-            <div class="col-md-6">{{ form.reporter_name|as_crispy_field }}</div>
-            <div class="col-md-6">{{ form.reporter_email|as_crispy_field }}</div>
             <div class="col-md-6">{{ form.preferred_language|as_crispy_field }}</div>
             <div class="col-md-6">{{ form.preferred_contact|as_crispy_field }}</div>
         </div>

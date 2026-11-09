@@ -46,12 +46,35 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-lg-center">
                     {% with p=request.path %}
+                    {% if user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link {% if '/report' in p or '/track' in p %}active{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
-                    <li class="nav-item"><a class="nav-link {% if '/triage' in p or '/cases' in p %}active{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case handler</a></li>
-                    <li class="nav-item"><a class="nav-link {% if '/officer' in p %}active{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Field officer</a></li>
-                    <li class="nav-item"><a class="nav-link {% if '/dashboard' in p %}active{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Manager</a></li>
+                    {% if user_role == 'handler' or user_role == 'manager' %}
+                    <li class="nav-item"><a class="nav-link {% if '/triage' in p or '/cases' in p %}active{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
+                    {% endif %}
+                    {% if user_role == 'officer' %}
+                    <li class="nav-item"><a class="nav-link {% if '/officer' in p %}active{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> My jobs</a></li>
+                    {% endif %}
+                    {% if user_role == 'manager' %}
+                    <li class="nav-item"><a class="nav-link {% if '/dashboard' in p %}active{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link {% if '/people' in p %}active{% endif %}" href="{% url 'people' %}"><i class="fa-solid fa-users" aria-hidden="true"></i> People</a></li>
+                    {% endif %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-circle-user" aria-hidden="true"></i> {{ user.first_name|default:user.username }}
+                            <span class="role-pill">{{ user_role_label }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{% url 'profile' %}">My profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="dropdown-item">Sign out</button></form></li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item"><a class="nav-link {% if '/signup' in p %}active{% endif %}" href="{% url 'account_signup' %}">Create account</a></li>
+                    <li class="nav-item"><a class="nav-link {% if '/login' in p %}active{% endif %}" href="{% url 'account_login' %}">Sign in</a></li>
+                    {% endif %}
                     {% endwith %}
                 </ul>
             </div>

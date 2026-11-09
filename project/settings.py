@@ -71,12 +71,12 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
 ]
 
-# AUTHENTICATION_BACKENDS = [
-#     # Needed to login by username in Django admin, regardless of `allauth`
-#     'django.contrib.auth.backends.ModelBackend',
-#     # `allauth` specific authentication methods, such as login by email
-#     'allauth.account.auth_backends.AuthenticationBackend',
-# ]
+AUTHENTICATION_BACKENDS = [
+    # Needed to login by username in Django admin, regardless of `allauth`
+    'django.contrib.auth.backends.ModelBackend',
+    # `allauth` specific authentication methods, such as login by email
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
 
 ROOT_URLCONF = 'project.urls'
 
@@ -92,6 +92,8 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 # `allauth` needs this from django
                 'django.template.context_processors.request',
+                # Adds user_role to every template
+                'cases.context_processors.role',
             ],
         },
     },
@@ -157,8 +159,15 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Another allauth option
+# allauth: sign in with username or email; sign-up also asks for a name
 ACCOUNT_EMAIL_VERIFICATION = 'none'
+ACCOUNT_LOGIN_METHODS = {'username', 'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
+ACCOUNT_SIGNUP_FORM_CLASS = 'cases.forms.SignupNameForm'
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_SESSION_REMEMBER = None
+LOGIN_URL = 'account_login'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 
 # Crispy settings
