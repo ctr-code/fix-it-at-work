@@ -14,8 +14,22 @@ python -m venv .venv
 .venv/Scripts/python manage.py runserver
 ```
 
-Create a `.env` file first with `DJANGO_DEBUG=True` and a `DJANGO_SECRET_KEY`. Without `DATABASE_URL` it uses SQLite.
-Then open http://localhost:8000 in Chrome.
+Create a `.env` file first with `DJANGO_DEBUG=True`, a `DJANGO_SECRET_KEY` and a `DEMO_PASSWORD` (used for all demo
+logins - never commit it). Without `DATABASE_URL` it uses SQLite. Then open http://localhost:8000 in Chrome.
+
+## Accounts and roles
+
+Sign-in and sign-up use django-allauth. Each user has one role, and the home page and menu change to match it.
+
+| Role | Can do | Demo login |
+|---|---|---|
+| Reporter | Report issues, see only their own reports | `alex` |
+| Case handler | Triage, merge duplicates, approve outcome letters | `jo` |
+| Field officer | See and update their own team's jobs | `sam`, `priya`, `tom`, `aisha`, `dan`, `mei`, `grace`, `owen` |
+| Manager | Everything a handler can, plus the dashboard and the People page | `rob` |
+
+Everyone who signs up starts as a Reporter. Only a Manager can give someone a staff role (People page), and a
+Django superuser is treated as a Manager.
 
 ## The journey (one screen per stage)
 
@@ -25,7 +39,7 @@ Then open http://localhost:8000 in Chrome.
 | 2. Triage and route | Case handler | `/triage/` |
 | 3-4. Attend and record | Field officer (mobile) | `/officer/` |
 | 5. Respond | Case handler | "Review AI letter" on `/triage/` |
-| 6. Review | Manager | `/dashboard/` |
+| 6. Review | Manager | `/dashboard/`, roles at `/people/` |
 
 ## Where AI is used (`cases/ai.py`)
 

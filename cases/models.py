@@ -6,8 +6,37 @@ keep the prototype simple (one form, no accounts needed to report).
 """
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+
+class Role(models.TextChoices):
+    REPORTER = 'reporter', 'Reporter'
+    HANDLER = 'handler', 'Case handler'
+    OFFICER = 'officer', 'Field officer'
+    MANAGER = 'manager', 'Manager'
+
+
+STAFF_ROLES = [Role.HANDLER, Role.MANAGER]
+
+
+class Profile(models.Model):
+    """Holds the user's role. Everyone who signs up starts as a Reporter."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.REPORTER)
+
+    def __str__(self):
+        return f'{self.user} ({self.get_role_display()})'
+
+
+def get_role(user):
+    if not user.is_authenticated:
+        return None
+    if user.is_superuser:
+        return Role.MANAGER
+    profile = getattr(user, 'profile', None)
+    return profile.role if profile else Role.REPORTER
 
 
 class Priority(models.TextChoices):
@@ -69,6 +98,8 @@ class Officer(models.Model):
     name = models.CharField(max_length=80)
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name='officers')
     contact_email = models.EmailField()
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name='officer')
 
     class Meta:
         ordering = ['name']
@@ -107,6 +138,8 @@ class Case(models.Model):
     reported_urgency = models.CharField(
         'How urgent is it?', max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     photo = models.FileField(upload_to='reports/', blank=True)
+    reporter_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name='reported_cases')
     reporter_name = models.CharField('Your name', max_length=80)
     reporter_email = models.EmailField('Your email')
     preferred_language = models.CharField(max_length=5, choices=Language.choices, default=Language.EN)

@@ -1,14 +1,28 @@
 from django import forms
 
-from .models import Case, Category, Officer, Priority, SiteVisit, Team
+from .models import OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team
+
+
+class SignupNameForm(forms.Form):
+    """Extra fields on the allauth sign-up page. New accounts are always Reporters."""
+    first_name = forms.CharField(max_length=80, label='First name')
+    last_name = forms.CharField(max_length=80, label='Last name')
+    field_order = ['first_name', 'last_name', 'email', 'username', 'password1', 'password2']
+
+    def signup(self, request, user):
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        user.save()
 
 
 class ReportForm(forms.ModelForm):
+    """Name and email come from the signed-in account, so they are not asked for here."""
+
     class Meta:
         model = Case
         fields = [
             'title', 'description', 'building', 'location_detail', 'reported_urgency', 'photo',
-            'reporter_name', 'reporter_email', 'preferred_language', 'preferred_contact',
+            'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -36,11 +50,9 @@ class TriageForm(forms.Form):
     duplicate_of = forms.ModelChoiceField(
         Case.objects.none(), required=False,
         help_text='If this is the same issue as an open case, merge it.')
-    triaged_by = forms.CharField(label='Your name (approver)', max_length=80)
 
     def __init__(self, *args, case=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from .models import OPEN_STATUSES
         qs = Case.objects.filter(status__in=OPEN_STATUSES)
         if case:
             qs = qs.exclude(pk=case.pk)
@@ -61,4 +73,15 @@ class VisitForm(forms.ModelForm):
 
 class LetterForm(forms.Form):
     draft_text = forms.CharField(label='Letter (edit before approving)', widget=forms.Textarea(attrs={'rows': 12}))
-    approved_by = forms.CharField(label='Approved by', max_length=80)
+
+
+class RoleForm(forms.Form):
+    """Used by managers to change someone's role. Field officers also need a team."""
+    role = forms.ChoiceField(choices=Role.choices)
+    team = forms.ModelChoiceField(Team.objects.all(), required=False)
+
+    def clean(self):
+        data = super().clean()
+        if data.get('role') == Role.OFFICER and not data.get('team'):
+            self.add_error('team', 'Choose a team for a field officer.')
+        return data

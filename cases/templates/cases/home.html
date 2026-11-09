@@ -2,30 +2,98 @@
 {% block head_title %}Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
+
+{% if not user.is_authenticated %}
+    {# ---------- Signed out ---------- #}
     <div class="hero">
         <h1>Fix It at Work</h1>
         <p class="lead mb-3">Report a workplace problem in under a minute. We route it to the right team, keep you updated, and tell you when it's fixed.</p>
-        <a href="{% url 'report' %}" class="btn btn-warning btn-lg fw-bold">Report an issue</a>
-        <a href="{% url 'track' %}" class="btn btn-outline-light btn-lg ms-2">Track a report</a>
+        <a href="{% url 'account_login' %}" class="btn btn-warning btn-lg fw-bold">Sign in</a>
+        <a href="{% url 'account_signup' %}" class="btn btn-outline-light btn-lg ms-2">Create an account</a>
+    </div>
+    <div class="row g-3 mt-2">
+        <div class="col-md-4"><div class="panel h-100"><h2 class="h5"><i class="fa-solid fa-camera" aria-hidden="true"></i> Report</h2><p class="mb-0">Say what's wrong and where, how urgent it is, and add a photo.</p></div></div>
+        <div class="col-md-4"><div class="panel h-100"><h2 class="h5"><i class="fa-solid fa-route" aria-hidden="true"></i> We route it</h2><p class="mb-0">An AI assistant suggests the right team. A member of staff checks every suggestion.</p></div></div>
+        <div class="col-md-4"><div class="panel h-100"><h2 class="h5"><i class="fa-solid fa-envelope-open-text" aria-hidden="true"></i> You hear back</h2><p class="mb-0">Track progress at any time, and get a clear reply when it's fixed.</p></div></div>
     </div>
 
-    <h2 class="mt-4 mb-3">Demo: pick a role</h2>
+{% elif user_role == 'reporter' %}
+    {# ---------- Reporter ---------- #}
+    <h1>Hello {{ user.first_name|default:user.username }}</h1>
+    <div class="panel d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div><h2 class="h5 mb-1">Something not working?</h2><p class="mb-0 text-muted">Tell us what and where. It takes about a minute.</p></div>
+        <a href="{% url 'report' %}" class="btn btn-primary btn-lg"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a>
+    </div>
+    <h2 class="mt-4">My open reports</h2>
+    {% for c in my_open %}
+    <a href="{% url 'track_case' c.reference %}" class="panel case-row d-block">
+        <div class="d-flex justify-content-between flex-wrap gap-2"><strong>{{ c.title }}</strong><span class="badge-status">{{ c.get_status_display }}</span></div>
+        <div class="small text-muted">{{ c.reference }} &middot; reported {{ c.date_reported|date:"j M" }}{% if c.sla_due %} &middot; aiming to fix by {{ c.sla_due|date:"D j M" }}{% endif %}</div>
+    </a>
+    {% empty %}<p>You have no open reports.</p>{% endfor %}
+    {% if my_closed %}
+    <h2 class="mt-4">Recently closed</h2>
+    {% for c in my_closed %}
+    <a href="{% url 'track_case' c.reference %}" class="panel case-row d-block">
+        <strong>{{ c.title }}</strong>
+        <div class="small text-muted">{{ c.reference }} &middot; {{ c.get_status_display }} {{ c.date_closed|date:"j M" }}</div>
+    </a>
+    {% endfor %}
+    {% endif %}
+
+{% elif user_role == 'handler' %}
+    {# ---------- Case handler ---------- #}
+    <h1>Hello {{ user.first_name|default:user.username }}</h1>
     <div class="row g-3">
-        {% url 'report' as u1 %}{% url 'triage_queue' as u2 %}{% url 'officer_cases' as u3 %}{% url 'dashboard' as u4 %}
-        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u1 }}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i><h3 class="mt-2">Reporter</h3><p class="mb-0">Any employee. Report what, where, how urgent, with a photo, in your language.</p></a></div>
-        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u2 }}"><i class="fa-solid fa-inbox" aria-hidden="true"></i><h3 class="mt-2">Case handler</h3><p class="mb-0">Check the AI's suggested category, priority and team, spot duplicates, approve the reply.</p></a></div>
-        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u3 }}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><h3 class="mt-2">Field officer</h3><p class="mb-0">Phone-friendly list of your jobs. Record findings by typing or speaking.</p></a></div>
-        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u4 }}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><h3 class="mt-2">Manager</h3><p class="mb-0">Live workload, overdue cases, first-time fix rate and how often staff agree with the AI.</p></a></div>
+        <div class="col-md-4"><a class="panel kpi d-block text-decoration-none" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
+        <div class="col-md-4"><a class="panel kpi d-block text-decoration-none" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
+        <div class="col-md-4"><div class="panel kpi"><div class="value" style="color: var(--urgent)">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
     </div>
+    <h2 class="mt-4">Next to triage</h2>
+    {% for c in triage|slice:":5" %}
+    <a href="{% url 'triage_case' c.reference %}" class="panel case-row pri-border-{{ c.ai_priority }} d-block">
+        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.ai_priority %}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; {{ c.building }} &middot; AI suggests {{ c.ai_category }} ({{ c.ai_confidence }}% confident){% if c.ai_duplicate_candidate_id %} &middot; possible duplicate{% endif %}</div>
+    </a>
+    {% empty %}<p>Nothing waiting. Nice.</p>{% endfor %}
+    <a href="{% url 'triage_queue' %}" class="btn btn-primary">Open the full queue</a>
 
-    <div class="panel mt-4">
-        <h2>How AI is used here</h2>
-        <ul class="mb-0">
-            <li><strong>Suggests</strong> a category, priority, team and possible duplicate. A person approves every decision.</li>
-            <li><strong>Summarises</strong> officer notes (typed or dictated) into a short case note.</li>
-            <li><strong>Drafts</strong> the outcome letter in the reporter's language. A person edits and approves it before it's sent.</li>
-            <li>Anything written by AI is shown in a <span class="ai-label">purple AI box</span>. AI never lowers the urgency a reporter chose.</li>
-        </ul>
+{% elif user_role == 'officer' %}
+    {# ---------- Field officer ---------- #}
+    <h1>Hello {{ user.first_name|default:user.username }}</h1>
+    {% if officer %}
+    <p class="text-muted">{{ officer.team }} team &middot; {{ jobs|length }} job{{ jobs|length|pluralize }} assigned to you{% if team_unassigned %} &middot; {{ team_unassigned }} unassigned in your team{% endif %}</p>
+    {% for c in jobs %}
+    <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
+        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
+        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}{% if c.is_overdue %} (overdue){% endif %}</div>
+    </a>
+    {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
+    <a href="{% url 'officer_cases' %}" class="btn btn-primary">All my jobs</a>
+    {% else %}
+    <div class="panel">Your account isn't linked to a team yet. Ask a manager to set you up on the People page.</div>
+    {% endif %}
+
+{% elif user_role == 'manager' %}
+    {# ---------- Manager ---------- #}
+    <h1>Hello {{ user.first_name|default:user.username }}</h1>
+    <div class="row g-3">
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value" style="color: var(--ai)">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted</div></div></div>
     </div>
+    <h2 class="mt-4">Most overdue</h2>
+    {% for c in overdue|slice:":5" %}
+    <a href="{% url 'case_detail' c.reference %}" class="panel case-row pri-border-{{ c.priority }} d-block">
+        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div class="small overdue">{{ c.reference }} &middot; {{ c.assigned_team }} &middot; due {{ c.sla_due|timesince }} ago</div>
+    </a>
+    {% empty %}<p>Nothing overdue.</p>{% endfor %}
+    <a href="{% url 'dashboard' %}" class="btn btn-primary">Full dashboard</a>
+    <a href="{% url 'people' %}" class="btn btn-outline-primary ms-2">People and roles</a>
+{% endif %}
+
 </section>
 {% endblock %}

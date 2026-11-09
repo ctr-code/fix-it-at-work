@@ -1,26 +1,67 @@
 from django.contrib import messages
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from . import ai
-from .forms import LetterForm, ReportForm, TriageForm, VisitForm
+from .forms import LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, Case, Category, Communication, Officer, SiteVisit, Status, Team,
+    OPEN_STATUSES, PRIORITY_RANK, Case, Category, Communication, Officer, Profile, Role, Status, Team,
+    get_role,
 )
+from .permissions import can_view_case, role_required
 
+ALL_ROLES = [r.value for r in Role]
+HANDLERS = [Role.HANDLER, Role.MANAGER]
+
+
+def display_name(user):
+    return user.get_full_name() or user.username
+
+
+# ---------- Home: different content for each role ----------
 
 def home(request):
-    return render(request, 'cases/home.html')
+    role = get_role(request.user)
+    ctx = {}
+    if role == Role.REPORTER:
+        mine = Case.objects.filter(reporter_user=request.user)
+        ctx['my_open'] = mine.filter(status__in=OPEN_STATUSES + [Status.RESOLVED])
+        ctx['my_closed'] = mine.filter(status__in=[Status.CLOSED, Status.DUPLICATE])[:5]
+    elif role == Role.HANDLER:
+        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW),
+                               key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported))
+        ctx['replies'] = Case.objects.filter(status=Status.RESOLVED).count()
+        ctx['overdue'] = Case.objects.filter(status__in=OPEN_STATUSES, sla_due__lt=timezone.now()).count()
+    elif role == Role.OFFICER:
+        officer = getattr(request.user, 'officer', None)
+        ctx['officer'] = officer
+        if officer:
+            ctx['jobs'] = Case.objects.filter(
+                assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+            ctx['team_unassigned'] = Case.objects.filter(
+                assigned_team=officer.team, assigned_officer__isnull=True,
+                status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).count()
+    elif role == Role.MANAGER:
+        ctx.update(_dashboard_stats())
+    return render(request, 'cases/home.html', ctx)
 
 
 # ---------- 1. Report ----------
 
+@login_required
 def report(request):
     if request.method == 'POST':
         form = ReportForm(request.POST, request.FILES)
         if form.is_valid():
-            case = form.save()
+            case = form.save(commit=False)
+            case.reporter_user = request.user
+            case.reporter_name = display_name(request.user)
+            case.reporter_email = request.user.email
+            case.save()
             suggestion = ai.triage(case)
             case.ai_category = suggestion['category']
             case.ai_priority = suggestion['priority']
@@ -41,23 +82,29 @@ def report(request):
     return render(request, 'cases/report.html', {'form': form, 'buildings': buildings})
 
 
+@login_required
 def track(request):
     ref = request.GET.get('ref', '').strip().upper()
     if ref:
-        if Case.objects.filter(reference=ref).exists():
+        case = Case.objects.filter(reference=ref).first()
+        if case and can_view_case(request.user, case):
             return redirect('track_case', ref=ref)
-        messages.error(request, f'We could not find a report with reference {ref}.')
+        messages.error(request, f'We could not find a report with reference {ref} on your account.')
     return render(request, 'cases/track_search.html')
 
 
+@login_required
 def track_case(request, ref):
     case = get_object_or_404(Case, reference=ref)
+    if not can_view_case(request.user, case):
+        raise PermissionDenied
     sent = case.communications.filter(date_sent__isnull=False)
     return render(request, 'cases/track.html', {'case': case, 'sent': sent})
 
 
 # ---------- 2. Triage and route (case handler) ----------
 
+@role_required(*HANDLERS)
 def triage_queue(request):
     new_cases = sorted(
         Case.objects.filter(status=Status.NEW).select_related('ai_category', 'ai_duplicate_candidate'),
@@ -71,16 +118,18 @@ def triage_queue(request):
     })
 
 
+@role_required(*HANDLERS)
 def triage_case(request, ref):
     case = get_object_or_404(Case, reference=ref)
     if case.status != Status.NEW:
         return redirect('case_detail', ref=ref)
+    approver = display_name(request.user)
 
     if request.method == 'POST':
         form = TriageForm(request.POST, case=case)
         if form.is_valid():
             d = form.cleaned_data
-            case.triaged_by = d['triaged_by']
+            case.triaged_by = approver
             case.date_acknowledged = timezone.now()
             if d['duplicate_of']:
                 case.duplicate_of = d['duplicate_of']
@@ -92,7 +141,7 @@ def triage_case(request, ref):
                     case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
                     draft_text=(f'Thanks for your report. Someone has already reported this issue, so we have '
                                 f'linked your report to {case.duplicate_of.reference}. You can track progress there.'),
-                    approved_by=d['triaged_by'], date_sent=timezone.now(),
+                    approved_by=approver, date_sent=timezone.now(),
                 )
                 messages.success(request, f'{case.reference} merged into {case.duplicate_of.reference}.')
                 return redirect('triage_queue')
@@ -111,7 +160,7 @@ def triage_case(request, ref):
                 draft_text=(f'Your report {case.reference} has been passed to our {case.assigned_team} team '
                             f'as {case.get_priority_display().lower()} priority. We aim to resolve it by '
                             f'{timezone.localtime(case.sla_due):%A %d %B}.'),
-                approved_by=d['triaged_by'], date_sent=timezone.now(),
+                approved_by=approver, date_sent=timezone.now(),
             )
             messages.success(request, f'{case.reference} sent to {case.assigned_team}.')
             return redirect('triage_queue')
@@ -129,6 +178,7 @@ def triage_case(request, ref):
     })
 
 
+@role_required(*HANDLERS)
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
     return render(request, 'cases/case_detail.html', {'case': case})
@@ -136,10 +186,16 @@ def case_detail(request, ref):
 
 # ---------- 3 & 4. Attend, investigate, record outcome (field officer) ----------
 
+def _current_officer(request):
+    officer = getattr(request.user, 'officer', None)
+    if officer is None:
+        messages.error(request, 'Your account is not linked to a field officer record yet. Ask a manager.')
+    return officer
+
+
+@role_required(Role.OFFICER)
 def officer_cases(request):
-    if 'officer' in request.GET:
-        request.session['officer_id'] = request.GET['officer']
-    officer = Officer.objects.filter(pk=request.session.get('officer_id')).select_related('team').first()
+    officer = _current_officer(request)
     cases, team_unassigned = [], []
     if officer:
         cases = Case.objects.filter(
@@ -148,17 +204,19 @@ def officer_cases(request):
             assigned_team=officer.team, assigned_officer__isnull=True,
             status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
     return render(request, 'cases/officer_cases.html', {
-        'officer': officer, 'officers': Officer.objects.select_related('team'),
-        'cases': cases, 'team_unassigned': team_unassigned,
+        'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned,
     })
 
 
+@role_required(Role.OFFICER)
 def officer_case(request, ref):
     case = get_object_or_404(Case, reference=ref)
-    officer = Officer.objects.filter(pk=request.session.get('officer_id')).first()
+    officer = _current_officer(request)
     if not officer:
-        messages.error(request, 'Choose which officer you are first.')
-        return redirect('officer_cases')
+        return redirect('index')
+    # Officers can only work on their own jobs or unassigned jobs in their team
+    if case.assigned_team_id != officer.team_id or case.assigned_officer_id not in (None, officer.id):
+        raise PermissionDenied
 
     if request.method == 'POST' and 'take' in request.POST:
         case.assigned_officer = officer
@@ -167,6 +225,8 @@ def officer_case(request, ref):
         return redirect('officer_case', ref=ref)
 
     if request.method == 'POST':
+        if case.assigned_officer_id != officer.id:
+            raise PermissionDenied
         form = VisitForm(request.POST, request.FILES)
         if form.is_valid():
             visit = form.save(commit=False)
@@ -191,22 +251,23 @@ def officer_case(request, ref):
 
 # ---------- 5. Respond ----------
 
+@role_required(*HANDLERS)
 def outcome_letter(request, ref):
     case = get_object_or_404(Case, reference=ref)
+    if case.status != Status.RESOLVED:
+        return redirect('case_detail', ref=ref)
     letter = case.communications.filter(kind=Communication.Kind.OUTCOME).first()
     if letter is None:
         letter = Communication.objects.create(
             case=case, kind=Communication.Kind.OUTCOME, language=case.preferred_language,
             draft_text=ai.draft_outcome_letter(case), ai_drafted=True,
         )
-    if letter.date_sent:
-        return redirect('case_detail', ref=ref)
 
     if request.method == 'POST':
         form = LetterForm(request.POST)
         if form.is_valid():
             letter.draft_text = form.cleaned_data['draft_text']
-            letter.approved_by = form.cleaned_data['approved_by']
+            letter.approved_by = display_name(request.user)
             letter.date_sent = timezone.now()
             letter.save()
             case.status = Status.CLOSED
@@ -225,28 +286,37 @@ def _pct(part, whole):
     return round(100 * part / whole) if whole else None
 
 
-def dashboard(request):
+def _dashboard_stats():
     now = timezone.now()
     cases = Case.objects.exclude(status=Status.DUPLICATE)
     open_cases = cases.filter(status__in=OPEN_STATUSES)
-    overdue = [c for c in open_cases.filter(sla_due__lt=now).select_related('assigned_team', 'assigned_officer')]
+    overdue = list(open_cases.filter(sla_due__lt=now).select_related('assigned_team', 'assigned_officer')
+                   .order_by('sla_due'))
 
     resolved = cases.filter(date_resolved__isnull=False)
     ftf_known = resolved.exclude(first_time_fix__isnull=True)
-    ftf_rate = _pct(ftf_known.filter(first_time_fix=True).count(), ftf_known.count())
-
     durations = [(c.date_resolved - c.date_reported).total_seconds() / 86400 for c in resolved]
-    avg_days = round(sum(durations) / len(durations), 1) if durations else None
-
     resolved_with_sla = [c for c in resolved if c.sla_due]
-    within_sla = _pct(sum(1 for c in resolved_with_sla if c.date_resolved <= c.sla_due), len(resolved_with_sla))
-
     acked = cases.filter(date_acknowledged__isnull=False, sla_acknowledge_due__isnull=False)
-    ack_on_time = _pct(sum(1 for c in acked if c.date_acknowledged <= c.sla_acknowledge_due), acked.count())
-
     triaged = Case.objects.exclude(ai_suggestion_accepted__isnull=True)
-    ai_accept = _pct(triaged.filter(ai_suggestion_accepted=True).count(), triaged.count())
 
+    return {
+        'total': cases.count(), 'open_count': open_cases.count(), 'overdue': overdue,
+        'awaiting_triage': cases.filter(status=Status.NEW).count(),
+        'ftf_rate': _pct(ftf_known.filter(first_time_fix=True).count(), ftf_known.count()),
+        'avg_days': round(sum(durations) / len(durations), 1) if durations else None,
+        'within_sla': _pct(sum(1 for c in resolved_with_sla if c.date_resolved <= c.sla_due), len(resolved_with_sla)),
+        'ack_on_time': _pct(sum(1 for c in acked if c.date_acknowledged <= c.sla_acknowledge_due), acked.count()),
+        'ai_accept': _pct(triaged.filter(ai_suggestion_accepted=True).count(), triaged.count()),
+        'ai_triaged': triaged.count(),
+        'duplicates': Case.objects.filter(status=Status.DUPLICATE).count(),
+    }
+
+
+@role_required(Role.MANAGER)
+def dashboard(request):
+    now = timezone.now()
+    cases = Case.objects.exclude(status=Status.DUPLICATE)
     teams = []
     for team in Team.objects.all():
         t_cases = cases.filter(assigned_team=team)
@@ -265,13 +335,44 @@ def dashboard(request):
     categories = (Category.objects.annotate(n=Count('case', filter=~Q(case__status=Status.DUPLICATE)))
                   .filter(n__gt=0).order_by('-n'))
     max_cat = max([c.n for c in categories] + [1])
-    status_counts = {s.label: cases.filter(status=s.value).count() for s in Status if s != Status.DUPLICATE}
 
-    return render(request, 'cases/dashboard.html', {
-        'total': cases.count(), 'open_count': open_cases.count(), 'overdue': overdue,
-        'awaiting_triage': cases.filter(status=Status.NEW).count(),
-        'ftf_rate': ftf_rate, 'avg_days': avg_days, 'within_sla': within_sla,
-        'ack_on_time': ack_on_time, 'ai_accept': ai_accept, 'ai_triaged': triaged.count(),
-        'duplicates': Case.objects.filter(status=Status.DUPLICATE).count(),
-        'teams': teams, 'categories': categories, 'max_cat': max_cat, 'status_counts': status_counts,
-    })
+    ctx = _dashboard_stats()
+    ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat})
+    return render(request, 'cases/dashboard.html', ctx)
+
+
+@role_required(Role.MANAGER)
+def people(request):
+    """Managers decide who is a case handler, field officer or manager."""
+    User = get_user_model()
+    if request.method == 'POST':
+        target = get_object_or_404(User, pk=request.POST.get('user_id'))
+        form = RoleForm(request.POST)
+        if target == request.user:
+            messages.error(request, 'You cannot change your own role.')
+        elif form.is_valid():
+            role, team = form.cleaned_data['role'], form.cleaned_data['team']
+            profile, _ = Profile.objects.get_or_create(user=target)
+            profile.role = role
+            profile.save()
+            officer = getattr(target, 'officer', None)
+            if role == Role.OFFICER:
+                if officer:
+                    officer.team = team
+                    officer.save()
+                else:
+                    Officer.objects.create(user=target, team=team, name=display_name(target),
+                                           contact_email=target.email or 'unknown@example.com')
+            elif officer:
+                # Keep the officer record for case history, just unlink the account
+                officer.user = None
+                officer.save()
+            messages.success(request, f'{display_name(target)} is now: {Role(role).label}.')
+        else:
+            messages.error(request, 'Choose a team for a field officer.')
+        return redirect('people')
+
+    users = User.objects.select_related('profile', 'officer__team').order_by('first_name', 'username')
+    rows = [{'user': u, 'role': get_role(u), 'team_id': getattr(getattr(u, 'officer', None), 'team_id', None)}
+            for u in users]
+    return render(request, 'cases/people.html', {'rows': rows, 'roles': Role.choices, 'teams': Team.objects.all()})

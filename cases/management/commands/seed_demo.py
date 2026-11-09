@@ -2,17 +2,32 @@
 Load fictional demo data. All names, emails and places are made up.
 
     python manage.py seed_demo          # wipe cases and reload everything
+
+Also creates one demo login per role. The password comes from DEMO_PASSWORD in
+your local .env (never commit it). If it is not set, a random one is printed.
 """
+import os
 import random
+import secrets
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from cases import ai
 from cases.models import (
-    PRIORITY_RANK, Case, Category, Communication, Officer, SiteVisit, SLARule, Status, Team,
+    PRIORITY_RANK, Case, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
 )
+
+# Demo logins: (username, first name, last name, role)
+DEMO_USERS = [
+    ('alex', 'Alex', 'Morgan', Role.REPORTER),
+    ('jo', 'Jo', 'Clarke', Role.HANDLER),
+    ('rob', 'Rob', 'Turner', Role.MANAGER),
+] + [(name.split()[0].lower(), *name.split(), Role.OFFICER) for name in [
+    'Sam Okafor', 'Priya Shah', 'Tom Becker', 'Aisha Rahman', 'Dan Walsh', 'Mei Lin', 'Grace Mensah', 'Owen Price',
+]]
 
 TEAMS = [
     ('Facilities', 'facilities@example.com', 'Rob Turner'),
@@ -66,8 +81,8 @@ REPORTS = [
      'to the front every time.', 'Warehouse B', 'Side entrance', 'medium', 'en', 'Riley Brooks', 18, 'closed'),
     ('Flickering lights in open office', 'Two ceiling lights flicker constantly near desks 40-48, giving people headaches.',
      'Innovation Centre', '1st floor open plan', 'medium', 'en', 'Sam Taylor', 16, 'closed'),
-    ('Przeciek w łazience', 'Woda kapie z rury pod umywalką w łazience dla pracowników. Podłoga jest mokra.',
-     'Warehouse B', 'Staff toilets', 'high', 'pl', 'Marta Nowak', 14, 'closed'),
+    ('Leak in staff toilets', 'Water is dripping from the pipe under the washbasin in the staff toilets. '
+     'The floor is wet.', 'Warehouse B', 'Staff toilets', 'high', 'en', 'Marta Nowak', 14, 'closed'),
     ('Bin store overflowing', 'The bins outside the loading bay are overflowing and rubbish is blowing around the yard.',
      'Warehouse B', 'Loading bay', 'low', 'en', 'Lee Johnson', 12, 'closed'),
     ('Laptop will not charge', 'My laptop stopped charging this morning. I tried two different chargers.',
@@ -76,12 +91,12 @@ REPORTS = [
      'Main Office', 'Stairwell B', 'medium', 'en', 'Taylor Reid', 9, 'closed'),
     ('Wifi keeps dropping', 'The wifi drops every few minutes in the east wing. It affects the whole team on calls.',
      'Innovation Centre', 'East wing', 'high', 'en', 'Jamie Clarke', 6, 'closed'),
-    ('Inodoro atascado', 'El inodoro del baño de la planta baja está atascado y hay agua en el suelo.',
-     'Riverside House', 'Ground floor toilets', 'medium', 'es', 'Lucía Fernández', 4, 'closed'),
+    ('Toilet blocked', 'The toilet in the ground floor loos is blocked and there is water on the floor.',
+     'Riverside House', 'Ground floor toilets', 'medium', 'en', 'Lucía Fernández', 4, 'closed'),
     ('Air conditioning blowing hot air', 'The air con in the training room is blowing hot air and it is 28 degrees.',
-     'Main Office', 'Training room', 'medium', 'en', 'Avery Scott', 3, 'resolved'),
+     'Main Office', 'Training room', 'medium', 'en', 'Alex Morgan', 3, 'resolved'),
     ('Monitor screen flickering', 'My second monitor keeps flickering and going black every few minutes.',
-     'Riverside House', '2nd floor desk 21', 'low', 'ur', 'Imran Hussain', 2, 'resolved'),
+     'Riverside House', '2nd floor desk 21', 'low', 'en', 'Imran Hussain', 2, 'resolved'),
     ('Ceiling tile stained and sagging', 'A ceiling tile above the photocopier is stained brown and sagging. '
      'Looks like water damage from above.', 'Main Office', '1st floor print area', 'high', 'en', 'Robin Hayes', 6, 'in_progress'),
     ('Fire door not closing properly', 'The fire door on the 3rd floor does not close on its own anymore, it stays open.',
@@ -91,7 +106,7 @@ REPORTS = [
     ('No heating in warehouse office', 'Heating has stopped in the warehouse office. It is very cold and staff are '
      'wearing coats.', 'Warehouse B', 'Office', 'high', 'en', 'Kai Murphy', 7, 'assigned'),
     ('Car park barrier stuck', 'The car park barrier is stuck in the down position and cars are queuing on the road.',
-     'Main Office', 'Car park', 'high', 'en', 'Sky Bennett', 1, 'assigned'),
+     'Main Office', 'Car park', 'high', 'en', 'Alex Morgan', 1, 'assigned'),
     ('Socket sparking', 'The wall socket by desk 12 made a sparking noise and there is a smell of burning.',
      'Riverside House', '2nd floor desk 12', 'urgent', 'en', 'Quinn Foster', 0.3, 'assigned'),
     ('Carpet ripped by lift', 'Carpet is ripped by the lift on the ground floor and people keep catching their feet. '
@@ -100,13 +115,13 @@ REPORTS = [
      'Riverside House', 'Meeting room 5', 'medium', 'en', 'Rowan King', 16, 'assigned'),
     # New - waiting for triage (shows AI suggestions, duplicates and fairness rules)
     ('Water dripping from ceiling', 'Water is dripping from the ceiling near the photocopier on the 1st floor. '
-     'Someone has put a bucket there.', 'Main Office', '1st floor print area', 'high', 'en', 'Elliot Grant', 0.08, 'new'),
+     'Someone has put a bucket there.', 'Main Office', '1st floor print area', 'high', 'en', 'Alex Morgan', 0.08, 'new'),
     ('Suspicious person in car park', 'Someone I did not recognise was trying car door handles in the car park '
      'about 10 minutes ago.', 'Main Office', 'Car park', 'high', 'en', 'Frankie Moss', 0.04, 'new'),
     ('Lift making grinding noise', 'The lift makes a loud grinding noise between floors 2 and 3.',
      'Innovation Centre', 'Main lift', 'medium', 'en', 'Reese Cooper', 0.2, 'new'),
-    ('Nie działa ogrzewanie', 'W biurze magazynu jest bardzo zimno, ogrzewanie nie działa od rana.',
-     'Warehouse B', 'Office', 'medium', 'pl', 'Piotr Kowalski', 0.1, 'new'),
+    ('Heating not working', 'It is very cold in the warehouse office. The heating has not worked since this morning.',
+     'Warehouse B', 'Office', 'medium', 'en', 'Piotr Kowalski', 0.1, 'new'),
     ('Broken', 'It is broken again.', 'Riverside House', '', 'medium', 'en', 'Billie Ward', 0.4, 'new'),
 ]
 
@@ -145,8 +160,9 @@ class Command(BaseCommand):
         for name, desc, team, pri, kw in CATEGORIES:
             Category.objects.create(name=name, description=desc, default_team=teams[team],
                                     default_priority=pri, keywords=kw)
+        users = self.make_users()
         for name, team in OFFICERS:
-            Officer.objects.create(name=name, team=teams[team],
+            Officer.objects.create(name=name, team=teams[team], user=users.get(name.split()[0].lower()),
                                    contact_email=name.lower().replace(' ', '.') + '@example.com')
         for p, ack, res in SLA:
             SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_working_days=res)
@@ -155,7 +171,27 @@ class Command(BaseCommand):
         for spec in sorted(REPORTS, key=lambda r: -r[7]):
             self.make_case(spec, rng, now)
 
+        # The demo reporter can see their own reports on their home page
+        Case.objects.filter(reporter_name='Alex Morgan').update(reporter_user=users['alex'])
+
         self.stdout.write(self.style.SUCCESS(f'Loaded {Case.objects.count()} fictional cases.'))
+        self.stdout.write('Demo logins: ' + ', '.join(f'{u} ({r.label})' for u, _, _, r in DEMO_USERS[:4]) +
+                          ' ... plus one per field officer.')
+
+    def make_users(self):
+        User = get_user_model()
+        password = os.getenv('DEMO_PASSWORD')
+        if not password:
+            password = secrets.token_urlsafe(9)
+            self.stdout.write(self.style.WARNING(f'DEMO_PASSWORD not set in .env - using: {password}'))
+        users = {}
+        for username, first, last, role in DEMO_USERS:
+            User.objects.filter(username=username).delete()
+            user = User.objects.create_user(username, f'{username}@example.com', password,
+                                            first_name=first, last_name=last)
+            Profile.objects.update_or_create(user=user, defaults={'role': role})
+            users[username] = user
+        return users
 
     def make_case(self, spec, rng, now):
         title, desc, building, room, urgency, lang, name, days_ago, stage = spec

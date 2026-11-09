@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block head_title %}Not allowed - Fix It at Work{% endblock %}
+
+{% block main %}
+<section class="container" style="max-width: 640px">
+    <h1>You don't have access to this page</h1>
+    <div class="panel">
+        <p>This page is for a different role{% if user_role_label %} (you are signed in as a <strong>{{ user_role_label }}</strong>){% endif %}.</p>
+        <p class="mb-0">If you think you should have access, ask a manager. <a href="{% url 'index' %}">Go to your home page</a>.</p>
+    </div>
+</section>
+{% endblock %}
