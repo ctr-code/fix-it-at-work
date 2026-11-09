@@ -1,5 +1,10 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static %}
+
+{% block extra_body %}
+{# Eye button to show or hide password characters #}
+<script src="{% static 'js/password-toggle.js' %}"></script>
+{% endblock extra_body %}
 
 {# main is the project block; content is the allauth block #}
 {% block main %}
