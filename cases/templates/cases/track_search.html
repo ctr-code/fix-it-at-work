@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block head_title %}Track a report - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container" style="max-width: 560px">
+    <h1>Track a report</h1>
+    <form method="get" class="panel">
+        <label for="ref" class="form-label">Your reference number</label>
+        <input id="ref" name="ref" class="form-control form-control-lg" placeholder="e.g. FIW-0012" required>
+        <button class="btn btn-primary mt-3">Find my report</button>
+    </form>
+</section>
+{% endblock %}

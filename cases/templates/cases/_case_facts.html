@@ -1,0 +1,10 @@
+<div class="panel">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+        <h2 class="h5 mb-0">Reporter's words</h2>
+        <span class="text-muted small">Reported {{ case.date_reported|date:"j M Y, H:i" }} by {{ case.reporter_name }} &middot; {{ case.get_preferred_language_display }}</span>
+    </div>
+    <p class="mt-2"><strong>{{ case.title }}</strong><br>{{ case.description|linebreaksbr }}</p>
+    <p class="mb-1"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
+    <p class="mb-1">Reporter said urgency: {% include "cases/_pri.html" with p=case.reported_urgency %}</p>
+    {% if case.photo %}<img src="{{ case.photo.url }}" alt="Photo attached by the reporter" class="photo-thumb mt-2">{% endif %}
+</div>

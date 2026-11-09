@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block head_title %}Fix It at Work{% endblock %}
+{% block main %}
+<section class="container">
+    <div class="hero">
+        <h1>Fix It at Work</h1>
+        <p class="lead mb-3">Report a workplace problem in under a minute. We route it to the right team, keep you updated, and tell you when it's fixed.</p>
+        <a href="{% url 'report' %}" class="btn btn-warning btn-lg fw-bold">Report an issue</a>
+        <a href="{% url 'track' %}" class="btn btn-outline-light btn-lg ms-2">Track a report</a>
+    </div>
+
+    <h2 class="mt-4 mb-3">Demo: pick a role</h2>
+    <div class="row g-3">
+        {% url 'report' as u1 %}{% url 'triage_queue' as u2 %}{% url 'officer_cases' as u3 %}{% url 'dashboard' as u4 %}
+        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u1 }}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i><h3 class="mt-2">Reporter</h3><p class="mb-0">Any employee. Report what, where, how urgent, with a photo, in your language.</p></a></div>
+        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u2 }}"><i class="fa-solid fa-inbox" aria-hidden="true"></i><h3 class="mt-2">Case handler</h3><p class="mb-0">Check the AI's suggested category, priority and team, spot duplicates, approve the reply.</p></a></div>
+        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u3 }}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><h3 class="mt-2">Field officer</h3><p class="mb-0">Phone-friendly list of your jobs. Record findings by typing or speaking.</p></a></div>
+        <div class="col-md-6 col-lg-3"><a class="panel role-card" href="{{ u4 }}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><h3 class="mt-2">Manager</h3><p class="mb-0">Live workload, overdue cases, first-time fix rate and how often staff agree with the AI.</p></a></div>
+    </div>
+
+    <div class="panel mt-4">
+        <h2>How AI is used here</h2>
+        <ul class="mb-0">
+            <li><strong>Suggests</strong> a category, priority, team and possible duplicate. A person approves every decision.</li>
+            <li><strong>Summarises</strong> officer notes (typed or dictated) into a short case note.</li>
+            <li><strong>Drafts</strong> the outcome letter in the reporter's language. A person edits and approves it before it's sent.</li>
+            <li>Anything written by AI is shown in a <span class="ai-label">purple AI box</span>. AI never lowers the urgency a reporter chose.</li>
+        </ul>
+    </div>
+</section>
+{% endblock %}

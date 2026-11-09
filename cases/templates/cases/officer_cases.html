@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block head_title %}My jobs - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container" style="max-width: 640px">
+    <h1>{% if officer %}Hi {{ officer.name }}{% else %}Field officer{% endif %}</h1>
+    <form method="get" class="d-flex gap-2 mb-3" aria-label="Choose officer">
+        <label for="officer" class="visually-hidden">I am</label>
+        <select id="officer" name="officer" class="form-select" onchange="this.form.submit()">
+            <option value="">Demo: choose who you are...</option>
+            {% for o in officers %}<option value="{{ o.id }}" {% if officer and o.id == officer.id %}selected{% endif %}>{{ o.name }} - {{ o.team }}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-primary">Go</button></noscript>
+    </form>
+
+    {% if officer %}
+    <h2>My jobs <span class="badge bg-secondary">{{ cases|length }}</span></h2>
+    {% for c in cases %}
+    <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
+        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
+        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}{% if c.is_overdue %} (overdue){% endif %}{% if c.status == 'in_progress' %} &middot; follow-up visit{% endif %}</div>
+    </a>
+    {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
+
+    {% if team_unassigned %}
+    <h2 class="mt-4">Unassigned in {{ officer.team }}</h2>
+    {% for c in team_unassigned %}
+    <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
+        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}</div>
+    </a>
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

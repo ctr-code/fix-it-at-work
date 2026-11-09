@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block head_title %}Report an issue - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container" style="max-width: 760px">
+    <h1>Report an issue</h1>
+    <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
+    <form method="post" enctype="multipart/form-data" class="panel" novalidate>
+        {% csrf_token %}
+        <h2 class="h5">What and where</h2>
+        {{ form.title|as_crispy_field }}
+        {{ form.description|as_crispy_field }}
+        <div class="row">
+            <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
+        </div>
+        <datalist id="buildings">{% for b in buildings %}<option value="{{ b }}">{% endfor %}</datalist>
+        {{ form.reported_urgency|as_crispy_field }}
+        {{ form.photo|as_crispy_field }}
+        <h2 class="h5 mt-4">About you</h2>
+        <div class="row">
+            <div class="col-md-6">{{ form.reporter_name|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.reporter_email|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.preferred_language|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.preferred_contact|as_crispy_field }}</div>
+        </div>
+        <p class="small text-muted">We only use your details to update you about this report. An AI assistant will suggest how to route it, and a member of staff checks every suggestion.</p>
+        <button type="submit" class="btn btn-primary btn-lg w-100">Send report</button>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,7 @@
+<ol class="journey" aria-label="Progress">
+    <li class="{% if case.stage >= 1 %}done{% endif %}">Reported</li>
+    <li class="{% if case.stage >= 2 %}done{% endif %}">Sent to team</li>
+    <li class="{% if case.stage >= 3 %}done{% endif %}">Officer on it</li>
+    <li class="{% if case.stage >= 4 %}done{% endif %}">Fixed</li>
+    <li class="{% if case.stage >= 5 %}done{% endif %}">Reply sent</li>
+</ol>

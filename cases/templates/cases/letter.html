@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block head_title %}Outcome letter {{ case.reference }} - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container" style="max-width: 860px">
+    <p class="mt-3 mb-0"><a href="{% url 'triage_queue' %}">&larr; Back to queue</a></p>
+    <h1>Outcome letter for {{ case.reference }}</h1>
+    <div class="ai-box mb-3">
+        <p class="ai-label mb-1"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted by AI in {{ case.get_preferred_language_display }}</p>
+        <p class="mb-0 small">Check it is accurate, kind and clear before sending. The reporter will see a note saying AI helped write it and who approved it.
+        {% if case.preferred_language != 'en' %}<br><strong>Prototype note:</strong> the officer's notes are not translated yet, so check that part.{% endif %}</p>
+    </div>
+    <form method="post" class="panel">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Approve and send</button>
+    </form>
+    <details class="panel"><summary>What the officer recorded</summary>
+        {% for v in case.visits.all %}<p class="mt-2 mb-0"><strong>{{ v.visited_at|date:"j M" }}, {{ v.officer.name }}:</strong> {{ v.note }}</p>{% endfor %}
+    </details>
+</section>
+{% endblock %}
+{% block extra_body %}
+{% if case.preferred_language == 'ur' %}<script>document.getElementById('id_draft_text').dir = 'rtl';</script>{% endif %}
+{% endblock %}
