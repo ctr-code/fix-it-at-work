@@ -1,0 +1,62 @@
+@import url("https://fonts.bunny.net/css?family=pt-serif:400,700");
+
+:root {
+    --primary-font: "PT Serif", sans-serif;
+    --secondary-font: "PT Serif", sans-serif;
+    --highlight-colour: #416a8e; /* blue */
+    --highlight-colour-light: #7a9fc2; /* light blue */
+    --bookable-colour: rgb(207, 237, 247);
+    --booked-colour: rgb(170, 247, 170);
+}
+
+body {
+    font-family: var(--primary-font);
+}
+
+h1 {
+    font-family: var(--secondary-font);
+    font-weight: bold;
+    padding-top: 33px;
+    padding-bottom: 15px;
+}
+
+h2 {
+    font-family: var(--secondary-font);
+    font-weight: bold;
+}
+
+/* allauth */
+
+.errorlist {
+    color: red;
+}
+
+/* Base template */
+
+.navbar-brand {
+    font-size: inherit;
+    font-weight: bold;
+}
+
+#messages {
+    margin-top: 73.8px;
+}
+
+main {
+    margin-bottom: 33px;
+}
+
+.social-links a {
+    color: black;
+}
+
+/* Home page */
+
+#hero {
+    position: relative;
+    min-height: 70vh;
+    overflow: hidden;
+    /*background-image: url('/static/images/hero.webp');*/
+    background-size: cover;
+    background-position: 60% 65%;
+}

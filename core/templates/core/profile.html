@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block head_title %}HACKATHON{% endblock %}
+
+{% block main %}
+<section class="container">
+    <div class="row">
+        <div class="col-12 col-md-8 offset-md-2 col-lg-6 offset-lg-3">
+            <h1>Profile</h1>
+            <p>You are logged in as <strong>{{ user.username }}</strong>.</p>
+            <p><button id="signoutButton" class="btn btn-primary">Sign Out</button></p>
+            <h1>Edit Details</h1>
+            <form method="post">
+                {% csrf_token %}
+                {{ form | crispy }}
+                <button id="submitButton" type="submit" class="btn btn-primary" disabled>Submit</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+{# Sign out confirmation modal #}
+{# Ideally this would be a <dialog> but bootstrap styles them badly #}
+<div class="modal fade" id="signoutModal" tabindex="-1" role="dialog" aria-labelledby="signoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-3" id="signoutModalLabel">Sign Out?</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to sign out?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <form method="post" action="{% url 'account_logout' %}">
+                    {% csrf_token %}
+                    <button id="signoutConfirm" class="btn btn-primary">Sign Out</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script src="{% static 'js/profile.js' %}"></script>
+{% endblock %}

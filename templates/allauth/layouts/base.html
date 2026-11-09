@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{# main is the project block; content is the allauth block #}
+{% block main %}
+<section class="container">
+    <div class="row">
+        <div class="col-12 col-md-8 offset-md-2 col-lg-6 offset-lg-3">
+            {% block content %}
+            {% endblock content %}
+        </div>
+    </div>
+</section>
+{% endblock %}

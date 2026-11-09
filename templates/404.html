@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block head_title %}Not Found - HACKATHON{% endblock %}
+
+{% block main %}
+<section id="overview" class="container">
+    <div class="row">
+        <div class="col-12">
+            <h1>Page Not Found</h1>
+            <h2><a href="{% url 'index' %}">Return to the Home Page</a></h2>
+        </div>
+    </div>
+</section>
+{% endblock %}
