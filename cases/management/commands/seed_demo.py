@@ -66,8 +66,8 @@ REPORTS = [
      'to the front every time.', 'Warehouse B', 'Side entrance', 'medium', 'en', 'Riley Brooks', 18, 'closed'),
     ('Flickering lights in open office', 'Two ceiling lights flicker constantly near desks 40-48, giving people headaches.',
      'Innovation Centre', '1st floor open plan', 'medium', 'en', 'Sam Taylor', 16, 'closed'),
-    ('Przeciek w łazience', 'Woda kapie z rury pod umywalką w łazience dla pracowników. Podłoga jest mokra.',
-     'Warehouse B', 'Staff toilets', 'high', 'pl', 'Marta Nowak', 14, 'closed'),
+    ('Leak in staff toilets', 'Water is dripping from the pipe under the washbasin in the staff toilets. '
+     'The floor is wet.', 'Warehouse B', 'Staff toilets', 'high', 'en', 'Marta Nowak', 14, 'closed'),
     ('Bin store overflowing', 'The bins outside the loading bay are overflowing and rubbish is blowing around the yard.',
      'Warehouse B', 'Loading bay', 'low', 'en', 'Lee Johnson', 12, 'closed'),
     ('Laptop will not charge', 'My laptop stopped charging this morning. I tried two different chargers.',
@@ -76,12 +76,12 @@ REPORTS = [
      'Main Office', 'Stairwell B', 'medium', 'en', 'Taylor Reid', 9, 'closed'),
     ('Wifi keeps dropping', 'The wifi drops every few minutes in the east wing. It affects the whole team on calls.',
      'Innovation Centre', 'East wing', 'high', 'en', 'Jamie Clarke', 6, 'closed'),
-    ('Inodoro atascado', 'El inodoro del baño de la planta baja está atascado y hay agua en el suelo.',
-     'Riverside House', 'Ground floor toilets', 'medium', 'es', 'Lucía Fernández', 4, 'closed'),
+    ('Toilet blocked', 'The toilet in the ground floor loos is blocked and there is water on the floor.',
+     'Riverside House', 'Ground floor toilets', 'medium', 'en', 'Lucía Fernández', 4, 'closed'),
     ('Air conditioning blowing hot air', 'The air con in the training room is blowing hot air and it is 28 degrees.',
      'Main Office', 'Training room', 'medium', 'en', 'Avery Scott', 3, 'resolved'),
     ('Monitor screen flickering', 'My second monitor keeps flickering and going black every few minutes.',
-     'Riverside House', '2nd floor desk 21', 'low', 'ur', 'Imran Hussain', 2, 'resolved'),
+     'Riverside House', '2nd floor desk 21', 'low', 'en', 'Imran Hussain', 2, 'resolved'),
     ('Ceiling tile stained and sagging', 'A ceiling tile above the photocopier is stained brown and sagging. '
      'Looks like water damage from above.', 'Main Office', '1st floor print area', 'high', 'en', 'Robin Hayes', 6, 'in_progress'),
     ('Fire door not closing properly', 'The fire door on the 3rd floor does not close on its own anymore, it stays open.',
@@ -105,8 +105,8 @@ REPORTS = [
      'about 10 minutes ago.', 'Main Office', 'Car park', 'high', 'en', 'Frankie Moss', 0.04, 'new'),
     ('Lift making grinding noise', 'The lift makes a loud grinding noise between floors 2 and 3.',
      'Innovation Centre', 'Main lift', 'medium', 'en', 'Reese Cooper', 0.2, 'new'),
-    ('Nie działa ogrzewanie', 'W biurze magazynu jest bardzo zimno, ogrzewanie nie działa od rana.',
-     'Warehouse B', 'Office', 'medium', 'pl', 'Piotr Kowalski', 0.1, 'new'),
+    ('Heating not working', 'It is very cold in the warehouse office. The heating has not worked since this morning.',
+     'Warehouse B', 'Office', 'medium', 'en', 'Piotr Kowalski', 0.1, 'new'),
     ('Broken', 'It is broken again.', 'Riverside House', '', 'medium', 'en', 'Billie Ward', 0.4, 'new'),
 ]
 
