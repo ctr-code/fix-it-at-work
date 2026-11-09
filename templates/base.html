@@ -32,9 +32,9 @@
     {# Navigation bar #}
     <nav id="navbar" class="navbar navbar-expand-lg fixed-top navbar-dark">
         <div class="container">
-            <a class="navbar-brand" href="{% url 'index' %}">
-                <img src="{% static 'images/logo-80.png' %}" alt="" width="40" height="40"
-                    class="logo">
+            {# Spanner logo. Hidden from screen readers because the name link next to it goes to the same place #}
+            <a class="navbar-brand" href="{% url 'index' %}" tabindex="-1" aria-hidden="true">
+                <span class="logo"><i class="fa-solid fa-wrench"></i></span>
             </a>
             {# Don't share the preceding <a> because this text moves about #}
             <a class="navbar-brand" href="{% url 'index' %}">
