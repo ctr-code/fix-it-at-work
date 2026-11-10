@@ -10,7 +10,7 @@
         <h2 class="h5">Your report</h2>
         <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
         <p class="mb-1"><strong>Reported:</strong> {{ case.date_reported|date:"j M Y, H:i" }}</p>
-        {% if case.sla_due and case.is_open %}<p class="mb-1"><strong>We aim to fix it by:</strong> {{ case.sla_due|date:"l j F" }}</p>{% endif %}
+        {% if case.sla_due and case.is_open %}<p class="mb-1"><strong>We aim to fix it by:</strong> {{ case.sla_due|date:"l j F, H:i" }}</p>{% endif %}
         <p class="mt-2 mb-0">{{ case.description|linebreaksbr }}</p>
     </div>
     <h2 class="h5 mt-4">Messages to you</h2>

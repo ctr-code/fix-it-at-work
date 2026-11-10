@@ -132,7 +132,9 @@ OFFICERS = [
     ('Jordan Ellis', 'AV & Meeting Room Support'),
 ]
 
-SLA = [('urgent', 1, 1), ('high', 4, 3), ('medium', 24, 10), ('low', 48, 20)]
+# (priority, response target hours, resolution target hours), from the mock data's SLA Settings sheet.
+# Calendar hours: the clock runs 24/7.
+SLA = [('urgent', 1, 4), ('high', 4, 24), ('medium', 8, 72), ('low', 24, 120)]
 
 # (title, description, building, room, reporter urgency, language, reporter, days ago, stage)
 REPORTS = [
@@ -233,7 +235,7 @@ class Command(BaseCommand):
             Officer.objects.create(name=name, team=teams[team], user=users.get(name.split()[0].lower()),
                                    contact_email=name.lower().replace(' ', '.') + '@example.com')
         for p, ack, res in SLA:
-            SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_working_days=res)
+            SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_hours=res)
 
         # Oldest first, so references follow the order things were reported
         for spec in sorted(REPORTS, key=lambda r: -r[7]):
@@ -288,7 +290,9 @@ class Command(BaseCommand):
         case.assigned_team = case.category.default_team
         case.assigned_officer = rng.choice(list(case.assigned_team.officers.all()))
         case.triaged_by = HANDLER
-        case.date_acknowledged = reported + timedelta(hours=rng.uniform(0.2, 5))
+        # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
+        rule = SLARule.objects.get(priority=case.priority)
+        case.date_acknowledged = reported + timedelta(hours=rule.acknowledge_hours * rng.uniform(0.1, 1.3))
         case.status = Status.ASSIGNED
         case.apply_sla()
         case.save()
@@ -299,7 +303,8 @@ class Command(BaseCommand):
             return
 
         note = VISIT_NOTES[case.assigned_team.name]
-        first_visit = min(case.date_acknowledged + timedelta(days=rng.uniform(0.1, 1.5)), now - timedelta(hours=2))
+        first_visit = min(case.date_acknowledged + timedelta(hours=rule.resolve_hours * rng.uniform(0.1, 0.7)),
+                          now - timedelta(hours=2))
         if stage == 'in_progress':
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
                                      ai_summary=ai.summarise_visit(FOLLOW_UP, False))
@@ -312,7 +317,8 @@ class Command(BaseCommand):
         if two_visits:
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
                                      ai_summary=ai.summarise_visit(FOLLOW_UP, False))
-            visit_time = min(first_visit + timedelta(days=rng.uniform(1, 4)), now - timedelta(hours=1))
+            visit_time = min(first_visit + timedelta(hours=rule.resolve_hours * rng.uniform(0.2, 0.6)),
+                             now - timedelta(hours=1))
         SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=note,
                                  fixed=True, transcript_used=rng.random() < 0.4,
                                  ai_summary=ai.summarise_visit(note, True))

@@ -44,7 +44,7 @@
             {% for c in in_flight %}
             <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}</td><td>{% include "cases/_pri.html" with p=c.priority %}</td>
                 <td>{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
-                <td class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
+                <td class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">None.</td></tr>{% endfor %}
             </tbody>
         </table>

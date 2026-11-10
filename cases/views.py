@@ -159,7 +159,7 @@ def triage_case(request, ref):
                 case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
                 draft_text=(f'Your report {case.reference} has been passed to our {case.assigned_team} team '
                             f'as {case.get_priority_display().lower()} priority. We aim to resolve it by '
-                            f'{timezone.localtime(case.sla_due):%A %d %B}.'),
+                            f'{timezone.localtime(case.sla_due):%H:%M on %A %d %B}.'),
                 approved_by=approver, date_sent=timezone.now(),
             )
             messages.success(request, f'{case.reference} sent to {case.assigned_team}.')
@@ -299,7 +299,7 @@ def _dashboard_stats():
 
     resolved = cases.filter(date_resolved__isnull=False)
     ftf_known = resolved.exclude(first_time_fix__isnull=True)
-    durations = [(c.date_resolved - c.date_reported).total_seconds() / 86400 for c in resolved]
+    durations = [(c.date_resolved - c.date_reported).total_seconds() / 3600 for c in resolved]
     resolved_with_sla = [c for c in resolved if c.sla_due]
     acked = cases.filter(date_acknowledged__isnull=False, sla_acknowledge_due__isnull=False)
     triaged = Case.objects.exclude(ai_suggestion_accepted__isnull=True)
@@ -308,7 +308,7 @@ def _dashboard_stats():
         'total': cases.count(), 'open_count': open_cases.count(), 'overdue': overdue,
         'awaiting_triage': cases.filter(status=Status.NEW).count(),
         'ftf_rate': _pct(ftf_known.filter(first_time_fix=True).count(), ftf_known.count()),
-        'avg_days': round(sum(durations) / len(durations), 1) if durations else None,
+        'avg_hours': round(sum(durations) / len(durations), 1) if durations else None,
         'within_sla': _pct(sum(1 for c in resolved_with_sla if c.date_resolved <= c.sla_due), len(resolved_with_sla)),
         'ack_on_time': _pct(sum(1 for c in acked if c.date_acknowledged <= c.sla_acknowledge_due), acked.count()),
         'ai_accept': _pct(triaged.filter(ai_suggestion_accepted=True).count(), triaged.count()),

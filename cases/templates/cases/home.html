@@ -28,7 +28,7 @@
     {% for c in my_open %}
     <a href="{% url 'track_case' c.reference %}" class="panel case-row d-block">
         <div class="d-flex justify-content-between flex-wrap gap-2"><strong>{{ c.title }}</strong><span class="badge-status">{{ c.get_status_display }}</span></div>
-        <div class="small text-muted">{{ c.reference }} &middot; reported {{ c.date_reported|date:"j M" }}{% if c.sla_due %} &middot; aiming to fix by {{ c.sla_due|date:"D j M" }}{% endif %}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; reported {{ c.date_reported|date:"j M" }}{% if c.sla_due %} &middot; aiming to fix by {{ c.sla_due|date:"D j M, H:i" }}{% endif %}</div>
     </a>
     {% empty %}<p>You have no open reports.</p>{% endfor %}
     {% if my_closed %}
@@ -67,7 +67,7 @@
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
-        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}{% if c.is_overdue %} (overdue){% endif %}</div>
+        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</div>
     </a>
     {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
     <a href="{% url 'officer_cases' %}" class="btn btn-primary">All my jobs</a>

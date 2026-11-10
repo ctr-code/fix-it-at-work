@@ -43,8 +43,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('priority', models.CharField(choices=[('urgent', 'Urgent'), ('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], max_length=10, unique=True)),
-                ('acknowledge_hours', models.PositiveIntegerField()),
-                ('resolve_working_days', models.PositiveIntegerField()),
+                ('acknowledge_hours', models.PositiveIntegerField(verbose_name='Response target (hours)')),
+                ('resolve_hours', models.PositiveIntegerField(verbose_name='Resolution target (hours)')),
             ],
         ),
         migrations.CreateModel(

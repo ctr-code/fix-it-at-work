@@ -17,7 +17,7 @@
                     <dt class="col-5">Officer</dt><dd class="col-7">{{ case.assigned_officer.name|default:"-" }}</dd>
                     <dt class="col-5">Triaged by</dt><dd class="col-7">{{ case.triaged_by|default:"-" }}{% if case.ai_suggestion_accepted is not None %} ({% if case.ai_suggestion_accepted %}accepted AI suggestion{% else %}changed AI suggestion{% endif %}){% endif %}</dd>
                     <dt class="col-5">Acknowledged</dt><dd class="col-7">{{ case.date_acknowledged|date:"j M H:i"|default:"-" }}</dd>
-                    <dt class="col-5">SLA due</dt><dd class="col-7">{{ case.sla_due|date:"j M Y"|default:"-" }}</dd>
+                    <dt class="col-5">SLA due</dt><dd class="col-7">{{ case.sla_due|date:"j M Y, H:i"|default:"-" }}</dd>
                     <dt class="col-5">Resolved</dt><dd class="col-7">{{ case.date_resolved|date:"j M H:i"|default:"-" }}</dd>
                     <dt class="col-5">First-time fix</dt><dd class="col-7">{{ case.first_time_fix|yesno:"Yes,No,-" }}</dd>
                     {% if case.duplicate_of %}<dt class="col-5">Duplicate of</dt><dd class="col-7"><a href="{% url 'case_detail' case.duplicate_of.reference %}">{{ case.duplicate_of.reference }}</a></dd>{% endif %}

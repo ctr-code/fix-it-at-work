@@ -6,7 +6,7 @@
     <p class="mt-3 mb-0"><a href="{% url 'officer_cases' %}">&larr; My jobs</a></p>
     <h1 class="h3">{{ case.title }}</h1>
     <p>{% include "cases/_pri.html" with p=case.priority %} <span class="badge-status">{{ case.reference }}</span>
-        <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M" }}</span></p>
+        <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M, H:i" }}</span></p>
 
     {% if case.ai_summary %}
     <div class="ai-box mb-3"><span class="ai-label">AI summary</span><br>{{ case.ai_summary }}</div>

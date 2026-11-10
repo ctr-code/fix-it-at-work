@@ -8,7 +8,7 @@
         <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
         <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
         <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value">{{ within_sla|default_if_none:"-" }}%</div><div class="label">Resolved within SLA</div></div></div>
-        <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value">{{ avg_days|default_if_none:"-" }}</div><div class="label">Avg days to fix</div></div></div>
+        <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value">{{ avg_hours|default_if_none:"-" }}</div><div class="label">Avg hours to fix</div></div></div>
         <div class="col-6 col-lg-2"><div class="panel kpi h-100"><div class="value" style="color: var(--ai)">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted ({{ ai_triaged }})</div></div></div>
     </div>
 

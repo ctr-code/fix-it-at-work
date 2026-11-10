@@ -109,22 +109,16 @@ class Officer(models.Model):
 
 
 class SLARule(models.Model):
+    """
+    Response and resolution targets for one priority, in calendar hours (the clock runs 24/7,
+    including evenings and weekends), as on the mock data's SLA Settings sheet.
+    """
     priority = models.CharField(max_length=10, choices=Priority.choices, unique=True)
-    acknowledge_hours = models.PositiveIntegerField()
-    resolve_working_days = models.PositiveIntegerField()
+    acknowledge_hours = models.PositiveIntegerField('Response target (hours)')
+    resolve_hours = models.PositiveIntegerField('Resolution target (hours)')
 
     def __str__(self):
-        return f'{self.get_priority_display()}: ack {self.acknowledge_hours}h, resolve {self.resolve_working_days} working days'
-
-
-def add_working_days(start, days):
-    current = start
-    added = 0
-    while added < days:
-        current += timedelta(days=1)
-        if current.weekday() < 5:
-            added += 1
-    return current
+        return f'{self.get_priority_display()}: respond in {self.acknowledge_hours}h, resolve in {self.resolve_hours}h'
 
 
 class Case(models.Model):
@@ -194,7 +188,7 @@ class Case(models.Model):
         rule = SLARule.objects.filter(priority=self.priority).first()
         if rule:
             self.sla_acknowledge_due = self.date_reported + timedelta(hours=rule.acknowledge_hours)
-            self.sla_due = add_working_days(self.date_reported, rule.resolve_working_days)
+            self.sla_due = self.date_reported + timedelta(hours=rule.resolve_hours)
 
     @property
     def is_open(self):
