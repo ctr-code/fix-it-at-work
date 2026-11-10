@@ -61,7 +61,7 @@ class Migration(migrations.Migration):
             name='Case',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('reference', models.CharField(editable=False, max_length=12, unique=True)),
+                ('reference', models.CharField(editable=False, max_length=13, unique=True)),
                 ('title', models.CharField(max_length=120, verbose_name='What is the problem?')),
                 ('description', models.TextField(verbose_name='Tell us more')),
                 ('building', models.CharField(max_length=80)),

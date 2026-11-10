@@ -128,7 +128,8 @@ def add_working_days(start, days):
 
 
 class Case(models.Model):
-    reference = models.CharField(max_length=12, unique=True, editable=False)
+    # TKT-<year reported>-<4-digit number>, restarting at 0001 each year, e.g. TKT-2026-0042
+    reference = models.CharField(max_length=13, unique=True, editable=False)
 
     # What the reporter tells us
     title = models.CharField('What is the problem?', max_length=120)
@@ -184,8 +185,9 @@ class Case(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.reference:
-            last = Case.objects.order_by('-reference').first()
-            self.reference = f'FIW-{(int(last.reference[4:]) + 1 if last else 1):04d}'
+            prefix = f'TKT-{self.date_reported.year}-'
+            last = Case.objects.filter(reference__startswith=prefix).order_by('-reference').first()
+            self.reference = f'{prefix}{(int(last.reference[-4:]) + 1 if last else 1):04d}'
         super().save(*args, **kwargs)
 
     def apply_sla(self):
