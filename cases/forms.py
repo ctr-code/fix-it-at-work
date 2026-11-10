@@ -20,9 +20,10 @@ class ReportForm(forms.ModelForm):
 
     class Meta:
         model = Case
+        labels = {'hs_risk': 'This could hurt someone'}
         fields = [
-            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'photo',
-            'preferred_language', 'preferred_contact',
+            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'impact', 'hs_risk',
+            'asset_tag', 'photo', 'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -32,13 +33,21 @@ class ReportForm(forms.ModelForm):
             'building': forms.TextInput(attrs={'placeholder': 'e.g. Main Office', 'list': 'buildings'}),
             'location_detail': forms.TextInput(attrs={'placeholder': 'e.g. 2nd floor, kitchen'}),
             'reported_urgency': forms.RadioSelect,
+            'impact': forms.RadioSelect,
+            'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
             'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         }
         help_texts = {
             'reported_urgency': 'Urgent = risk to people or property right now.',
+            'hs_risk': 'Tick if someone could get hurt, for example water near electrics, a loose ceiling panel '
+                       'or a trip hazard. We will make it safe first.',
+            'asset_tag': 'Optional. The ID label on the equipment, if it has one.',
             'preferred_language': 'We will reply in this language.',
             'photo': 'Optional, but it helps us bring the right tools first time.',
         }
+
+    def clean_asset_tag(self):
+        return self.cleaned_data['asset_tag'].strip().upper()
 
 
 class TriageForm(forms.Form):

@@ -18,7 +18,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .models import Case, Category, Priority, PRIORITY_RANK, OPEN_STATUSES
+from .models import Case, Category, Impact, Priority, PRIORITY_RANK, OPEN_STATUSES
 
 # Words that suggest a risk to people or property. Includes a few common
 # words in Polish, Urdu and Spanish so non-English reports are not missed.
@@ -83,6 +83,12 @@ def triage(case):
                 reasons.append(f'Raised to {level} because of: {", ".join(found[:3])}.')
             priority = _max_priority(priority, level)
             break
+    if case.hs_risk and PRIORITY_RANK[priority] < PRIORITY_RANK['high']:
+        reasons.append('Raised to high because the reporter flagged a health and safety risk.')
+        priority = 'high'
+    if case.impact == Impact.BUILDING_WIDE and PRIORITY_RANK[priority] < PRIORITY_RANK['high']:
+        reasons.append('Raised to high because it affects the whole building.')
+        priority = 'high'
     if PRIORITY_RANK[case.reported_urgency] > PRIORITY_RANK[priority]:
         reasons.append(
             f'Kept at {case.reported_urgency} because that is what the reporter asked for '

@@ -5,6 +5,8 @@
     </div>
     <p class="mt-2"><strong>{{ case.title }}</strong><br>{{ case.description|linebreaksbr }}</p>
     <p class="mb-1"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
-    <p class="mb-1">Reporter said urgency: {% include "cases/_pri.html" with p=case.reported_urgency %}</p>
+    <p class="mb-1">Reporter said urgency: {% include "cases/_pri.html" with p=case.reported_urgency %} &middot; Affects: {{ case.get_impact_display|lower }}</p>
+    {% if case.hs_risk %}<p class="mb-1 overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Health and safety risk - make safe first</p>{% endif %}
+    {% if case.asset_tag %}<p class="mb-1"><i class="fa-solid fa-tag" aria-hidden="true"></i> Asset tag: <strong>{{ case.asset_tag }}</strong></p>{% endif %}
     {% if case.photo %}<img src="{{ case.photo.url }}" alt="Photo attached by the reporter" class="photo-thumb mt-2">{% endif %}
 </div>

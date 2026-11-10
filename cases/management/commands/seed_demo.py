@@ -196,6 +196,50 @@ REPORTS = [
     ('Broken', 'It is broken again.', 'Riverside House', '', 'medium', 'en', 'Billie Ward', 0.4, 'new'),
 ]
 
+# What the reporter told us about each report: (who is affected, health and safety risk, asset tag)
+REPORT_DETAILS = {
+    'Leaking pipe under kitchen sink': ('team', True, ''),
+    'Radiator not working': ('team', False, ''),
+    'Printer jammed and showing error': ('department', False, 'PRN-MO-G01'),
+    'Badge reader on side door not working': ('single_user', False, 'ACR-WB-03'),
+    'Flickering lights in open office': ('team', False, ''),
+    'Leak in staff toilets': ('team', True, ''),
+    'Bin store overflowing': ('building_wide', False, ''),
+    'Laptop will not charge': ('single_user', False, 'LT-04512'),
+    'Cracked window in stairwell': ('building_wide', True, ''),
+    'Wifi keeps dropping': ('team', False, 'AP-IC-E02'),
+    'Toilet blocked': ('team', True, ''),
+    'Air conditioning blowing hot air': ('team', False, 'AC-MO-TR1'),
+    'Monitor screen flickering': ('single_user', False, 'MON-RH-221'),
+    'Ceiling tile stained and sagging': ('team', True, ''),
+    'Fire door not closing properly': ('building_wide', True, 'FD-RH-3-02'),
+    'Projector not connecting': ('team', False, 'PRJ-IC-BR1'),
+    'No heating in warehouse office': ('team', False, 'BLR-WB-01'),
+    'Car park barrier stuck': ('building_wide', True, 'BAR-MO-01'),
+    'Socket sparking': ('team', True, ''),
+    'Carpet ripped by lift': ('building_wide', True, ''),
+    'Window blind broken': ('team', False, ''),
+    'Pool car warning light': ('department', False, 'VEH-PC14'),
+    'Fire extinguisher missing': ('building_wide', True, 'FE-RH-2K'),
+    'Water dripping from ceiling': ('team', True, ''),
+    'Suspicious person in car park': ('building_wide', True, ''),
+    'Lift making grinding noise': ('building_wide', True, 'LIFT-IC-01'),
+    'Heating not working': ('team', False, 'BLR-WB-01'),
+    'Broken': ('single_user', False, ''),
+}
+
+# Reporter feedback on closed cases. Weights follow the spreadsheet's spread of scores (mostly 4s and 5s);
+# a fix that took more than one visit, or missed its SLA, shifts the weights down.
+SATISFACTION_WEIGHTS = {'good': [2, 4, 12, 30, 52], 'poor': [10, 20, 35, 25, 10]}  # for scores 1..5
+SATISFACTION_COMMENTS = {
+    5: ['Really quick response and the engineer explained what had happened.', 'Sorted the same day, thank you.',
+        'Great service, kept me updated throughout.'],
+    4: ['Fixed well, took a little longer than I expected.', 'Good job, would have liked an update sooner.'],
+    3: ['Fixed in the end but I had to chase.', 'OK, but nobody told me when someone was coming.'],
+    2: ['Took several visits to fix.', 'Slow, and the problem came back once.'],
+    1: ['Took far too long and nobody kept me informed.'],
+}
+
 # What the officer wrote when they fixed it, by team
 VISIT_NOTES = {
     'Facilities Helpdesk': ('Found the fault and replaced the worn part. Tested and checked again after '
@@ -266,9 +310,11 @@ class Command(BaseCommand):
     def make_case(self, spec, rng, now):
         title, desc, building, room, urgency, lang, name, days_ago, stage = spec
         reported = now - timedelta(days=days_ago)
+        impact, hs_risk, asset_tag = REPORT_DETAILS[title]
         case = Case.objects.create(
             title=title, description=desc, building=building, location_detail=room,
-            reported_urgency=urgency, preferred_language=lang, reporter_name=name,
+            reported_urgency=urgency, impact=impact, hs_risk=hs_risk, asset_tag=asset_tag,
+            preferred_language=lang, reporter_name=name,
             reporter_email=name.split()[0].lower() + '@example.com', date_reported=reported,
         )
         s = ai.triage(case)
@@ -334,4 +380,9 @@ class Command(BaseCommand):
                                      draft_text=ai.draft_outcome_letter(case), approved_by=HANDLER, date_sent=sent)
         case.status = Status.CLOSED
         case.date_closed = sent
+        if rng.random() < 0.75:  # about three in four reporters leave feedback
+            weights = SATISFACTION_WEIGHTS['good' if case.first_time_fix and not case.is_overdue else 'poor']
+            case.satisfaction = rng.choices([1, 2, 3, 4, 5], weights)[0]
+            if rng.random() < 0.6:
+                case.satisfaction_comments = rng.choice(SATISFACTION_COMMENTS[case.satisfaction])
         case.save()

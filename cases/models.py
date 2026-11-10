@@ -7,6 +7,7 @@ keep the prototype simple (one form, no accounts needed to report).
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -59,6 +60,18 @@ class Status(models.TextChoices):
 
 
 OPEN_STATUSES = [Status.NEW, Status.ASSIGNED, Status.IN_PROGRESS]
+
+
+class Impact(models.TextChoices):
+    """How many people the issue affects, as reported."""
+    SINGLE_USER = 'single_user', 'Just me'
+    TEAM = 'team', 'My team'
+    DEPARTMENT = 'department', 'My department'
+    BUILDING_WIDE = 'building_wide', 'The whole building'
+
+
+SATISFACTION_CHOICES = [(5, '5 - Very satisfied'), (4, '4 - Satisfied'), (3, '3 - Neither'),
+                        (2, '2 - Dissatisfied'), (1, '1 - Very dissatisfied')]
 
 
 class Language(models.TextChoices):
@@ -132,6 +145,9 @@ class Case(models.Model):
     location_detail = models.CharField('Floor / room / area', max_length=120, blank=True)
     reported_urgency = models.CharField(
         'How urgent is it?', max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
+    impact = models.CharField('Who is affected?', max_length=15, choices=Impact.choices, default=Impact.SINGLE_USER)
+    hs_risk = models.BooleanField('Health and safety risk', default=False)
+    asset_tag = models.CharField(max_length=20, blank=True)
     photo = models.FileField(upload_to='reports/', blank=True)
     reporter_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name='reported_cases')
@@ -170,6 +186,12 @@ class Case(models.Model):
     sla_acknowledge_due = models.DateTimeField(null=True, blank=True)
     sla_due = models.DateTimeField('SLA due date', null=True, blank=True)
     first_time_fix = models.BooleanField(null=True)
+
+    # Reporter's feedback once the case is closed
+    satisfaction = models.PositiveSmallIntegerField(
+        null=True, blank=True, choices=SATISFACTION_CHOICES,
+        validators=[MinValueValidator(1), MaxValueValidator(5)])
+    satisfaction_comments = models.TextField(blank=True)
 
     class Meta:
         ordering = ['-date_reported']
