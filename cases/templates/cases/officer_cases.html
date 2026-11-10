@@ -11,7 +11,7 @@
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
-        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}{% if c.is_overdue %} (overdue){% endif %}{% if c.status == 'in_progress' %} &middot; follow-up visit{% endif %}</div>
+        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}{% if c.status == 'in_progress' %} &middot; follow-up visit{% endif %}</div>
     </a>
     {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
 
@@ -21,7 +21,7 @@
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
-        <div class="small text-muted">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M" }}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}</div>
     </a>
     {% endfor %}
     {% endif %}

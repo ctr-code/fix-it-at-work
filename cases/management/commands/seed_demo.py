@@ -29,52 +29,119 @@ DEMO_USERS = [
     'Sam Okafor', 'Priya Shah', 'Tom Becker', 'Aisha Rahman', 'Dan Walsh', 'Mei Lin', 'Grace Mensah', 'Owen Price',
 ]]
 
+# Teams and categories follow the "Mock data v3" spreadsheet: its Assigned Team column is the team,
+# and its Sub-Category column is the category. Each category belongs to exactly one team.
 TEAMS = [
-    ('Facilities', 'facilities@example.com', 'Rob Turner'),
-    ('IT', 'it.support@example.com', 'Nadia Karim'),
-    ('Security', 'security@example.com', 'Chris Hall'),
-    ('Estates', 'estates@example.com', 'Helen Ward'),
+    ('Facilities Helpdesk', 'facilities@example.com', 'Rob Turner'),
+    ('IT Service Desk', 'it.servicedesk@example.com', 'Nadia Karim'),
+    ('IT Network Team', 'it.network@example.com', 'Nadia Karim'),
+    ('Security & Access Team', 'security@example.com', 'Chris Hall'),
+    ('Estates Maintenance', 'estates@example.com', 'Helen Ward'),
+    ('Cleaning Services', 'cleaning@example.com', 'Bev Hughes'),
+    ('Health & Safety Team', 'health.safety@example.com', 'Martin Shaw'),
+    ('Fleet Services', 'fleet@example.com', 'Lorraine Webb'),
+    ('AV & Meeting Room Support', 'av.support@example.com', 'Nadia Karim'),
 ]
 
+# (category, team, default priority, comma separated keywords for the triage assistant).
+# Keywords match the start of a word, so "light" also matches "lights". Default priorities are the
+# most common priority for that sub-category in the spreadsheet.
 CATEGORIES = [
-    ('Plumbing & leaks', 'Leaks, blocked toilets, taps', 'Facilities', 'high',
-     'leak, leaking, water, pipe, drip, toilet, sink, tap, burst, blocked, drain, inodoro, atascado, '
-     'wyciek, przeciek, woda, rura, agua, fuga'),
-    ('Heating & air con', 'Too hot, too cold, ventilation', 'Facilities', 'medium',
-     'heating, radiator, cold, hot air, temperature, air con, boiler, freezing, ventilation, degrees, '
-     'ogrzewanie, zimno, calefacción, frío'),
-    ('Electrical & lighting', 'Lights, sockets, power', 'Facilities', 'high',
-     'light, lights, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning'),
-    ('IT equipment', 'Laptops, printers, wifi, AV', 'IT', 'medium',
-     'laptop, computer, monitor, printer, screen, keyboard, mouse, wifi, network, internet, login, '
-     'projector, hdmi, charging, charge, jam'),
-    ('Access & doors', 'Doors, badges, barriers, lifts', 'Security', 'high',
-     'door, lock, badge, pass, card reader, access, key, gate, barrier, entrance, fire door'),
-    ('Security concern', 'Suspicious activity, theft', 'Security', 'high',
-     'suspicious, stranger, theft, stolen, break-in, intruder, cctv, alarm, tailgating, recognise'),
-    ('Building fabric', 'Walls, ceilings, floors, windows, lifts', 'Estates', 'medium',
-     'ceiling, wall, roof, window, crack, cracked, tile, carpet, damp, mould, stairs, blind, '
-     'lift, trip'),
-    ('Cleaning & waste', 'Bins, spills, hygiene', 'Facilities', 'low',
-     'bin, bins, rubbish, spill, dirty, clean, smell, waste'),
-    ('General / Other', 'Anything else', 'Facilities', 'low', ''),
+    ('Heating', 'Facilities Helpdesk', 'high',
+     'heating, radiator, cold, freezing, boiler, thermostat, ogrzewanie, zimno, calefacción, frío'),
+    ('Air Conditioning', 'Facilities Helpdesk', 'medium',
+     'air con, air conditioning, aircon, ac unit, hot air, overheating, too hot, ventilation, degrees, stuffy'),
+    ('Plumbing', 'Facilities Helpdesk', 'medium',
+     'pipe, tap, toilet, sink, washbasin, drain, blocked, burst, hot water, leaking pipe, drip, '
+     'inodoro, atascado, rura, przeciek, fuga'),
+    ('Lighting & Electrical', 'Facilities Helpdesk', 'medium',
+     'light, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning, fuse'),
+    ('Furniture', 'Facilities Helpdesk', 'low', 'chair, furniture, drawer, cabinet, shelf, shelves'),
+
+    ('Hardware', 'IT Service Desk', 'medium',
+     'laptop, computer, pc, monitor, keyboard, mouse, docking, charger, charging, charge, not starting'),
+    ('Software', 'IT Service Desk', 'low', 'software, outlook, excel, application, crashing, crashes, install'),
+    ('Printing', 'IT Service Desk', 'low', 'printer, printing, prints, toner, paper jam, jam, copier, scanner'),
+    ('Accounts & Access', 'IT Service Desk', 'medium',
+     'password, account, login, log in, shared drive, permissions, mfa'),
+    ('Telephony', 'IT Service Desk', 'medium', 'phone, telephone, handset, voicemail, headset'),
+
+    ('Network & Connectivity', 'IT Network Team', 'high',
+     'wifi, wi-fi, wireless, network, internet, connectivity, connection, vpn, ethernet, sieć'),
+
+    ('Access Control', 'Security & Access Team', 'high',
+     'door, badge, card reader, access door, barrier, gate, entrance, turnstile, not locking'),
+    ('Keys & Fobs', 'Security & Access Team', 'medium', 'keys, lost key, fob, lanyard, key safe'),
+    ('Alarms', 'Security & Access Team', 'high',
+     'intruder alarm, burglar alarm, alarm sounding, alarm going off, false activation, exit alarm'),
+    ('CCTV', 'Security & Access Team', 'medium',
+     'cctv, security camera, suspicious, stranger, theft, stolen, break-in, intruder, tailgating, recognise'),
+
+    ('Roof & Leaks', 'Estates Maintenance', 'medium',
+     'roof, ceiling, damp, gutter, rain, water coming in, stain, sagging, water damage, mould, dripping from, '
+     'wilgoć, humedad'),
+    ('Windows & Doors', 'Estates Maintenance', 'high',
+     'window, cracked window, crack in the window, blind, fire door, door closer, hinge, glazing, not closing, does not close, okno, ventana'),
+    ('Structural', 'Estates Maintenance', 'high', 'crack, wall, floor tile, lifted, subsidence, stairs, lift'),
+    ('Grounds', 'Estates Maintenance', 'low', 'hedge, grass, path, grounds, tree, pothole, gritting, weeds, overgrown'),
+
+    ('Spillages', 'Cleaning Services', 'high', 'spill, spilt, spilled, sticky, wet floor, liquid on'),
+    ('Washroom Supplies', 'Cleaning Services', 'low',
+     'soap, paper towel, toilet roll, hand towel, sanitiser, out of supplies'),
+    ('Waste & Bins', 'Cleaning Services', 'low', 'bin, rubbish, waste, overflowing, litter, recycling'),
+    ('Deep Clean', 'Cleaning Services', 'medium', 'deep clean, dirty, filthy, smell, hygiene, vomit, unclean'),
+    ('Pest Control', 'Cleaning Services', 'high',
+     'mice, mouse droppings, rats, pest, cockroach, ants, wasps, droppings, flies'),
+    ('Sharps', 'Cleaning Services', 'urgent', 'needle, syringe, sharps, broken glass'),
+
+    ('Fire Equipment', 'Health & Safety Team', 'high', 'fire extinguisher, extinguisher, fire blanket, hose reel'),
+    ('Emergency Lighting', 'Health & Safety Team', 'high', 'emergency light, exit sign'),
+    ('First Aid', 'Health & Safety Team', 'low', 'first aid, defibrillator, defib, eyewash, bandage'),
+    ('Fire Alarm', 'Health & Safety Team', 'high', 'fire alarm, call point, smoke detector, smoke alarm, alarm panel'),
+    ('Escape Routes', 'Health & Safety Team', 'urgent',
+     'fire exit, escape route, exit blocked, blocked exit, emergency exit, fire escape'),
+    ('Trip Hazards', 'Health & Safety Team', 'high',
+     'trip, trailing cable, cable across, uneven, catching their feet, slippery, carpet'),
+
+    ('Refuse Vehicles', 'Fleet Services', 'high',
+     'refuse vehicle, refuse truck, bin lorry, bin lift, hydraulic, compactor, lorry'),
+    ('Pool Cars', 'Fleet Services', 'medium', 'pool car, warning light, car service'),
+    ('Vans', 'Fleet Services', 'medium', 'van, flat tyre, tyre, puncture'),
+    ('Telematics', 'Fleet Services', 'low', 'tracker, telematics, gps, vehicle tracking, dashcam'),
+    ('EV Charging', 'Fleet Services', 'medium', 'ev charger, ev charging, electric vehicle, charge point, charging point'),
+
+    ('Projectors & Displays', 'AV & Meeting Room Support', 'medium',
+     'projector, display, meeting room screen, hdmi, smartboard, presentation'),
+    ('Video Conferencing', 'AV & Meeting Room Support', 'medium',
+     'teams room, video call, webcam, camera, video conferencing, speakerphone'),
+    ('Council Chamber', 'AV & Meeting Room Support', 'urgent',
+     'council chamber, chamber, webcast, microphone, voting system, livestream'),
+    ('Hearing Loops', 'AV & Meeting Room Support', 'high', 'hearing loop, induction loop, hearing aid'),
 ]
 
+# Officers with a demo login are listed first. Teams the demo logins don't cover use officer names from
+# the spreadsheet; they have no login until a manager gives them one on the People page.
 OFFICERS = [
-    ('Sam Okafor', 'Facilities'), ('Priya Shah', 'Facilities'),
-    ('Tom Becker', 'IT'), ('Aisha Rahman', 'IT'),
-    ('Dan Walsh', 'Security'), ('Mei Lin', 'Security'),
-    ('Grace Mensah', 'Estates'), ('Owen Price', 'Estates'),
+    ('Sam Okafor', 'Facilities Helpdesk'), ('Priya Shah', 'Facilities Helpdesk'),
+    ('Tom Becker', 'IT Service Desk'), ('Aisha Rahman', 'IT Network Team'),
+    ('Dan Walsh', 'Security & Access Team'), ('Mei Lin', 'Security & Access Team'),
+    ('Grace Mensah', 'Estates Maintenance'), ('Owen Price', 'Estates Maintenance'),
+    ('Kevin Brooks', 'Cleaning Services'), ('Maria Silva', 'Cleaning Services'),
+    ('Sunita Rao', 'Health & Safety Team'), ('Alan Whitfield', 'Health & Safety Team'),
+    ('Darren Cole', 'Fleet Services'), ('Mick Fraser', 'Fleet Services'),
+    ('Jordan Ellis', 'AV & Meeting Room Support'),
 ]
 
-SLA = [('urgent', 1, 1), ('high', 4, 3), ('medium', 24, 10), ('low', 48, 20)]
+# (priority, response target hours, resolution target hours), from the mock data's SLA Settings sheet.
+# Calendar hours: the clock runs 24/7.
+SLA = [('urgent', 1, 4), ('high', 4, 24), ('medium', 8, 72), ('low', 24, 120)]
 
 # (title, description, building, room, reporter urgency, language, reporter, days ago, stage)
 REPORTS = [
     ('Leaking pipe under kitchen sink', 'Water dripping from the pipe under the sink in the 2nd floor kitchen. '
      'There is a puddle forming on the floor.', 'Main Office', '2nd floor kitchen', 'high', 'en', 'Alex Morgan', 25, 'closed'),
     ('Radiator not working', 'The radiator in meeting room 3 is cold all day. The room is freezing for morning meetings.',
-     'Riverside House', 'Meeting room 3', 'medium', 'en', 'Jordan Ellis', 22, 'closed'),
+     'Riverside House', 'Meeting room 3', 'medium', 'en', 'Jordan Hale', 22, 'closed'),
     ('Printer jammed and showing error', 'The big printer by reception keeps jamming and now shows error E-204. '
      'Nobody on the floor can print.', 'Main Office', 'Ground floor reception', 'medium', 'en', 'Casey Patel', 20, 'closed'),
     ('Badge reader on side door not working', 'My badge does not open the side entrance door. I have to walk round '
@@ -90,7 +157,7 @@ REPORTS = [
     ('Cracked window in stairwell', 'There is a large crack in the window on the stairwell between floors 1 and 2.',
      'Main Office', 'Stairwell B', 'medium', 'en', 'Taylor Reid', 9, 'closed'),
     ('Wifi keeps dropping', 'The wifi drops every few minutes in the east wing. It affects the whole team on calls.',
-     'Innovation Centre', 'East wing', 'high', 'en', 'Jamie Clarke', 6, 'closed'),
+     'Innovation Centre', 'East wing', 'high', 'en', 'Alex Morgan', 6, 'closed'),
     ('Toilet blocked', 'The toilet in the ground floor loos is blocked and there is water on the floor.',
      'Riverside House', 'Ground floor toilets', 'medium', 'en', 'Lucía Fernández', 4, 'closed'),
     ('Air conditioning blowing hot air', 'The air con in the training room is blowing hot air and it is 28 degrees.',
@@ -113,6 +180,10 @@ REPORTS = [
      'Trip hazard.', 'Innovation Centre', 'Ground floor lift lobby', 'medium', 'en', 'Harper Lewis', 2, 'assigned'),
     ('Window blind broken', 'The blind in meeting room 5 is broken and cannot be lowered. Sun glare on all the screens.',
      'Riverside House', 'Meeting room 5', 'medium', 'en', 'Rowan King', 16, 'assigned'),
+    ('Pool car warning light', 'The pool car has an orange engine warning light on the dashboard since this morning.',
+     'Depot', 'Pool car bay 2', 'medium', 'en', 'Casey Patel', 11, 'closed'),
+    ('Fire extinguisher missing', 'The fire extinguisher by the kitchen door has gone, only the bracket is left.',
+     'Riverside House', '2nd floor kitchen', 'high', 'en', 'Sam Taylor', 1.5, 'assigned'),
     # New - waiting for triage (shows AI suggestions, duplicates and fairness rules)
     ('Water dripping from ceiling', 'Water is dripping from the ceiling near the photocopier on the 1st floor. '
      'Someone has put a bucket there.', 'Main Office', '1st floor print area', 'high', 'en', 'Alex Morgan', 0.08, 'new'),
@@ -125,18 +196,67 @@ REPORTS = [
     ('Broken', 'It is broken again.', 'Riverside House', '', 'medium', 'en', 'Billie Ward', 0.4, 'new'),
 ]
 
+# What the reporter told us about each report: (who is affected, health and safety risk, asset tag)
+REPORT_DETAILS = {
+    'Leaking pipe under kitchen sink': ('team', True, ''),
+    'Radiator not working': ('team', False, ''),
+    'Printer jammed and showing error': ('department', False, 'PRN-MO-G01'),
+    'Badge reader on side door not working': ('single_user', False, 'ACR-WB-03'),
+    'Flickering lights in open office': ('team', False, ''),
+    'Leak in staff toilets': ('team', True, ''),
+    'Bin store overflowing': ('building_wide', False, ''),
+    'Laptop will not charge': ('single_user', False, 'LT-04512'),
+    'Cracked window in stairwell': ('building_wide', True, ''),
+    'Wifi keeps dropping': ('team', False, 'AP-IC-E02'),
+    'Toilet blocked': ('team', True, ''),
+    'Air conditioning blowing hot air': ('team', False, 'AC-MO-TR1'),
+    'Monitor screen flickering': ('single_user', False, 'MON-RH-221'),
+    'Ceiling tile stained and sagging': ('team', True, ''),
+    'Fire door not closing properly': ('building_wide', True, 'FD-RH-3-02'),
+    'Projector not connecting': ('team', False, 'PRJ-IC-BR1'),
+    'No heating in warehouse office': ('team', False, 'BLR-WB-01'),
+    'Car park barrier stuck': ('building_wide', True, 'BAR-MO-01'),
+    'Socket sparking': ('team', True, ''),
+    'Carpet ripped by lift': ('building_wide', True, ''),
+    'Window blind broken': ('team', False, ''),
+    'Pool car warning light': ('department', False, 'VEH-PC14'),
+    'Fire extinguisher missing': ('building_wide', True, 'FE-RH-2K'),
+    'Water dripping from ceiling': ('team', True, ''),
+    'Suspicious person in car park': ('building_wide', True, ''),
+    'Lift making grinding noise': ('building_wide', True, 'LIFT-IC-01'),
+    'Heating not working': ('team', False, 'BLR-WB-01'),
+    'Broken': ('single_user', False, ''),
+}
+
+# Reporter feedback on closed cases. Weights follow the spreadsheet's spread of scores (mostly 4s and 5s);
+# a fix that took more than one visit, or missed its SLA, shifts the weights down.
+SATISFACTION_WEIGHTS = {'good': [2, 4, 12, 30, 52], 'poor': [10, 20, 35, 25, 10]}  # for scores 1..5
+# Fixed feedback so the demo always has an unhappy reporter for the case handler to follow up
+FIXED_FEEDBACK = {'Toilet blocked': (2, 'Took two visits and the floor was left wet the first time.')}
+# The demo reporter's own closed cases get no made-up feedback, so their home page asks them to rate the fix
+DEMO_REPORTER = 'Alex Morgan'
+
+SATISFACTION_COMMENTS = {
+    5: ['Really quick response and the engineer explained what had happened.', 'Sorted the same day, thank you.',
+        'Great service, kept me updated throughout.'],
+    4: ['Fixed well, took a little longer than I expected.', 'Good job, would have liked an update sooner.'],
+    3: ['Fixed in the end but I had to chase.', 'OK, but nobody told me when someone was coming.'],
+    2: ['Took several visits to fix.', 'Slow, and the problem came back once.'],
+    1: ['Took far too long and nobody kept me informed.'],
+}
+
+# What the officer wrote when they fixed it, by team
 VISIT_NOTES = {
-    'Plumbing & leaks': ('Found a loose compression joint on the waste pipe. Tightened and replaced the washer. '
-                         'Dried the area and checked for further leaks, none found.'),
-    'Heating & air con': ('Thermostatic valve was stuck. Freed the pin and bled the system. '
-                          'Unit now heating up correctly, checked after 20 minutes.'),
-    'Electrical & lighting': ('Replaced two faulty LED drivers. Tested all fittings in the area, all working.'),
-    'IT equipment': ('Diagnosed hardware fault. Swapped the unit for a tested spare and confirmed it works with the user.'),
-    'Access & doors': ('Door closer arm had come loose. Re-fixed and adjusted closing speed. Tested 10 times.'),
-    'Security concern': ('Reviewed CCTV and spoke to reception. Logged with site security lead.'),
-    'Building fabric': ('Made safe and taped off the area. Measured up for a replacement part.'),
-    'Cleaning & waste': ('Arranged an extra collection and cleared the area. Added the bay to the weekly check list.'),
-    'General / Other': ('Inspected and resolved on site.'),
+    'Facilities Helpdesk': ('Found the fault and replaced the worn part. Tested and checked again after '
+                            '20 minutes, all working.'),
+    'IT Service Desk': 'Diagnosed hardware fault. Swapped the unit for a tested spare and confirmed it works with the user.',
+    'IT Network Team': 'Replaced a failing access point and checked signal strength across the area. Connection stable.',
+    'Security & Access Team': 'Re-set and tested the reader and lock. Reviewed CCTV and logged with the site security lead.',
+    'Estates Maintenance': 'Made safe and taped off the area, then carried out the repair. Checked the surrounding area.',
+    'Cleaning Services': 'Cleared and cleaned the area. Added it to the weekly check list.',
+    'Health & Safety Team': 'Made the area safe and removed the hazard. Recorded in the H&S log.',
+    'Fleet Services': 'Inspected the vehicle, replaced the faulty part and road tested it. Back in service.',
+    'AV & Meeting Room Support': 'Reset the system and replaced a faulty cable. Tested with a laptop and a Teams call.',
 }
 FOLLOW_UP = 'Part needed that is not in the van. Ordered and booked a return visit.'
 
@@ -157,15 +277,14 @@ class Command(BaseCommand):
         SLARule.objects.all().delete()
 
         teams = {n: Team.objects.create(name=n, contact_email=e, manager=m) for n, e, m in TEAMS}
-        for name, desc, team, pri, kw in CATEGORIES:
-            Category.objects.create(name=name, description=desc, default_team=teams[team],
-                                    default_priority=pri, keywords=kw)
+        for name, team, pri, kw in CATEGORIES:
+            Category.objects.create(name=name, default_team=teams[team], default_priority=pri, keywords=kw)
         users = self.make_users()
         for name, team in OFFICERS:
             Officer.objects.create(name=name, team=teams[team], user=users.get(name.split()[0].lower()),
                                    contact_email=name.lower().replace(' ', '.') + '@example.com')
         for p, ack, res in SLA:
-            SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_working_days=res)
+            SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_hours=res)
 
         # Oldest first, so references follow the order things were reported
         for spec in sorted(REPORTS, key=lambda r: -r[7]):
@@ -196,9 +315,11 @@ class Command(BaseCommand):
     def make_case(self, spec, rng, now):
         title, desc, building, room, urgency, lang, name, days_ago, stage = spec
         reported = now - timedelta(days=days_ago)
+        impact, hs_risk, asset_tag = REPORT_DETAILS[title]
         case = Case.objects.create(
             title=title, description=desc, building=building, location_detail=room,
-            reported_urgency=urgency, preferred_language=lang, reporter_name=name,
+            reported_urgency=urgency, impact=impact, hs_risk=hs_risk, asset_tag=asset_tag,
+            preferred_language=lang, reporter_name=name,
             reporter_email=name.split()[0].lower() + '@example.com', date_reported=reported,
         )
         s = ai.triage(case)
@@ -220,7 +341,9 @@ class Command(BaseCommand):
         case.assigned_team = case.category.default_team
         case.assigned_officer = rng.choice(list(case.assigned_team.officers.all()))
         case.triaged_by = HANDLER
-        case.date_acknowledged = reported + timedelta(hours=rng.uniform(0.2, 5))
+        # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
+        rule = SLARule.objects.get(priority=case.priority)
+        case.date_acknowledged = reported + timedelta(hours=rule.acknowledge_hours * rng.uniform(0.1, 1.3))
         case.status = Status.ASSIGNED
         case.apply_sla()
         case.save()
@@ -230,8 +353,9 @@ class Command(BaseCommand):
         if stage == 'assigned':
             return
 
-        note = VISIT_NOTES.get(case.category.name, VISIT_NOTES['General / Other'])
-        first_visit = min(case.date_acknowledged + timedelta(days=rng.uniform(0.1, 1.5)), now - timedelta(hours=2))
+        note = VISIT_NOTES[case.assigned_team.name]
+        first_visit = min(case.date_acknowledged + timedelta(hours=rule.resolve_hours * rng.uniform(0.1, 0.7)),
+                          now - timedelta(hours=2))
         if stage == 'in_progress':
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
                                      ai_summary=ai.summarise_visit(FOLLOW_UP, False))
@@ -244,7 +368,8 @@ class Command(BaseCommand):
         if two_visits:
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
                                      ai_summary=ai.summarise_visit(FOLLOW_UP, False))
-            visit_time = min(first_visit + timedelta(days=rng.uniform(1, 4)), now - timedelta(hours=1))
+            visit_time = min(first_visit + timedelta(hours=rule.resolve_hours * rng.uniform(0.2, 0.6)),
+                             now - timedelta(hours=1))
         SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=note,
                                  fixed=True, transcript_used=rng.random() < 0.4,
                                  ai_summary=ai.summarise_visit(note, True))
@@ -260,4 +385,11 @@ class Command(BaseCommand):
                                      draft_text=ai.draft_outcome_letter(case), approved_by=HANDLER, date_sent=sent)
         case.status = Status.CLOSED
         case.date_closed = sent
+        if title in FIXED_FEEDBACK:
+            case.satisfaction, case.satisfaction_comments = FIXED_FEEDBACK[title]
+        elif name != DEMO_REPORTER and rng.random() < 0.75:  # about three in four reporters leave feedback
+            weights = SATISFACTION_WEIGHTS['good' if case.first_time_fix and not case.is_overdue else 'poor']
+            case.satisfaction = rng.choices([1, 2, 3, 4, 5], weights)[0]
+            if rng.random() < 0.6:
+                case.satisfaction_comments = rng.choice(SATISFACTION_COMMENTS[case.satisfaction])
         case.save()

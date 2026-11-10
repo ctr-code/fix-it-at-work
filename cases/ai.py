@@ -18,7 +18,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .models import Case, Category, Priority, PRIORITY_RANK, OPEN_STATUSES
+from .models import Case, Category, Impact, Priority, PRIORITY_RANK, OPEN_STATUSES
 
 # Words that suggest a risk to people or property. Includes a few common
 # words in Polish, Urdu and Spanish so non-English reports are not missed.
@@ -48,13 +48,14 @@ def _max_priority(*priorities):
 
 def triage(case):
     """
-    Suggest category, priority, summary and a possible duplicate for a new case.
+    Suggest team, category, priority, summary and a possible duplicate for a new case.
+    Every category belongs to one team, so picking the category also picks the team.
     Returns a dict; nothing is applied until a person approves it.
     """
     text = _text(case.title, case.description, case.location_detail)
     reasons = []
 
-    # 1. Category: score each category by keyword hits
+    # 1. Category (and so team): score each category by keyword hits
     scores = []
     for cat in Category.objects.select_related('default_team'):
         words = [w.strip().lower() for w in cat.keywords.split(',') if w.strip()]
@@ -65,12 +66,13 @@ def triage(case):
     runner_up = scores[1][0] if len(scores) > 1 else 0
 
     if best_score == 0:
-        category = Category.objects.filter(name='General / Other').first() or category
+        category = None
         confidence = 30
-        reasons.append('No clear category words found, so a person should check this one carefully.')
+        reasons.append('No clear category words found, so a person needs to choose the team and category.')
     else:
         confidence = min(95, 50 + 15 * (best_score - runner_up) + 5 * best_score)
-        reasons.append(f'Matched "{category.name}" because the report mentions: {", ".join(hits[:4])}.')
+        reasons.append(f'Matched {category.default_team} / {category.name} because the report mentions: '
+                       f'{", ".join(hits[:4])}.')
 
     # 2. Priority: highest of category default, safety words, and reporter's own view
     priority = category.default_priority if category else Priority.MEDIUM
@@ -81,6 +83,12 @@ def triage(case):
                 reasons.append(f'Raised to {level} because of: {", ".join(found[:3])}.')
             priority = _max_priority(priority, level)
             break
+    if case.hs_risk and PRIORITY_RANK[priority] < PRIORITY_RANK['high']:
+        reasons.append('Raised to high because the reporter flagged a health and safety risk.')
+        priority = 'high'
+    if case.impact == Impact.BUILDING_WIDE and PRIORITY_RANK[priority] < PRIORITY_RANK['high']:
+        reasons.append('Raised to high because it affects the whole building.')
+        priority = 'high'
     if PRIORITY_RANK[case.reported_urgency] > PRIORITY_RANK[priority]:
         reasons.append(
             f'Kept at {case.reported_urgency} because that is what the reporter asked for '
@@ -148,6 +156,7 @@ LETTERS = {
         'and the issue has now been resolved.\n\n'
         'What we did: {outcome}\n\n'
         'If the problem comes back, please reply quoting {ref} and we will pick it up straight away.\n\n'
+        'Let us know how we did: open {ref} in Fix It at Work and rate the fix within 14 days.\n\n'
         'Kind regards,\n{team} team'
     ),
     'pl': (
@@ -156,6 +165,7 @@ LETTERS = {
         'i został on rozwiązany.\n\n'
         'Co zrobiliśmy: {outcome}\n\n'
         'Jeśli problem wróci, prosimy o odpowiedź z numerem {ref}.\n\n'
+        'Prosimy o ocenę naszej pracy: otwórz zgłoszenie {ref} w Fix It at Work w ciągu 14 dni.\n\n'
         'Z poważaniem,\nZespół {team}'
     ),
     'ur': (
@@ -164,6 +174,7 @@ LETTERS = {
         'اور اب یہ حل ہو گیا ہے۔\n\n'
         'ہم نے کیا کیا: {outcome}\n\n'
         'اگر مسئلہ دوبارہ پیش آئے تو براہ کرم {ref} کے حوالے سے جواب دیں۔\n\n'
+        'ہمیں بتائیں کہ ہم نے کیسا کام کیا: 14 دن کے اندر Fix It at Work میں {ref} کھول کر اپنی رائے دیں۔\n\n'
         'شکریہ،\n{team} ٹیم'
     ),
     'es': (
@@ -172,6 +183,7 @@ LETTERS = {
         'y el problema ya está resuelto.\n\n'
         'Qué hicimos: {outcome}\n\n'
         'Si el problema vuelve a ocurrir, responda indicando la referencia {ref}.\n\n'
+        'Díganos qué tal lo hicimos: abra {ref} en Fix It at Work y valore la reparación en un plazo de 14 días.\n\n'
         'Un saludo,\nEquipo de {team}'
     ),
 }

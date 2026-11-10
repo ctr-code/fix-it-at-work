@@ -7,6 +7,7 @@ keep the prototype simple (one form, no accounts needed to report).
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -61,6 +62,24 @@ class Status(models.TextChoices):
 OPEN_STATUSES = [Status.NEW, Status.ASSIGNED, Status.IN_PROGRESS]
 
 
+class Impact(models.TextChoices):
+    """How many people the issue affects, as reported."""
+    SINGLE_USER = 'single_user', 'Just me'
+    TEAM = 'team', 'My team'
+    DEPARTMENT = 'department', 'My department'
+    BUILDING_WIDE = 'building_wide', 'The whole building'
+
+
+# Reporters can give or change feedback for this long after their case is closed
+FEEDBACK_WINDOW = timedelta(days=14)
+# Scores of 2 or less are shown to case handlers for this long after closing, so they can follow up
+UNHAPPY_SCORE = 2
+UNHAPPY_FOLLOW_UP = FEEDBACK_WINDOW + timedelta(days=14)
+
+SATISFACTION_CHOICES = [(5, '5 - Very satisfied'), (4, '4 - Satisfied'), (3, '3 - Neither'),
+                        (2, '2 - Dissatisfied'), (1, '1 - Very dissatisfied')]
+
+
 class Language(models.TextChoices):
     EN = 'en', 'English'
     PL = 'pl', 'Polski (Polish)'
@@ -109,26 +128,21 @@ class Officer(models.Model):
 
 
 class SLARule(models.Model):
+    """
+    Response and resolution targets for one priority, in calendar hours (the clock runs 24/7,
+    including evenings and weekends), as on the mock data's SLA Settings sheet.
+    """
     priority = models.CharField(max_length=10, choices=Priority.choices, unique=True)
-    acknowledge_hours = models.PositiveIntegerField()
-    resolve_working_days = models.PositiveIntegerField()
+    acknowledge_hours = models.PositiveIntegerField('Response target (hours)')
+    resolve_hours = models.PositiveIntegerField('Resolution target (hours)')
 
     def __str__(self):
-        return f'{self.get_priority_display()}: ack {self.acknowledge_hours}h, resolve {self.resolve_working_days} working days'
-
-
-def add_working_days(start, days):
-    current = start
-    added = 0
-    while added < days:
-        current += timedelta(days=1)
-        if current.weekday() < 5:
-            added += 1
-    return current
+        return f'{self.get_priority_display()}: respond in {self.acknowledge_hours}h, resolve in {self.resolve_hours}h'
 
 
 class Case(models.Model):
-    reference = models.CharField(max_length=12, unique=True, editable=False)
+    # TKT-<year reported>-<4-digit number>, restarting at 0001 each year, e.g. TKT-2026-0042
+    reference = models.CharField(max_length=13, unique=True, editable=False)
 
     # What the reporter tells us
     title = models.CharField('What is the problem?', max_length=120)
@@ -137,6 +151,9 @@ class Case(models.Model):
     location_detail = models.CharField('Floor / room / area', max_length=120, blank=True)
     reported_urgency = models.CharField(
         'How urgent is it?', max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
+    impact = models.CharField('Who is affected?', max_length=15, choices=Impact.choices, default=Impact.SINGLE_USER)
+    hs_risk = models.BooleanField('Health and safety risk', default=False)
+    asset_tag = models.CharField(max_length=20, blank=True)
     photo = models.FileField(upload_to='reports/', blank=True)
     reporter_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name='reported_cases')
@@ -176,6 +193,12 @@ class Case(models.Model):
     sla_due = models.DateTimeField('SLA due date', null=True, blank=True)
     first_time_fix = models.BooleanField(null=True)
 
+    # Reporter's feedback once the case is closed
+    satisfaction = models.PositiveSmallIntegerField(
+        null=True, blank=True, choices=SATISFACTION_CHOICES,
+        validators=[MinValueValidator(1), MaxValueValidator(5)])
+    satisfaction_comments = models.TextField(blank=True)
+
     class Meta:
         ordering = ['-date_reported']
 
@@ -184,15 +207,32 @@ class Case(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.reference:
-            last = Case.objects.order_by('-reference').first()
-            self.reference = f'FIW-{(int(last.reference[4:]) + 1 if last else 1):04d}'
+            prefix = f'TKT-{self.date_reported.year}-'
+            last = Case.objects.filter(reference__startswith=prefix).order_by('-reference').first()
+            self.reference = f'{prefix}{(int(last.reference[-4:]) + 1 if last else 1):04d}'
         super().save(*args, **kwargs)
 
     def apply_sla(self):
         rule = SLARule.objects.filter(priority=self.priority).first()
         if rule:
             self.sla_acknowledge_due = self.date_reported + timedelta(hours=rule.acknowledge_hours)
-            self.sla_due = add_working_days(self.date_reported, rule.resolve_working_days)
+            self.sla_due = self.date_reported + timedelta(hours=rule.resolve_hours)
+
+    @property
+    def feedback_deadline(self):
+        """Last moment the reporter can give or change feedback: 14 days after closing."""
+        if self.status != Status.CLOSED or not self.date_closed:
+            return None
+        return self.date_closed + FEEDBACK_WINDOW
+
+    @property
+    def feedback_open(self):
+        deadline = self.feedback_deadline
+        return deadline is not None and timezone.now() <= deadline
+
+    def can_give_feedback(self, user):
+        """Only the person who reported it, and only while the feedback window is open."""
+        return user.is_authenticated and self.reporter_user_id == user.id and self.feedback_open
 
     @property
     def is_open(self):
