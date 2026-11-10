@@ -24,6 +24,13 @@
         <div><h2 class="h5 mb-1">Something not working?</h2><p class="mb-0 text-muted">Tell us what and where. It takes about a minute.</p></div>
         <a href="{% url 'report' %}" class="btn btn-primary btn-lg"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a>
     </div>
+    {% for c in awaiting_feedback %}
+    <a href="{% url 'track_case' c.reference %}#feedback" class="panel case-row d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div><strong>How did we do?</strong> {{ c.title }} was fixed on {{ c.date_closed|date:"j M" }}.
+            <div class="small text-muted">{{ c.reference }} &middot; you can rate it until {{ c.feedback_deadline|date:"j M" }}</div></div>
+        <span class="btn btn-sm btn-primary">Rate this fix</span>
+    </a>
+    {% endfor %}
     <h2 class="mt-4">My open reports</h2>
     {% for c in my_open %}
     <a href="{% url 'track_case' c.reference %}" class="panel case-row d-block">
@@ -36,7 +43,7 @@
     {% for c in my_closed %}
     <a href="{% url 'track_case' c.reference %}" class="panel case-row d-block">
         <strong>{{ c.title }}</strong>
-        <div class="small text-muted">{{ c.reference }} &middot; {{ c.get_status_display }} {{ c.date_closed|date:"j M" }}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; {{ c.get_status_display }} {{ c.date_closed|date:"j M" }}{% if c.satisfaction %} &middot; you rated it {{ c.satisfaction }}/5{% endif %}</div>
     </a>
     {% endfor %}
     {% endif %}
@@ -45,9 +52,10 @@
     {# ---------- Case handler ---------- #}
     <h1>Hello {{ user.first_name|default:user.username }}</h1>
     <div class="row g-3">
-        <div class="col-md-4"><a class="panel kpi d-block text-decoration-none" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
-        <div class="col-md-4"><a class="panel kpi d-block text-decoration-none" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
-        <div class="col-md-4"><div class="panel kpi"><div class="value" style="color: var(--urgent)">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
+        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
+        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
+        <div class="col-6 col-md-3"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
+        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#unhappy"><div class="value"{% if unhappy %} style="color: var(--urgent)"{% endif %}>{{ unhappy }}</div><div class="label">Unhappy reporters to contact</div></a></div>
     </div>
     <h2 class="mt-4">Next to triage</h2>
     {% for c in triage|slice:":5" %}
@@ -82,7 +90,7 @@
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value" style="color: var(--ai)">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted</div></div></div>
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }})</div></div></div>
     </div>
     <h2 class="mt-4">Most overdue</h2>
     {% for c in overdue|slice:":5" %}

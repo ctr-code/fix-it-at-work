@@ -50,6 +50,28 @@ class ReportForm(forms.ModelForm):
         return self.cleaned_data['asset_tag'].strip().upper()
 
 
+class FeedbackForm(forms.ModelForm):
+    """The reporter's rating of a closed case."""
+
+    class Meta:
+        model = Case
+        fields = ['satisfaction', 'satisfaction_comments']
+        labels = {
+            'satisfaction': 'How happy are you with how this was handled?',
+            'satisfaction_comments': 'Anything you would like to tell us? (optional)',
+        }
+        widgets = {
+            'satisfaction': forms.RadioSelect,
+            'satisfaction_comments': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['satisfaction'].required = True
+        # Drop Django's empty "---------" option from the radio buttons
+        self.fields['satisfaction'].choices = [c for c in self.fields['satisfaction'].choices if c[0] != '']
+
+
 class TriageForm(forms.Form):
     """Choose the team first. The category and officer lists only show options for that team."""
     team = forms.ModelChoiceField(Team.objects.order_by('name'))

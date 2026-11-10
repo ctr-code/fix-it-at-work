@@ -36,6 +36,21 @@
         </table>
     </div>
 
+    <h2 class="mt-4" id="unhappy">Unhappy reporters <span class="badge bg-secondary">{{ unhappy|length }}</span></h2>
+    <p class="small text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
+    <div class="table-responsive panel p-0">
+        <table class="table align-middle mb-0">
+            <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Score</th><th scope="col">What they said</th><th scope="col">Reporter</th></tr></thead>
+            <tbody>
+            {% for c in unhappy %}
+            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
+                <td class="overdue">{{ c.satisfaction }}/5</td><td>{{ c.satisfaction_comments|default:"-" }}</td>
+                <td>{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
+            {% empty %}<tr><td colspan="5" class="p-3">No unhappy reporters. Nice.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <h2 class="mt-4">With teams <span class="badge bg-secondary">{{ in_flight|length }}</span></h2>
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0">

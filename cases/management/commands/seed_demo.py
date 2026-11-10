@@ -157,7 +157,7 @@ REPORTS = [
     ('Cracked window in stairwell', 'There is a large crack in the window on the stairwell between floors 1 and 2.',
      'Main Office', 'Stairwell B', 'medium', 'en', 'Taylor Reid', 9, 'closed'),
     ('Wifi keeps dropping', 'The wifi drops every few minutes in the east wing. It affects the whole team on calls.',
-     'Innovation Centre', 'East wing', 'high', 'en', 'Jamie Clarke', 6, 'closed'),
+     'Innovation Centre', 'East wing', 'high', 'en', 'Alex Morgan', 6, 'closed'),
     ('Toilet blocked', 'The toilet in the ground floor loos is blocked and there is water on the floor.',
      'Riverside House', 'Ground floor toilets', 'medium', 'en', 'Lucía Fernández', 4, 'closed'),
     ('Air conditioning blowing hot air', 'The air con in the training room is blowing hot air and it is 28 degrees.',
@@ -231,6 +231,11 @@ REPORT_DETAILS = {
 # Reporter feedback on closed cases. Weights follow the spreadsheet's spread of scores (mostly 4s and 5s);
 # a fix that took more than one visit, or missed its SLA, shifts the weights down.
 SATISFACTION_WEIGHTS = {'good': [2, 4, 12, 30, 52], 'poor': [10, 20, 35, 25, 10]}  # for scores 1..5
+# Fixed feedback so the demo always has an unhappy reporter for the case handler to follow up
+FIXED_FEEDBACK = {'Toilet blocked': (2, 'Took two visits and the floor was left wet the first time.')}
+# The demo reporter's own closed cases get no made-up feedback, so their home page asks them to rate the fix
+DEMO_REPORTER = 'Alex Morgan'
+
 SATISFACTION_COMMENTS = {
     5: ['Really quick response and the engineer explained what had happened.', 'Sorted the same day, thank you.',
         'Great service, kept me updated throughout.'],
@@ -380,7 +385,9 @@ class Command(BaseCommand):
                                      draft_text=ai.draft_outcome_letter(case), approved_by=HANDLER, date_sent=sent)
         case.status = Status.CLOSED
         case.date_closed = sent
-        if rng.random() < 0.75:  # about three in four reporters leave feedback
+        if title in FIXED_FEEDBACK:
+            case.satisfaction, case.satisfaction_comments = FIXED_FEEDBACK[title]
+        elif name != DEMO_REPORTER and rng.random() < 0.75:  # about three in four reporters leave feedback
             weights = SATISFACTION_WEIGHTS['good' if case.first_time_fix and not case.is_overdue else 'poor']
             case.satisfaction = rng.choices([1, 2, 3, 4, 5], weights)[0]
             if rng.random() < 0.6:

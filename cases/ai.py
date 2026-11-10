@@ -156,6 +156,7 @@ LETTERS = {
         'and the issue has now been resolved.\n\n'
         'What we did: {outcome}\n\n'
         'If the problem comes back, please reply quoting {ref} and we will pick it up straight away.\n\n'
+        'Let us know how we did: open {ref} in Fix It at Work and rate the fix within 14 days.\n\n'
         'Kind regards,\n{team} team'
     ),
     'pl': (
@@ -164,6 +165,7 @@ LETTERS = {
         'i został on rozwiązany.\n\n'
         'Co zrobiliśmy: {outcome}\n\n'
         'Jeśli problem wróci, prosimy o odpowiedź z numerem {ref}.\n\n'
+        'Prosimy o ocenę naszej pracy: otwórz zgłoszenie {ref} w Fix It at Work w ciągu 14 dni.\n\n'
         'Z poważaniem,\nZespół {team}'
     ),
     'ur': (
@@ -172,6 +174,7 @@ LETTERS = {
         'اور اب یہ حل ہو گیا ہے۔\n\n'
         'ہم نے کیا کیا: {outcome}\n\n'
         'اگر مسئلہ دوبارہ پیش آئے تو براہ کرم {ref} کے حوالے سے جواب دیں۔\n\n'
+        'ہمیں بتائیں کہ ہم نے کیسا کام کیا: 14 دن کے اندر Fix It at Work میں {ref} کھول کر اپنی رائے دیں۔\n\n'
         'شکریہ،\n{team} ٹیم'
     ),
     'es': (
@@ -180,6 +183,7 @@ LETTERS = {
         'y el problema ya está resuelto.\n\n'
         'Qué hicimos: {outcome}\n\n'
         'Si el problema vuelve a ocurrir, responda indicando la referencia {ref}.\n\n'
+        'Díganos qué tal lo hicimos: abra {ref} en Fix It at Work y valore la reparación en un plazo de 14 días.\n\n'
         'Un saludo,\nEquipo de {team}'
     ),
 }

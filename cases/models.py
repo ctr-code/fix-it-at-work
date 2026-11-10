@@ -70,6 +70,12 @@ class Impact(models.TextChoices):
     BUILDING_WIDE = 'building_wide', 'The whole building'
 
 
+# Reporters can give or change feedback for this long after their case is closed
+FEEDBACK_WINDOW = timedelta(days=14)
+# Scores of 2 or less are shown to case handlers for this long after closing, so they can follow up
+UNHAPPY_SCORE = 2
+UNHAPPY_FOLLOW_UP = FEEDBACK_WINDOW + timedelta(days=14)
+
 SATISFACTION_CHOICES = [(5, '5 - Very satisfied'), (4, '4 - Satisfied'), (3, '3 - Neither'),
                         (2, '2 - Dissatisfied'), (1, '1 - Very dissatisfied')]
 
@@ -211,6 +217,22 @@ class Case(models.Model):
         if rule:
             self.sla_acknowledge_due = self.date_reported + timedelta(hours=rule.acknowledge_hours)
             self.sla_due = self.date_reported + timedelta(hours=rule.resolve_hours)
+
+    @property
+    def feedback_deadline(self):
+        """Last moment the reporter can give or change feedback: 14 days after closing."""
+        if self.status != Status.CLOSED or not self.date_closed:
+            return None
+        return self.date_closed + FEEDBACK_WINDOW
+
+    @property
+    def feedback_open(self):
+        deadline = self.feedback_deadline
+        return deadline is not None and timezone.now() <= deadline
+
+    def can_give_feedback(self, user):
+        """Only the person who reported it, and only while the feedback window is open."""
+        return user.is_authenticated and self.reporter_user_id == user.id and self.feedback_open
 
     @property
     def is_open(self):
