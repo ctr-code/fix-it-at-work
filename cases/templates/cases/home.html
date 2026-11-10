@@ -53,7 +53,7 @@
     {% for c in triage|slice:":5" %}
     <a href="{% url 'triage_case' c.reference %}" class="panel case-row pri-border-{{ c.ai_priority }} d-block">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.ai_priority %}</div>
-        <div class="small text-muted">{{ c.reference }} &middot; {{ c.building }} &middot; AI suggests {{ c.ai_category }} ({{ c.ai_confidence }}% confident){% if c.ai_duplicate_candidate_id %} &middot; possible duplicate{% endif %}</div>
+        <div class="small text-muted">{{ c.reference }} &middot; {{ c.building }} &middot; AI suggests {% if c.ai_category %}{{ c.ai_category.default_team }} / {{ c.ai_category }}{% else %}no team{% endif %} ({{ c.ai_confidence }}% confident){% if c.ai_duplicate_candidate_id %} &middot; possible duplicate{% endif %}</div>
     </a>
     {% empty %}<p>Nothing waiting. Nice.</p>{% endfor %}
     <a href="{% url 'triage_queue' %}" class="btn btn-primary">Open the full queue</a>

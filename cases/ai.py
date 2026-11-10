@@ -48,13 +48,14 @@ def _max_priority(*priorities):
 
 def triage(case):
     """
-    Suggest category, priority, summary and a possible duplicate for a new case.
+    Suggest team, category, priority, summary and a possible duplicate for a new case.
+    Every category belongs to one team, so picking the category also picks the team.
     Returns a dict; nothing is applied until a person approves it.
     """
     text = _text(case.title, case.description, case.location_detail)
     reasons = []
 
-    # 1. Category: score each category by keyword hits
+    # 1. Category (and so team): score each category by keyword hits
     scores = []
     for cat in Category.objects.select_related('default_team'):
         words = [w.strip().lower() for w in cat.keywords.split(',') if w.strip()]
@@ -65,12 +66,13 @@ def triage(case):
     runner_up = scores[1][0] if len(scores) > 1 else 0
 
     if best_score == 0:
-        category = Category.objects.filter(name='General / Other').first() or category
+        category = None
         confidence = 30
-        reasons.append('No clear category words found, so a person should check this one carefully.')
+        reasons.append('No clear category words found, so a person needs to choose the team and category.')
     else:
         confidence = min(95, 50 + 15 * (best_score - runner_up) + 5 * best_score)
-        reasons.append(f'Matched "{category.name}" because the report mentions: {", ".join(hits[:4])}.')
+        reasons.append(f'Matched {category.default_team} / {category.name} because the report mentions: '
+                       f'{", ".join(hits[:4])}.')
 
     # 2. Priority: highest of category default, safety words, and reporter's own view
     priority = category.default_priority if category else Priority.MEDIUM

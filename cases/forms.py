@@ -42,9 +42,11 @@ class ReportForm(forms.ModelForm):
 
 
 class TriageForm(forms.Form):
-    category = forms.ModelChoiceField(Category.objects.all())
+    """Choose the team first. The category and officer lists only show options for that team."""
+    team = forms.ModelChoiceField(Team.objects.order_by('name'))
+    category = forms.ModelChoiceField(Category.objects.select_related('default_team'),
+                                      help_text='Only categories handled by the chosen team are listed.')
     priority = forms.ChoiceField(choices=Priority.choices)
-    team = forms.ModelChoiceField(Team.objects.all())
     officer = forms.ModelChoiceField(Officer.objects.select_related('team'), required=False,
                                      help_text='Leave blank to let the team pick it up.')
     duplicate_of = forms.ModelChoiceField(
@@ -57,6 +59,17 @@ class TriageForm(forms.Form):
         if case:
             qs = qs.exclude(pk=case.pk)
         self.fields['duplicate_of'].queryset = qs
+
+    def clean(self):
+        data = super().clean()
+        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
+        if data.get('duplicate_of'):
+            return data  # merging a duplicate doesn't route the case anywhere
+        if team and category and category.default_team_id != team.id:
+            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
+        if team and officer and officer.team_id != team.id:
+            self.add_error('officer', f'{officer.name} is not in {team}.')
+        return data
 
 
 class VisitForm(forms.ModelForm):

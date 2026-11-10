@@ -15,7 +15,7 @@
                 <td><a href="{% url 'triage_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
                 <td>{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
                 <td>{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
-                <td>{% include "cases/_pri.html" with p=c.ai_priority %} {{ c.ai_category }}<br><span class="small text-muted">{{ c.ai_confidence }}% confident</span></td>
+                <td>{% include "cases/_pri.html" with p=c.ai_priority %} {% if c.ai_category %}{{ c.ai_category.default_team }} / {{ c.ai_category }}{% else %}No suggestion{% endif %}<br><span class="small text-muted">{{ c.ai_confidence }}% confident</span></td>
                 <td>{{ c.date_reported|timesince }} ago</td>
             </tr>
             {% empty %}<tr><td colspan="5" class="p-3">Nothing waiting. Nice.</td></tr>{% endfor %}

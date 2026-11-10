@@ -32,7 +32,7 @@ def home(request):
         ctx['my_open'] = mine.filter(status__in=OPEN_STATUSES + [Status.RESOLVED])
         ctx['my_closed'] = mine.filter(status__in=[Status.CLOSED, Status.DUPLICATE])[:5]
     elif role == Role.HANDLER:
-        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW),
+        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team'),
                                key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported))
         ctx['replies'] = Case.objects.filter(status=Status.RESOLVED).count()
         ctx['overdue'] = Case.objects.filter(status__in=OPEN_STATUSES, sla_due__lt=timezone.now()).count()
@@ -107,7 +107,7 @@ def track_case(request, ref):
 @role_required(*HANDLERS)
 def triage_queue(request):
     new_cases = sorted(
-        Case.objects.filter(status=Status.NEW).select_related('ai_category', 'ai_duplicate_candidate'),
+        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate'),
         key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported),
     )
     awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
@@ -166,16 +166,20 @@ def triage_case(request, ref):
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
+            'team': case.ai_category.default_team if case.ai_category else None,
             'category': case.ai_category,
             'priority': case.ai_priority,
-            'team': case.ai_category.default_team if case.ai_category else None,
         })
-    officers_by_team = {}
-    for o in Officer.objects.all():
-        officers_by_team.setdefault(o.team_id, []).append(o.id)
-    return render(request, 'cases/triage_case.html', {
-        'case': case, 'form': form, 'officers_by_team': officers_by_team,
-    })
+    # Lets the page narrow the category and officer lists to the chosen team
+    by_team = {
+        'category': {t: [] for t in Team.objects.values_list('id', flat=True)},
+        'officer': {t: [] for t in Team.objects.values_list('id', flat=True)},
+    }
+    for cat_id, team_id in Category.objects.values_list('id', 'default_team_id'):
+        by_team['category'][team_id].append(cat_id)
+    for officer_id, team_id in Officer.objects.values_list('id', 'team_id'):
+        by_team['officer'][team_id].append(officer_id)
+    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': by_team})
 
 
 @role_required(*HANDLERS)

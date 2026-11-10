@@ -11,7 +11,8 @@
             <div class="ai-box">
                 <p class="ai-label mb-2"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI suggestion - please check</p>
                 <p class="mb-1"><strong>Summary:</strong> {{ case.ai_summary }}</p>
-                <p class="mb-1"><strong>Category:</strong> {{ case.ai_category }} &rarr; {{ case.ai_category.default_team }}</p>
+                {% if case.ai_category %}<p class="mb-1"><strong>Team:</strong> {{ case.ai_category.default_team }}</p>
+                <p class="mb-1"><strong>Category:</strong> {{ case.ai_category }}</p>{% else %}<p class="mb-1"><strong>Team and category:</strong> no suggestion - please choose</p>{% endif %}
                 <p class="mb-1"><strong>Priority:</strong> {% include "cases/_pri.html" with p=case.ai_priority %}</p>
                 {% if case.ai_duplicate_candidate %}<p class="mb-1"><strong>Possible duplicate:</strong> <a href="{% url 'case_detail' case.ai_duplicate_candidate.reference %}">{{ case.ai_duplicate_candidate.reference }} - {{ case.ai_duplicate_candidate.title }}</a>
                     <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="document.getElementById('id_duplicate_of').value='{{ case.ai_duplicate_candidate.pk }}'; document.getElementById('id_duplicate_of').focus();">Use as duplicate</button></p>{% endif %}
@@ -33,18 +34,26 @@
 </section>
 {% endblock %}
 {% block extra_body %}
-{{ officers_by_team|json_script:"officers-by-team" }}
+{{ by_team|json_script:"by-team" }}
 <script>
-// Only show officers from the chosen team
-const byTeam = JSON.parse(document.getElementById('officers-by-team').textContent);
+// Choose a team first: the category and officer lists then only offer that team's options.
+// Options are rebuilt rather than hidden, because hidden <option>s still show in some browsers.
+const byTeam = JSON.parse(document.getElementById('by-team').textContent);
 const team = document.getElementById('id_team');
-const officer = document.getElementById('id_officer');
-function filterOfficers() {
-    const allowed = byTeam[team.value] || [];
-    [...officer.options].forEach(o => { o.hidden = Boolean(o.value) && !allowed.includes(Number(o.value)); });
-    if (officer.selectedOptions[0] && officer.selectedOptions[0].hidden) officer.value = '';
+const lists = ['category', 'officer'].map(name => {
+    const select = document.getElementById('id_' + name);
+    return {name, select, options: [...select.options]};
+});
+function filterByTeam() {
+    for (const {name, select, options} of lists) {
+        const allowed = byTeam[name][team.value] || [];
+        const current = select.value;
+        select.replaceChildren(...options.filter(o => !o.value || allowed.includes(Number(o.value))));
+        select.value = allowed.includes(Number(current)) ? current : '';
+        select.disabled = !team.value;
+    }
 }
-team.addEventListener('change', filterOfficers);
-filterOfficers();
+team.addEventListener('change', filterByTeam);
+filterByTeam();
 </script>
 {% endblock %}

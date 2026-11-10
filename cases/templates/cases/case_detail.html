@@ -12,8 +12,8 @@
             <div class="panel">
                 <h2 class="h5">Case record</h2>
                 <dl class="row mb-0">
-                    <dt class="col-5">Category</dt><dd class="col-7">{{ case.category|default:"-" }}</dd>
                     <dt class="col-5">Team</dt><dd class="col-7">{{ case.assigned_team|default:"-" }}</dd>
+                    <dt class="col-5">Category</dt><dd class="col-7">{{ case.category|default:"-" }}</dd>
                     <dt class="col-5">Officer</dt><dd class="col-7">{{ case.assigned_officer.name|default:"-" }}</dd>
                     <dt class="col-5">Triaged by</dt><dd class="col-7">{{ case.triaged_by|default:"-" }}{% if case.ai_suggestion_accepted is not None %} ({% if case.ai_suggestion_accepted %}accepted AI suggestion{% else %}changed AI suggestion{% endif %}){% endif %}</dd>
                     <dt class="col-5">Acknowledged</dt><dd class="col-7">{{ case.date_acknowledged|date:"j M H:i"|default:"-" }}</dd>
