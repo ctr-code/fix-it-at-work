@@ -54,8 +54,8 @@
     <div class="row g-3">
         <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
         <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
-        <div class="col-6 col-md-3"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
-        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#unhappy"><div class="value"{% if unhappy %} style="color: var(--urgent)"{% endif %}>{{ unhappy }}</div><div class="label">Unhappy reporters to contact</div></a></div>
+        <div class="col-6 col-md-3"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
+        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#unhappy"><div class="value{% if unhappy %} is-urgent{% endif %}">{{ unhappy }}</div><div class="label">Unhappy reporters to contact</div></a></div>
     </div>
     <h2 class="mt-4">Next to triage</h2>
     {% for c in triage|slice:":5" %}
@@ -88,7 +88,7 @@
     <h1>Hello {{ user.first_name|default:user.username }}</h1>
     <div class="row g-3">
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value" style="color: var(--urgent)">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
+        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
         <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }})</div></div></div>
     </div>
