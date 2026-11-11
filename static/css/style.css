@@ -189,6 +189,14 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 .table { font-size: var(--fs-label); }
 .table td > a[href*="/cases/"], .table td > a[href*="/triage/"] { white-space: nowrap; }
 
+/* Sortable column headings: the whole heading is a button; the arrow shows the order */
+.sort-btn { display: inline-flex; align-items: center; gap: var(--space-label); margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: var(--fw-semibold); text-align: left; cursor: pointer; }
+.sort-btn:hover { color: var(--brand); }
+.sort-icon::before { font-family: "Font Awesome 7 Free"; font-weight: 900; font-size: .8em; content: "\f0dc"; color: var(--border-hover); }
+[aria-sort] > .sort-btn { color: var(--brand); }
+[aria-sort="ascending"] .sort-icon::before { content: "\f0de"; color: var(--brand); }
+[aria-sort="descending"] .sort-icon::before { content: "\f0dd"; color: var(--brand); }
+
 /* 3. Layout =============================================================== */
 /* Header: brand on the left, main links in the middle, profile on the right */
 .site-header { min-height: var(--nav-height); padding: 0; background: var(--brand); border-bottom: var(--border-width) solid var(--brand-dark); transition: box-shadow var(--transition-fast); }
@@ -463,6 +471,14 @@ main { margin-bottom: var(--space-10); }
     .table-cards td[data-label]::before { content: attr(data-label); position: absolute; left: 0; top: 3px; width: 7rem; font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--muted); }
     .table-cards td.card-action { padding-top: 10px; }
     .table-cards td.card-action .btn { width: 100%; min-height: var(--control-height); }
+    /* On cards, the sortable headings become a row of "Sort by" buttons above the list */
+    .table-cards.table-sortable thead { position: static; display: block; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
+    .table-cards.table-sortable thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--surface); border-bottom: var(--line); }
+    .table-cards.table-sortable thead tr::before { content: "Sort by"; margin-right: var(--space-1); font-size: var(--fs-small); color: var(--muted); }
+    .table-cards.table-sortable thead th { display: block; width: auto; padding: 0; border: 0; background: none; }
+    .table-cards.table-sortable thead th:not([data-sort]) { display: none; }
+    .table-cards.table-sortable .sort-btn { min-height: 36px; padding: 0 var(--space-3); background: var(--white); border: var(--border-width) solid var(--border-control); border-radius: var(--radius-pill); font-size: var(--fs-small); font-weight: var(--fw-medium); }
+    .table-cards.table-sortable [aria-sort] > .sort-btn { background: var(--brand-tint); border-color: var(--brand); }
 }
 
 /* Phones */

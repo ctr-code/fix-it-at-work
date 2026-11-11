@@ -178,3 +178,28 @@ class HeaderTests(TestCase):
         html = self.client.get('/accounts/login/').content.decode()
         self.assertIn('Create account', html)
         self.assertIn('nav-cta active" aria-current="page"', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseQueueSortTests(TestCase):
+    """The case queue gives the sorting script what it needs: headings and sortable values."""
+
+    def test_queue_has_sortable_headings_and_values(self):
+        user = User.objects.create_user('handler1', 'handler1@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        case = Case.objects.create(title='Lift making grinding noise', description='Noisy lift.',
+                                   building='Main Office', reporter_name='A Reporter',
+                                   reporter_email='reporter@example.com', ai_priority='urgent')
+        html = self.client.get('/triage/').content.decode()
+        self.assertEqual(html.count('class="sort-btn"'), 19)
+        self.assertIn('js/sort-table.js', html)
+        self.assertIn('data-label="AI suggests" data-sort-value="4"', html)  # urgent ranks highest
+        self.assertIn(f'data-sort-value="{case.date_reported.isoformat()[:19]}', html)
