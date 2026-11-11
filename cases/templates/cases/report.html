@@ -91,7 +91,8 @@
         const photo = document.getElementById('id_photo');
         const label = button.innerHTML;
         form.addEventListener('submit', function () {
-            const text = photo && photo.files.length ? 'Sending report and photo…' : 'Sending report…';
+            const n = photo ? photo.files.length : 0;
+            const text = n ? 'Sending report and ' + (n === 1 ? 'photo' : n + ' photos') + '…' : 'Sending report…';
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
             button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>' + text;

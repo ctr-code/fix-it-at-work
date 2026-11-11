@@ -318,6 +318,12 @@ main { margin-bottom: var(--space-10); }
 .photo-item.is-error { grid-column: 1 / -1; background: var(--urgent-tint); border-color: var(--urgent-border); }
 .photo-item.is-error .photo-size { color: var(--urgent); }
 .photo-error-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--thumb-size); height: var(--thumb-size); color: var(--urgent); font-size: var(--fs-icon); }
+.photo-count { margin: var(--space-3) 0 0; font-size: var(--fs-small); color: var(--muted); }
+.photo-count + .photo-list { margin-top: var(--space-2); }
+/* Reporter's photos on case pages */
+.photo-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-2); }
+.photo-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: var(--line); border-radius: var(--radius-lg); background: var(--surface-sunken); }
+.photo-grid a:hover img { border-color: var(--brand); }
 .photo-reselect { margin: var(--space-2) 0 0; font-size: var(--fs-small); color: var(--warning-ink); }
 
 /* 6. Report an issue ====================================================== */

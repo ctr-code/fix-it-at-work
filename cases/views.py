@@ -9,8 +9,8 @@ from django.utils import timezone
 from . import ai
 from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, Role, Status, Team,
-    get_role,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, Role, Status,
+    Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -65,6 +65,8 @@ def report(request):
             case.reporter_name = display_name(request.user)
             case.reporter_email = request.user.email
             case.save()
+            for photo in form.cleaned_data['photo']:
+                ReportPhoto.objects.create(case=case, image=photo)
             suggestion = ai.triage(case)
             case.ai_category = suggestion['category']
             case.ai_priority = suggestion['priority']

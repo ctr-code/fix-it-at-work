@@ -13,6 +13,7 @@
         const zone = root.querySelector("[data-dropzone]");
         const list = root.querySelector("[data-list]");
         const status = root.querySelector("[data-status]");
+        const count = root.querySelector("[data-count]");
         const maxFiles = parseInt(root.dataset.maxFiles, 10) || 1;
         const maxBytes = (parseFloat(root.dataset.maxMb) || 10) * 1024 * 1024;
 
@@ -49,7 +50,7 @@
                     '<button type="button" class="photo-remove"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="photo-remove-text">Remove</span></button>';
                 li.querySelector("img").src = p.url;
                 li.querySelector(".photo-name").textContent = p.file.name;
-                li.querySelector(".photo-size").textContent = formatSize(p.file.size) + " · ready to send with your report";
+                li.querySelector(".photo-size").textContent = formatSize(p.file.size) + " · Ready to send";
                 const btn = li.querySelector("button");
                 btn.setAttribute("aria-label", "Remove " + p.file.name);
                 btn.addEventListener("click", () => removePhoto(i));
@@ -71,6 +72,11 @@
                 list.appendChild(li);
             });
             root.classList.toggle("is-full", photos.length >= maxFiles);
+            if (count && maxFiles > 1) {
+                count.hidden = photos.length === 0;
+                count.textContent = photos.length + " of " + maxFiles + " photos added" +
+                    (photos.length >= maxFiles ? ". Remove one to add a different photo." : "");
+            }
         };
 
         const addFiles = (fileList) => {

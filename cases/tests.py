@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from .models import Case
+from .models import Case, ReportPhoto
 
 # A real 1x1 PNG, so the upload looks like a phone photo would to the server
 PNG_1PX = (
@@ -46,21 +46,61 @@ class ReportPhotoTests(TestCase):
         data.update(extra)
         return self.client.post('/report/', data)
 
+    def png(self, name='leak.png'):
+        return SimpleUploadedFile(name, PNG_1PX, content_type='image/png')
+
     def test_report_with_photo_saves_it_on_that_case(self):
-        photo = SimpleUploadedFile('leak.png', PNG_1PX, content_type='image/png')
-        response = self.report(photo=photo)
+        response = self.report(photo=self.png())
         case = Case.objects.get()
         self.assertRedirects(response, f'/track/{case.reference}/', fetch_redirect_response=False)
         self.assertEqual(case.reporter_user, self.user)
-        self.assertTrue(case.photo.name.startswith('reports/leak'))
-        with case.photo.open('rb') as f:
+        photo = case.photos.get()
+        self.assertTrue(photo.image.name.startswith('reports/leak'))
+        with photo.image.open('rb') as f:
             self.assertEqual(f.read(), PNG_1PX)
+
+    def test_report_with_five_photos_saves_all_in_order(self):
+        names = [f'photo{i}.png' for i in range(1, 6)]
+        self.report(photo=[self.png(n) for n in names])
+        case = Case.objects.get()
+        saved = [p.image.name.split('/')[-1] for p in case.photos.all()]
+        self.assertEqual(len(saved), 5)
+        for name, stored in zip(names, saved):
+            self.assertTrue(stored.startswith(name[:-4]))
+        self.assertEqual(len(case.all_photos()), 5)
+
+    def test_more_than_five_photos_is_refused(self):
+        response = self.report(photo=[self.png(f'p{i}.png') for i in range(6)])
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Case.objects.exists())
+        self.assertFalse(ReportPhoto.objects.exists())
+        self.assertContains(response, 'Please choose up to 5 photos. You chose 6.')
+
+    def test_wrong_type_is_refused_with_its_name(self):
+        pdf = SimpleUploadedFile('scan.pdf', b'%PDF-1.4', content_type='application/pdf')
+        response = self.report(photo=[self.png(), pdf])
+        self.assertFalse(Case.objects.exists())
+        self.assertContains(response, 'scan.pdf is not a JPG, PNG or WEBP image.')
+
+    def test_photo_over_10mb_is_refused_with_its_name(self):
+        big = SimpleUploadedFile('huge.jpg', b'0' * (10 * 1024 * 1024 + 1), content_type='image/jpeg')
+        response = self.report(photo=big)
+        self.assertFalse(Case.objects.exists())
+        self.assertContains(response, 'huge.jpg is 10.0MB. Each photo must be 10MB or less.')
+
+    def test_older_single_photo_still_shows_with_new_ones(self):
+        self.report(photo=self.png('new.png'))
+        case = Case.objects.get()
+        case.photo = 'reports/old.png'
+        case.save()
+        self.assertEqual([f.name for f in case.all_photos()][0], 'reports/old.png')
+        self.assertEqual(len(case.all_photos()), 2)
 
     def test_report_without_photo_still_works(self):
         response = self.report()
         case = Case.objects.get()
         self.assertEqual(response.status_code, 302)
-        self.assertFalse(case.photo)
+        self.assertEqual(case.all_photos(), [])
 
     def test_urgency_impact_and_safety_values_are_saved(self):
         self.report(reported_urgency='urgent', impact='building_wide', hs_risk='on')
@@ -68,14 +108,14 @@ class ReportPhotoTests(TestCase):
         self.assertEqual((case.reported_urgency, case.impact, case.hs_risk), ('urgent', 'building_wide', True))
 
     def test_form_errors_ask_for_the_photo_again(self):
-        photo = SimpleUploadedFile('leak.png', PNG_1PX, content_type='image/png')
-        response = self.report(title='', photo=photo)
+        response = self.report(title='', photo=self.png())
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Case.objects.exists())
-        self.assertContains(response, 'Please add your photo again')
+        self.assertContains(response, 'Please add your photos again')
 
     def test_upload_area_keeps_field_name_and_id(self):
         response = self.client.get('/report/')
-        self.assertContains(response, 'name="photo" id="id_photo"')
+        self.assertContains(response, 'name="photo" id="id_photo" class="dropzone-input" multiple')
+        self.assertContains(response, 'data-max-files="5" data-max-mb="10"')
         self.assertContains(response, 'enctype="multipart/form-data"')
         self.assertNotContains(response, 'capture=')

@@ -8,5 +8,11 @@
     <p class="mb-1">Reporter said urgency: {% include "cases/_pri.html" with p=case.reported_urgency %} &middot; Affects: {{ case.get_impact_display|lower }}</p>
     {% if case.hs_risk %}<p class="mb-1 overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Health and safety risk - make safe first</p>{% endif %}
     {% if case.asset_tag %}<p class="mb-1"><i class="fa-solid fa-tag" aria-hidden="true"></i> Asset tag: <strong>{{ case.asset_tag }}</strong></p>{% endif %}
-    {% if case.photo %}<img src="{{ case.photo.url }}" alt="Photo attached by the reporter" class="photo-thumb mt-2">{% endif %}
+    {% with photos=case.all_photos %}{% if photos %}
+    <ul class="photo-grid mt-2" aria-label="Photos attached by the reporter">
+        {% for p in photos %}
+        <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Photo {{ forloop.counter }} of {{ photos|length }} from the reporter (opens full size in a new tab)" loading="lazy"></a></li>
+        {% endfor %}
+    </ul>
+    {% endif %}{% endwith %}
 </div>

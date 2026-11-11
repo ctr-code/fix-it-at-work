@@ -154,8 +154,9 @@ class Case(models.Model):
     impact = models.CharField('Who is affected?', max_length=15, choices=Impact.choices, default=Impact.SINGLE_USER)
     hs_risk = models.BooleanField('Health and safety risk', default=False)
     asset_tag = models.CharField(max_length=20, blank=True)
+    # Older reports kept their single photo here. New reports store theirs as ReportPhoto (see all_photos).
     photo = models.FileField(upload_to='reports/', blank=True)
-    reporter_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+    reporter_user =models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name='reported_cases')
     reporter_name = models.CharField('Your name', max_length=80)
     reporter_email = models.EmailField('Your email')
@@ -252,6 +253,29 @@ class Case(models.Model):
             Status.NEW: 1, Status.ASSIGNED: 2, Status.IN_PROGRESS: 3,
             Status.RESOLVED: 4, Status.CLOSED: 5, Status.DUPLICATE: 5,
         }[self.status]
+
+    def all_photos(self):
+        """Every photo the reporter attached: an older report's single photo, then any newer ones."""
+        files = [self.photo] if self.photo else []
+        return files + [p.image for p in self.photos.all()]
+
+
+# Limits for photos attached to a report, shared by the form and the upload area
+MAX_REPORT_PHOTOS = 5
+MAX_PHOTO_MB = 10
+
+
+class ReportPhoto(models.Model):
+    """A photo the reporter attached to a report. A report can have up to MAX_REPORT_PHOTOS."""
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='photos')
+    image = models.FileField(upload_to='reports/')
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['uploaded_at', 'pk']
+
+    def __str__(self):
+        return f'Photo for {self.case.reference}'
 
 
 class SiteVisit(models.Model):

@@ -1,6 +1,8 @@
 from django import forms
 
-from .models import OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team
+from .models import (
+    MAX_PHOTO_MB, MAX_REPORT_PHOTOS, OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team,
+)
 
 
 class SignupNameForm(forms.Form):
@@ -15,15 +17,43 @@ class SignupNameForm(forms.Form):
         user.save()
 
 
+PHOTO_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
+PHOTO_TYPES = ('image/jpeg', 'image/png', 'image/webp')
+
+
+class MultipleFileInput(forms.ClearableFileInput):
+    """A file input that lets people choose several files at once."""
+    allow_multiple_selected = True
+
+
+class PhotosField(forms.FileField):
+    """Several optional photos, cleaned into a list (empty when none are chosen)."""
+    max_files = MAX_REPORT_PHOTOS
+    max_mb = MAX_PHOTO_MB
+
+    def __init__(self, **kwargs):
+        # No 'capture', so phones offer the camera or the photo library
+        kwargs.setdefault('widget', MultipleFileInput(attrs={'accept': ','.join(PHOTO_TYPES)}))
+        super().__init__(**kwargs)
+
+    def clean(self, data, initial=None):
+        files = data if isinstance(data, (list, tuple)) else [data]
+        return [super(PhotosField, self).clean(f, initial) for f in files if f]
+
+
 class ReportForm(forms.ModelForm):
-    """Name and email come from the signed-in account, so they are not asked for here."""
+    """Name and email come from the signed-in account, so they are not asked for here.
+    Photos are saved separately as ReportPhoto rows (see the report view)."""
+
+    photo = PhotosField(required=False, label='Photos',
+                        help_text='Optional, but it helps us bring the right tools first time.')
 
     class Meta:
         model = Case
         labels = {'hs_risk': 'This could hurt someone'}
         fields = [
             'title', 'description', 'building', 'location_detail', 'reported_urgency', 'impact', 'hs_risk',
-            'asset_tag', 'photo', 'preferred_language', 'preferred_contact',
+            'asset_tag', 'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -35,8 +65,6 @@ class ReportForm(forms.ModelForm):
             'reported_urgency': forms.RadioSelect,
             'impact': forms.RadioSelect,
             'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
-            # No 'capture', so phones offer the camera or the photo library
-            'photo': forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,image/webp'}),
         }
         help_texts = {
             'reported_urgency': 'Urgent = risk to people or property right now.',
@@ -44,11 +72,27 @@ class ReportForm(forms.ModelForm):
                        'or a trip hazard. We will make it safe first.',
             'asset_tag': 'Optional. The ID label on the equipment, if it has one.',
             'preferred_language': 'We will reply in this language.',
-            'photo': 'Optional, but it helps us bring the right tools first time.',
         }
 
     def clean_asset_tag(self):
         return self.cleaned_data['asset_tag'].strip().upper()
+
+    def clean_photo(self):
+        """The same limits the upload area checks in the browser, enforced here too."""
+        photos = self.cleaned_data.get('photo') or []
+        if len(photos) > MAX_REPORT_PHOTOS:
+            raise forms.ValidationError(
+                f'Please choose up to {MAX_REPORT_PHOTOS} photos. You chose {len(photos)}.')
+        problems = []
+        for f in photos:
+            name = f.name or 'A file'
+            if not name.lower().endswith(PHOTO_EXTENSIONS) or (f.content_type and f.content_type not in PHOTO_TYPES):
+                problems.append(f'{name} is not a JPG, PNG or WEBP image.')
+            elif f.size > MAX_PHOTO_MB * 1024 * 1024:
+                problems.append(f'{name} is {f.size / (1024 * 1024):.1f}MB. Each photo must be {MAX_PHOTO_MB}MB or less.')
+        if problems:
+            raise forms.ValidationError(problems)
+        return photos
 
 
 class FeedbackForm(forms.ModelForm):
