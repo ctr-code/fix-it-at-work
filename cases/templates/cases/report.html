@@ -52,8 +52,8 @@
             </header>
             <div class="row">
                 <div class="col-md-6">{{ form.asset_tag|as_crispy_field }}</div>
-                <div class="col-md-6">{{ form.photo|as_crispy_field }}</div>
             </div>
+            {% include "cases/_photo_upload.html" with field=form.photo %}
         </section>
 
         <section class="form-section" aria-labelledby="section-contact">
@@ -80,16 +80,21 @@
 {% endblock %}
 
 {% block extra_body %}
+{% load static %}
+<script src="{% static 'js/photo-upload.js' %}"></script>
 <script>
-    // Show that the report is sending and stop a second click creating a duplicate
+    // Show that the report is sending and stop a second click creating a duplicate.
+    // The photo goes with the report in this one request, so this is its upload feedback too.
     (function () {
         const form = document.querySelector('.report-page form');
         const button = document.getElementById('send-report');
+        const photo = document.getElementById('id_photo');
         const label = button.innerHTML;
         form.addEventListener('submit', function () {
+            const text = photo && photo.files.length ? 'Sending report and photo…' : 'Sending report…';
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
-            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Sending report…';
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>' + text;
         });
         // Reset the button if the user comes back to this page with the back button
         window.addEventListener('pageshow', function () {

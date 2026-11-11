@@ -40,6 +40,7 @@
     --medium: #0b5394;
     --low: #3d5a3d;
     --urgent-tint: #fdecef;
+    --urgent-border: #efb8c1;
     --high-tint: #fdf1e7;
     --neutral: #5b6773;            /* low urgency, 5.6:1 on white */
     --neutral-tint: #eef1f4;
@@ -125,6 +126,8 @@
     --control-pad-x: var(--space-3);
     --control-pad-y: var(--space-2);
     --choice-min-height: 84px;     /* urgency and impact cards */
+    --dropzone-min-height: 150px;  /* photo upload area */
+    --thumb-size: 64px;            /* photo previews */
 
     /* Focus, shadows and motion */
     --focus-outline: 3px solid var(--accent);
@@ -170,6 +173,8 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 .btn-primary { background: var(--brand); border-color: var(--brand); }
 .btn-primary:hover, .btn-primary:active { background: var(--brand-dark) !important; border-color: var(--brand-dark) !important; }
 .btn-primary:active { transform: translateY(1px); }
+.btn-outline-primary { color: var(--brand); border-color: var(--brand); background: var(--white); }
+.btn-outline-primary:hover, .btn-outline-primary:active { color: var(--on-brand) !important; background: var(--brand) !important; border-color: var(--brand) !important; }
 .btn-primary:disabled { background: var(--brand) !important; border-color: var(--brand) !important; opacity: .7; }
 
 /* Tables: one step below body text; ticket numbers stay on one line */
@@ -275,6 +280,46 @@ main { margin-bottom: var(--space-10); }
 .invalid-feedback p::before { content: "\f06a"; font-family: "Font Awesome 7 Free"; font-weight: 900; margin-right: .35rem; }
 .form-check-input.is-invalid ~ .form-check-label { color: var(--ink); }
 
+/* Photo upload: a drop area around the real file input, then a list of previews.
+   Without JavaScript (.is-enhanced missing) the plain file picker shows instead. */
+.optional-tag { margin-left: var(--space-label); padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--surface-sunken); color: var(--muted); font-size: var(--fs-caption); font-weight: var(--fw-medium); vertical-align: 1px; }
+.photo-upload:not(.is-enhanced) .dropzone > :not(.dropzone-input) { display: none; }
+.photo-upload.is-enhanced .dropzone-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.photo-upload.is-enhanced .dropzone {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
+    min-height: var(--dropzone-min-height); padding: var(--space-6) var(--space-5); text-align: center;
+    background: var(--surface); border: 1.5px dashed var(--border-hover); border-radius: var(--radius-lg);
+    cursor: pointer; transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+.photo-upload.is-enhanced .dropzone:hover { border-color: var(--brand); background: var(--white); }
+.dropzone.is-invalid { border-color: var(--urgent) !important; }
+.dropzone-icon { font-size: var(--fs-icon-lg); color: var(--brand); margin-bottom: var(--space-1); }
+.dropzone-title { margin: 0; font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--ink); }
+.dropzone-text { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); font-size: var(--fs-small); color: var(--muted); }
+.dropzone-hint { margin: var(--space-1) 0 0; font-size: var(--fs-small); color: var(--muted); }
+.when-touch { display: none; }
+@media (hover: none) and (pointer: coarse) { .when-pointer { display: none; } .when-touch { display: inline; } }
+/* Drag-over: solid teal edge, light teal fill and a single drop instruction */
+.dropzone-drop { display: none; }
+.photo-upload.is-enhanced .dropzone.is-dragover { border-style: solid; border-color: var(--brand); background: var(--brand-tint); }
+.dropzone.is-dragover .dropzone-drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: var(--radius-lg); background: var(--brand-tint); color: var(--brand); font-weight: var(--fw-semibold); }
+.photo-upload.is-full .dropzone { display: none !important; }
+
+.photo-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: var(--space-3); }
+.photo-list:empty { display: none; }
+.photo-upload.is-full .photo-list { margin-top: 0; }
+.photo-item { min-width: 0; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2); background: var(--white); border: var(--line); border-radius: var(--radius-lg); }
+.photo-thumb-sm { flex: none; width: var(--thumb-size); height: var(--thumb-size); object-fit: cover; border-radius: var(--radius-md); background: var(--surface-sunken); }
+.photo-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.photo-name { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-size { font-size: var(--fs-small); color: var(--muted); line-height: var(--lh-snug); }
+.photo-remove { flex: none; display: inline-flex; align-items: center; gap: var(--space-label); min-height: var(--control-height); padding: 0 var(--space-3); background: var(--white); border: var(--border-width) solid var(--border-control); border-radius: var(--control-radius); color: var(--ink); font-size: var(--fs-small); font-weight: var(--fw-medium); }
+.photo-remove:hover { border-color: var(--urgent); color: var(--urgent); }
+.photo-item.is-error { grid-column: 1 / -1; background: var(--urgent-tint); border-color: var(--urgent-border); }
+.photo-item.is-error .photo-size { color: var(--urgent); }
+.photo-error-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--thumb-size); height: var(--thumb-size); color: var(--urgent); font-size: var(--fs-icon); }
+.photo-reselect { margin: var(--space-2) 0 0; font-size: var(--fs-small); color: var(--warning-ink); }
+
 /* 6. Report an issue ====================================================== */
 /* Centred form up to 700px wide; field pairs sit side by side from 768px (col-md-6) */
 .report-page { max-width: var(--page-md); margin: 0 auto; padding: 0 var(--space-gutter); box-sizing: content-box; }
@@ -358,6 +403,12 @@ main { margin-bottom: var(--space-10); }
     .report-page .panel { padding: var(--space-5) var(--space-4); }
     .choice-grid { grid-template-columns: 1fr; grid-auto-rows: auto; gap: var(--space-2); }
     .choice-card { min-height: 0; padding-top: var(--space-3); padding-bottom: var(--space-3); }
+    .photo-upload.is-enhanced .dropzone { padding: var(--space-5) var(--space-4); }
+    .dropzone-browse { min-height: var(--control-height); }
+    .photo-list { grid-template-columns: minmax(0, 1fr); }
+    .photo-error-icon { width: 40px; }
+    .photo-remove { width: var(--control-height); justify-content: center; padding: 0; }
+    .photo-remove-text { display: none; }   /* icon only on phones; the button keeps its spoken label */
     .form-section { padding: var(--space-6) 0; }
     .form-section-head { margin-bottom: var(--space-4); }
 }

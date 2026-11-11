@@ -35,7 +35,8 @@ class ReportForm(forms.ModelForm):
             'reported_urgency': forms.RadioSelect,
             'impact': forms.RadioSelect,
             'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
-            'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
+            # No 'capture', so phones offer the camera or the photo library
+            'photo': forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,image/webp'}),
         }
         help_texts = {
             'reported_urgency': 'Urgent = risk to people or property right now.',
