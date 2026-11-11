@@ -95,7 +95,6 @@ main { margin-bottom: 2.5rem; }
 .photo-thumb { max-width: 100%; max-height: 260px; border-radius: 8px; border: 1px solid var(--border); }
 .letter { white-space: pre-wrap; font-family: Georgia, serif; }
 .form-check-inline { margin-right: 1.25rem; }
-#id_reported_urgency { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
 .dictate-on { background: var(--urgent) !important; border-color: var(--urgent) !important; color: #fff !important; }
 
 /* Signed-in user menu */
@@ -105,3 +104,12 @@ main { margin-bottom: 2.5rem; }
 /* Radio button groups use a legend, which crispy forms shrinks to 1rem with fs-6.
    Match it to the other form labels, which use the page text size. */
 form legend.form-label { font-size: inherit !important; }
+
+/* Report an issue: centred form up to 700px wide, with 24px side space on
+   tablets and 16px on phones. Field pairs sit side by side from 768px (col-md-6). */
+.report-page { max-width: 700px; margin: 0 auto; padding: 0 24px; box-sizing: content-box; }
+.report-page .form-control, .report-page .form-select { min-height: 44px; }
+/* Radio options in a wrapping row instead of a tall list */
+.report-page fieldset > div:has(> .form-check) { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+@media (min-width: 768px) { .report-page .panel { padding: 1.75rem; } }
+@media (max-width: 575.98px) { .report-page { padding: 0 16px; } }

@@ -2,7 +2,7 @@
 {% load crispy_forms_tags %}
 {% block head_title %}Report an issue - Fix It at Work{% endblock %}
 {% block main %}
-<section class="container" style="max-width: 760px">
+<section class="report-page">
     <h1>Report an issue</h1>
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
     <form method="post" enctype="multipart/form-data" class="panel" novalidate>
@@ -20,8 +20,8 @@
         {{ form.hs_risk|as_crispy_field }}
         <div class="row">
             <div class="col-md-6">{{ form.asset_tag|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.photo|as_crispy_field }}</div>
         </div>
-        {{ form.photo|as_crispy_field }}
         <h2 class="h5 mt-4">How should we reply?</h2>
         <p class="small text-muted mb-2">Reporting as <strong>{{ user.get_full_name|default:user.username }}</strong> ({{ user.email }}).</p>
         <div class="row">
