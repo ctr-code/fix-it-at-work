@@ -36,18 +36,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 # To debug, define environment variable DJANGO_DEBUG=True
 DEBUG = os.getenv('DJANGO_DEBUG', False) == 'True'
 
-ALLOWED_HOSTS = [h.strip() for h in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
-
-# Heroku handles HTTPS before requests reach Django. Trust its header so Django
-# knows the page is secure; without this, sign-in and sign-up forms fail the
-# CSRF check on the live site.
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-CSRF_TRUSTED_ORIGINS = [f'https://{h}' for h in ALLOWED_HOSTS if h not in ('localhost', '127.0.0.1')]
-
-if not DEBUG:
-    # Only send login and form cookies over HTTPS on the live site
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # Application definition
 
