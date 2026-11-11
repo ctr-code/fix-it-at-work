@@ -1,0 +1,39 @@
+{% comment %}
+Drag-and-drop photo upload. The real file input (name "photo", id "id_photo") stays in
+the form and is what gets submitted with the report; static/js/photo-upload.js keeps
+its file list in step with the previews. The limits come from the form field
+(PhotosField in cases/forms.py), which checks them again on the server.
+Without JavaScript the browser's normal file picker still works.
+Usage: {% include "cases/_photo_upload.html" with field=form.photo %}
+{% endcomment %}
+{% with max=field.field.max_files mb=field.field.max_mb %}
+<div class="mb-3 photo-upload" data-max-files="{{ max }}" data-max-mb="{{ mb }}">
+    <div class="form-label" id="photo-label">{{ field.label }} <span class="optional-tag">Optional</span></div>
+    <div class="dropzone{% if field.errors %} is-invalid{% endif %}" data-dropzone>
+        <input type="file" name="{{ field.html_name }}" id="{{ field.auto_id }}" class="dropzone-input" multiple
+            accept="image/jpeg,image/png,image/webp"
+            aria-labelledby="photo-label" aria-describedby="photo-formats{% if field.help_text %} {{ field.auto_id }}_helptext{% endif %}{% if field.errors %} {{ field.auto_id }}_error{% endif %}">
+        <i class="fa-solid fa-cloud-arrow-up dropzone-icon" aria-hidden="true"></i>
+        <p class="dropzone-title">Upload photos of the issue</p>
+        <p class="dropzone-text">
+            <span class="when-pointer">Drag and drop images here, or</span>
+            <span class="when-touch">Take photos or choose them from your device</span>
+            <button type="button" class="btn btn-outline-primary btn-sm dropzone-browse" data-browse aria-describedby="photo-formats">
+                <i class="fa-solid fa-image" aria-hidden="true"></i> Browse files
+            </button>
+        </p>
+        <p class="dropzone-hint" id="photo-formats">JPG, PNG or WEBP, up to {{ mb }}MB each. Up to {{ max }} photos.</p>
+        <p class="dropzone-drop" aria-hidden="true">Drop your photos to add them</p>
+    </div>
+    <p class="visually-hidden" aria-live="polite" data-status></p>
+    <p class="photo-count" data-count hidden></p>
+    <ul class="photo-list" data-list aria-label="Chosen photos"></ul>
+    {% if form.is_bound and form.files.photo and form.errors %}
+    <p class="photo-reselect"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Please add your photos again. Browsers clear chosen files when a form needs correcting.</p>
+    {% endif %}
+    {% if field.errors %}
+    <div id="{{ field.auto_id }}_error" class="invalid-feedback d-block">{% for e in field.errors %}<p><strong>{{ e }}</strong></p>{% endfor %}</div>
+    {% endif %}
+    {% if field.help_text %}<div id="{{ field.auto_id }}_helptext" class="form-text">{{ field.help_text }}</div>{% endif %}
+</div>
+{% endwith %}

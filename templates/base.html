@@ -19,6 +19,10 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon-32x32.png' %}">
     <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon/favicon-16x16.png' %}">
+    {# Inter font; the stylesheet falls back to the system font if it can't load #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     {# stylesheet #}
     <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
     {# Font-Awesome stylesheet #}
@@ -29,54 +33,61 @@
 
 <body class="d-flex flex-column min-vh-100">
     <a class="visually-hidden-focusable skip-link" href="#main">Skip to main content</a>
-    {# Navigation bar #}
-    <nav id="navbar" class="navbar navbar-expand-lg fixed-top navbar-dark">
-        <div class="container">
-            {# Spanner logo. Hidden from screen readers because the name link next to it goes to the same place #}
-            <a class="navbar-brand" href="{% url 'index' %}" tabindex="-1" aria-hidden="true">
-                <span class="logo"><i class="fa-solid fa-wrench"></i></span>
-            </a>
-            {# Don't share the preceding <a> because this text moves about #}
-            <a class="navbar-brand" href="{% url 'index' %}">
-                <span>Fix It at Work</span>
+    {# Header, shared by every page. Links and who sees them are unchanged; the active link follows the current address. #}
+    <nav id="navbar" class="navbar navbar-expand-lg fixed-top navbar-dark site-header" aria-label="Main">
+        <div class="container header-inner">
+            <a class="navbar-brand brand" href="{% url 'index' %}">
+                <span class="logo" aria-hidden="true"><i class="fa-solid fa-wrench"></i></span>
+                <span class="brand-name">Fix It at Work</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
-                aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
+                aria-label="Open menu">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                <ul class="navbar-nav ms-auto align-items-lg-center">
-                    {% with p=request.path %}
-                    {% if user.is_authenticated %}
-                    <li class="nav-item"><a class="nav-link {% if '/report' in p or '/track' in p %}active{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
+                {% with p=request.path %}
+                {% if user.is_authenticated %}
+                <ul class="navbar-nav main-nav mx-lg-auto">
+                    <li class="nav-item"><a class="nav-link{% if '/report' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
                     {% if user_role == 'handler' or user_role == 'manager' %}
-                    <li class="nav-item"><a class="nav-link {% if '/triage' in p or '/cases' in p %}active{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/triage' in p or '/cases' in p %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
                     {% endif %}
                     {% if user_role == 'officer' %}
-                    <li class="nav-item"><a class="nav-link {% if '/officer' in p %}active{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> My jobs</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/officer' in p %} active" aria-current="page{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> My jobs</a></li>
                     {% endif %}
                     {% if user_role == 'manager' %}
-                    <li class="nav-item"><a class="nav-link {% if '/dashboard' in p %}active{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link {% if '/people' in p %}active{% endif %}" href="{% url 'people' %}"><i class="fa-solid fa-users" aria-hidden="true"></i> People</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/dashboard' in p %} active" aria-current="page{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/people' in p %} active" aria-current="page{% endif %}" href="{% url 'people' %}"><i class="fa-solid fa-users" aria-hidden="true"></i> People</a></li>
                     {% endif %}
+                </ul>
+                <ul class="navbar-nav profile-nav">
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fa-solid fa-circle-user" aria-hidden="true"></i> {{ user.first_name|default:user.username }}
-                            <span class="role-pill">{{ user_role_label }}</span>
+                        <a class="nav-link dropdown-toggle profile-toggle{% if p == profile_url %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="avatar" aria-hidden="true">{% if user.first_name %}{{ user.first_name|slice:":1"|upper }}{{ user.last_name|slice:":1"|upper }}{% else %}{{ user.username|slice:":1"|upper }}{% endif %}</span>
+                            <span class="profile-text">
+                                <span class="profile-name">{{ user.first_name|default:user.username }}</span>
+                                <span class="profile-role">{{ user_role_label }}</span>
+                            </span>
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{% url 'profile' %}">My profile</a></li>
+                        <ul class="dropdown-menu dropdown-menu-end profile-menu">
+                            <li class="profile-menu-head">
+                                <span class="profile-menu-name">{{ user.get_full_name|default:user.username }}</span>
+                                {% if user.email %}<span class="profile-menu-email">{{ user.email }}</span>{% endif %}
+                            </li>
+                            <li><a class="dropdown-item" href="{% url 'profile' %}"{% if p == profile_url %} aria-current="page"{% endif %}><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="dropdown-item">Sign out</button></form></li>
+                            <li><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
                         </ul>
                     </li>
-                    {% else %}
-                    <li class="nav-item"><a class="nav-link {% if '/signup' in p %}active{% endif %}" href="{% url 'account_signup' %}">Create account</a></li>
-                    <li class="nav-item"><a class="nav-link {% if '/login' in p %}active{% endif %}" href="{% url 'account_login' %}">Sign in</a></li>
-                    {% endif %}
-                    {% endwith %}
                 </ul>
+                {% else %}
+                <ul class="navbar-nav ms-lg-auto auth-nav">
+                    <li class="nav-item"><a class="nav-link{% if '/signup' in p %} active" aria-current="page{% endif %}" href="{% url 'account_signup' %}">Create account</a></li>
+                    <li class="nav-item"><a class="nav-link nav-cta{% if '/login' in p %} active" aria-current="page{% endif %}" href="{% url 'account_login' %}">Sign in</a></li>
+                </ul>
+                {% endif %}
+                {% endwith %}
             </div>
         </div>
     </nav>
@@ -129,18 +140,8 @@
     <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
     {% block extra_body %}
     {% endblock extra_body %}
-    {# JavaScript code to ensure the Bootstrap mobile navbar has collapsed when going back to a page where it was open #}
-    <script>
-        document
-            .querySelectorAll(".navbar-collapse .nav-link")
-            .forEach((link) => {
-                link.addEventListener("click", function (e) {
-                    document
-                        .querySelector(".navbar-collapse")
-                        .classList.remove("show"); // Collapse navbar
-                });
-            });
-    </script>
+    {# Header menu: closes after choosing a link or pressing Escape; adds a shadow when scrolled #}
+    <script src="{% static 'js/nav.js' %}"></script>
 </body>
 
 </html>

@@ -2,7 +2,7 @@
 {% load crispy_forms_tags %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
-<section class="container" style="max-width: 820px">
+<section class="container page-lg">
     <h1>{{ case.reference }}: {{ case.title }}</h1>
     <p><span class="badge-status">{{ case.get_status_display }}</span>
         {% if case.status == 'duplicate' %} - linked to {{ case.duplicate_of.reference }}, which is already being fixed{% endif %}</p>
