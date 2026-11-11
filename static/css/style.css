@@ -39,6 +39,15 @@
     --high: #a14a00;
     --medium: #0b5394;
     --low: #3d5a3d;
+    --urgent-tint: #fdecef;
+    --high-tint: #fdf1e7;
+    --neutral: #5b6773;            /* low urgency, 5.6:1 on white */
+    --neutral-tint: #eef1f4;
+
+    /* Colours: safety warning */
+    --warning-bg: #fff8e8;
+    --warning-border: #f0c36d;
+    --warning-ink: #8a5300;        /* 5.3:1 on the warning background */
 
     /* Colours: AI content (purple is only used for AI) */
     --ai: #5b2a86;
@@ -104,7 +113,7 @@
     --stripe-width: 6px;           /* coloured left edge on AI boxes and job cards */
     --radius-sm: 4px;              /* bars, tracks */
     --radius-md: 6px;              /* inputs, buttons, badges */
-    --radius-lg: 8px;              /* logo, photos */
+    --radius-lg: 8px;              /* logo, photos, choice cards */
     --radius-xl: 12px;             /* panels, AI boxes */
     --radius-2xl: 16px;            /* hero */
     --radius-pill: 999px;
@@ -115,6 +124,7 @@
     --control-radius: var(--radius-md);
     --control-pad-x: var(--space-3);
     --control-pad-y: var(--space-2);
+    --choice-min-height: 84px;     /* urgency and impact cards */
 
     /* Focus, shadows and motion */
     --focus-outline: 3px solid var(--accent);
@@ -271,12 +281,47 @@ main { margin-bottom: var(--space-10); }
 .report-page > h1 + p { margin-bottom: var(--space-5); }
 .report-page .panel { padding: var(--space-panel); }
 .report-page .mb-3 { margin-bottom: var(--space-field) !important; }
-/* Radio options in a wrapping row instead of a tall list */
-.report-page fieldset > div:has(> .form-check) { display: flex; flex-wrap: wrap; gap: 10px var(--space-6); }
-.report-page fieldset > div > .form-check { margin-bottom: 0; }
-/* crispy puts a radio group's error inside the last option; show it under the whole row */
-.report-page fieldset > div:has(.invalid-feedback) { position: relative; padding-bottom: 26px; }
-.report-page fieldset .form-check .invalid-feedback { position: absolute; left: 0; bottom: 0; margin: 0; }
+
+/* Choice cards: radio options shown as cards (urgency and impact).
+   Each card is a label around a real radio input, which stays focusable but hidden.
+   --tone sets the accent colour; selection adds a 2px edge, a tint and a tick. */
+.choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--space-3); }
+.choice-card {
+    --tone: var(--brand); --tone-tint: var(--brand-tint);
+    position: relative; display: flex; align-items: flex-start; gap: var(--space-3);
+    min-height: var(--choice-min-height); margin: 0; padding: var(--space-4); padding-right: var(--space-10);
+    background: var(--white); border: var(--border-width) solid var(--border-control); border-radius: var(--radius-lg);
+    cursor: pointer; transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.choice-card input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.tone-urgent { --tone: var(--urgent); --tone-tint: var(--urgent-tint); }
+.tone-high { --tone: var(--high); --tone-tint: var(--high-tint); }
+.tone-medium { --tone: var(--brand); --tone-tint: var(--brand-tint); }
+.tone-low { --tone: var(--neutral); --tone-tint: var(--neutral-tint); }
+.choice-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--tone-tint); color: var(--tone); font-size: var(--fs-label); }
+.tone-neutral .choice-icon { background: var(--neutral-tint); color: var(--muted); }
+.choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.choice-title { font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--ink); line-height: var(--lh-heading); }
+.choice-desc { font-size: var(--fs-small); color: var(--muted); line-height: var(--lh-snug); }
+/* Empty circle when not chosen, filled tick when chosen, so selection never relies on colour */
+.choice-check { position: absolute; top: var(--space-3); right: var(--space-3); display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border-hover); background: var(--white); color: transparent; font-size: .7rem; }
+.choice-card:hover { border-color: var(--border-hover); }
+.choice-card:has(input:checked) { border-color: var(--tone); box-shadow: inset 0 0 0 1px var(--tone); background: var(--tone-tint); }
+.choice-card:has(input:checked) .choice-check { background: var(--tone); border-color: var(--tone); color: var(--on-brand); }
+.tone-neutral:has(input:checked) .choice-icon { background: var(--white); color: var(--brand); }
+.choice-card:has(input:focus-visible) { outline: var(--focus-outline); outline-offset: 2px; }
+.choice-grid.is-invalid .choice-card { border-color: var(--urgent); }
+.choice-group .form-text, .choice-group .invalid-feedback { margin-top: var(--space-2); }
+
+/* Safety question: amber panel with a warning icon */
+.safety-panel { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-4); background: var(--warning-bg); border: var(--border-width) solid var(--warning-border); border-radius: var(--radius-lg); }
+.safety-icon { color: var(--warning-ink); font-size: var(--fs-section); margin-top: 2px; }
+.safety-panel > .mb-3 { margin-bottom: 0 !important; flex: 1; }
+.safety-panel .form-check { margin: 0; }
+.safety-panel .form-check-label { font-weight: var(--fw-semibold); }
+.safety-panel .form-check-input { background-color: var(--white); }
+.safety-panel .form-check-input:checked { background-color: var(--brand); }
+.safety-panel .form-text { color: var(--ink) !important; }
 
 /* Numbered sections inside one panel, split by thin lines */
 .form-section { padding: var(--space-section) 0; border-top: var(--line); }
@@ -311,6 +356,8 @@ main { margin-bottom: var(--space-10); }
 @media (max-width: 575.98px) {
     .report-page { padding: 0 var(--space-gutter-phone); }
     .report-page .panel { padding: var(--space-5) var(--space-4); }
+    .choice-grid { grid-template-columns: 1fr; grid-auto-rows: auto; gap: var(--space-2); }
+    .choice-card { min-height: 0; padding-top: var(--space-3); padding-bottom: var(--space-3); }
     .form-section { padding: var(--space-6) 0; }
     .form-section-head { margin-bottom: var(--space-4); }
 }

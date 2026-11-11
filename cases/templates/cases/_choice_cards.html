@@ -1,0 +1,36 @@
+{% comment %}
+A radio field shown as selectable cards. Each card is a label wrapping a real
+radio input, so the field name, values, default and keyboard behaviour
+(Tab into the group, arrow keys to move) are exactly those of normal radios.
+Usage: {% include "cases/_choice_cards.html" with field=form.reported_urgency kind="urgency" %}
+{% endcomment %}
+{% with name=field.html_name base=field.auto_id %}
+<fieldset class="mb-3 choice-group" aria-describedby="{% if field.help_text %}{{ base }}_helptext{% endif %}{% if field.errors %} {{ base }}_error{% endif %}">
+    <legend class="form-label{% if field.field.required %} requiredField{% endif %}">
+        {{ field.label }}{% if field.field.required %}<span class="asteriskField" aria-hidden="true">*</span>{% endif %}
+    </legend>
+    <div class="choice-grid{% if field.errors %} is-invalid{% endif %}">
+        {% for radio in field %}
+        {% with v=radio.data.value %}
+        <label class="choice-card {% if kind == 'urgency' %}tone-{{ v }}{% else %}tone-neutral{% endif %}" for="{{ radio.id_for_label }}">
+            <input type="radio" name="{{ name }}" value="{{ v }}" id="{{ radio.id_for_label }}"
+                aria-labelledby="{{ radio.id_for_label }}_title" aria-describedby="{{ radio.id_for_label }}_desc"
+                {% if radio.data.selected %}checked{% endif %}
+                {% if field.field.required %}required{% endif %}
+                {% if field.errors %}aria-invalid="true"{% endif %}>
+            <span class="choice-icon" aria-hidden="true"><i class="fa-solid {% if kind == 'urgency' %}{% if v == 'urgent' %}fa-triangle-exclamation{% elif v == 'high' %}fa-circle-exclamation{% elif v == 'medium' %}fa-circle-minus{% else %}fa-clock{% endif %}{% else %}{% if v == 'single_user' %}fa-user{% elif v == 'team' %}fa-users{% elif v == 'department' %}fa-building-user{% else %}fa-building{% endif %}{% endif %}"></i></span>
+            <span class="choice-text">
+                <span class="choice-title" id="{{ radio.id_for_label }}_title">{{ radio.choice_label }}</span>
+                <span class="choice-desc" id="{{ radio.id_for_label }}_desc">{% if kind == 'urgency' %}{% if v == 'urgent' %}Immediate risk to people or property.{% elif v == 'high' %}Requires prompt attention.{% elif v == 'medium' %}Normal maintenance request.{% else %}Can be scheduled for later.{% endif %}{% else %}{% if v == 'single_user' %}Only I am affected.{% elif v == 'team' %}Affects my immediate team.{% elif v == 'department' %}Affects my department.{% else %}Affects everyone in the building.{% endif %}{% endif %}</span>
+            </span>
+            <span class="choice-check" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+        </label>
+        {% endwith %}
+        {% endfor %}
+    </div>
+    {% if field.errors %}
+    <div id="{{ base }}_error" class="invalid-feedback d-block">{% for e in field.errors %}<p><strong>{{ e }}</strong></p>{% endfor %}</div>
+    {% endif %}
+    {% if field.help_text %}<div id="{{ base }}_helptext" class="form-text">{{ field.help_text }}</div>{% endif %}
+</fieldset>
+{% endwith %}

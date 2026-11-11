@@ -33,9 +33,13 @@
                     <p class="form-section-sub">Help us understand how quickly this issue needs attention.</p>
                 </div>
             </header>
-            {{ form.reported_urgency|as_crispy_field }}
-            {{ form.impact|as_crispy_field }}
-            {{ form.hs_risk|as_crispy_field }}
+            {% include "cases/_choice_cards.html" with field=form.reported_urgency kind="urgency" %}
+            {% include "cases/_choice_cards.html" with field=form.impact kind="impact" %}
+            {# Safety question in its own panel. Ticking it does not change the urgency. #}
+            <div class="safety-panel">
+                <i class="fa-solid fa-triangle-exclamation safety-icon" aria-hidden="true"></i>
+                {{ form.hs_risk|as_crispy_field }}
+            </div>
         </section>
 
         <section class="form-section" aria-labelledby="section-extra">
