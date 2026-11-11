@@ -7,29 +7,70 @@
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
     <form method="post" enctype="multipart/form-data" class="panel" novalidate>
         {% csrf_token %}
-        <h2 class="h5">What and where</h2>
-        {{ form.title|as_crispy_field }}
-        {{ form.description|as_crispy_field }}
-        <div class="row">
-            <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
-            <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
+
+        <section class="form-section" aria-labelledby="section-what">
+            <header class="form-section-head">
+                <span class="form-section-num" aria-hidden="true">01</span>
+                <div>
+                    <h2 id="section-what" class="form-section-title">What and where</h2>
+                    <p class="form-section-sub">Tell us about the problem and where it is happening.</p>
+                </div>
+            </header>
+            <datalist id="buildings">{% for b in buildings %}<option value="{{ b }}">{% endfor %}</datalist>
+            {{ form.title|as_crispy_field }}
+            {{ form.description|as_crispy_field }}
+            <div class="row">
+                <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
+                <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
+            </div>
+        </section>
+
+        <section class="form-section" aria-labelledby="section-urgency">
+            <header class="form-section-head">
+                <span class="form-section-num" aria-hidden="true">02</span>
+                <div>
+                    <h2 id="section-urgency" class="form-section-title">Urgency and impact</h2>
+                    <p class="form-section-sub">Help us understand how quickly this issue needs attention.</p>
+                </div>
+            </header>
+            {{ form.reported_urgency|as_crispy_field }}
+            {{ form.impact|as_crispy_field }}
+            {{ form.hs_risk|as_crispy_field }}
+        </section>
+
+        <section class="form-section" aria-labelledby="section-extra">
+            <header class="form-section-head">
+                <span class="form-section-num" aria-hidden="true">03</span>
+                <div>
+                    <h2 id="section-extra" class="form-section-title">Additional information</h2>
+                    <p class="form-section-sub">Provide any extra details that could help us resolve the issue.</p>
+                </div>
+            </header>
+            <div class="row">
+                <div class="col-md-6">{{ form.asset_tag|as_crispy_field }}</div>
+                <div class="col-md-6">{{ form.photo|as_crispy_field }}</div>
+            </div>
+        </section>
+
+        <section class="form-section" aria-labelledby="section-contact">
+            <header class="form-section-head">
+                <span class="form-section-num" aria-hidden="true">04</span>
+                <div>
+                    <h2 id="section-contact" class="form-section-title">How should we contact you?</h2>
+                    <p class="form-section-sub">Confirm your contact preferences so we can keep you updated.</p>
+                </div>
+            </header>
+            <p class="small text-muted mb-3">Reporting as <strong>{{ user.get_full_name|default:user.username }}</strong> ({{ user.email }}).</p>
+            <div class="row">
+                <div class="col-md-6">{{ form.preferred_language|as_crispy_field }}</div>
+                <div class="col-md-6">{{ form.preferred_contact|as_crispy_field }}</div>
+            </div>
+            <p class="small text-muted mb-0">We only use your details to update you about this report. An AI assistant will suggest how to route it, and a member of staff checks every suggestion.</p>
+        </section>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg w-100">Send report</button>
         </div>
-        <datalist id="buildings">{% for b in buildings %}<option value="{{ b }}">{% endfor %}</datalist>
-        {{ form.reported_urgency|as_crispy_field }}
-        {{ form.impact|as_crispy_field }}
-        {{ form.hs_risk|as_crispy_field }}
-        <div class="row">
-            <div class="col-md-6">{{ form.asset_tag|as_crispy_field }}</div>
-            <div class="col-md-6">{{ form.photo|as_crispy_field }}</div>
-        </div>
-        <h2 class="h5 mt-4">How should we reply?</h2>
-        <p class="small text-muted mb-2">Reporting as <strong>{{ user.get_full_name|default:user.username }}</strong> ({{ user.email }}).</p>
-        <div class="row">
-            <div class="col-md-6">{{ form.preferred_language|as_crispy_field }}</div>
-            <div class="col-md-6">{{ form.preferred_contact|as_crispy_field }}</div>
-        </div>
-        <p class="small text-muted">We only use your details to update you about this report. An AI assistant will suggest how to route it, and a member of staff checks every suggestion.</p>
-        <button type="submit" class="btn btn-primary btn-lg w-100">Send report</button>
     </form>
 </section>
 {% endblock %}
