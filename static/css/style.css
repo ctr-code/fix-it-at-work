@@ -23,6 +23,10 @@
     --placeholder: #6b7785;        /* 4.6:1 on white */
     --on-brand: #fff;              /* text on teal */
     --on-brand-tint: rgba(255, 255, 255, .18);
+    --on-brand-muted: rgba(255, 255, 255, .78);   /* secondary text on teal, 6:1 */
+    --on-brand-hover: rgba(255, 255, 255, .10);   /* nav hover */
+    --on-brand-active: rgba(255, 255, 255, .18);  /* current page in the nav */
+    --on-brand-line: rgba(255, 255, 255, .20);    /* dividers on teal */
 
     /* Colours: surfaces */
     --white: #fff;
@@ -68,7 +72,7 @@
     --fs-body: 1.0625rem;          /* 17px  paragraphs */
     --fs-input: 1.0625rem;         /* 17px  text typed into fields */
     --fs-label: 1rem;              /* 16px  form labels, tables */
-    --fs-nav: 1rem;                /* 16px */
+    --fs-nav: .875rem;             /* 14px  header links */
     --fs-button: 1rem;             /* 16px */
     --fs-small: .9375rem;          /* 15px  helper text, .small, meta lines */
     --fs-caption: .8125rem;        /* 13px  badges, pills, uppercase tags */
@@ -134,10 +138,14 @@
     --focus-ring: 0 0 0 3px rgba(11, 79, 108, .28);
     --focus-ring-error: 0 0 0 3px rgba(176, 0, 32, .2);
     --shadow-hover: 0 4px 18px rgba(0, 0, 0, .08);
+    --shadow-header: 0 2px 10px rgba(7, 52, 71, .25);   /* under the header once scrolled */
+    --shadow-menu: 0 8px 24px rgba(16, 24, 40, .12);    /* dropdown menus */
     --transition-fast: .15s;
 
-    /* Page widths */
-    --nav-offset: 80px;
+    /* Header and page widths */
+    --nav-height: 64px;
+    --nav-height-phone: 58px;
+    --nav-offset: calc(var(--nav-height) + var(--space-4));   /* space above page content */
     --page-xs: 560px;              /* track search */
     --page-sm: 640px;              /* officer pages, errors */
     --page-md: 700px;              /* report form */
@@ -182,13 +190,67 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 .table td > a[href*="/cases/"], .table td > a[href*="/triage/"] { white-space: nowrap; }
 
 /* 3. Layout =============================================================== */
-#navbar { background: var(--brand); }
-#navbar .nav-link { color: var(--on-brand); opacity: .9; font-size: var(--fs-nav); font-weight: var(--fw-medium); }
-#navbar .nav-link.active, #navbar .nav-link:hover { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
-.navbar-brand { font-weight: var(--fw-bold); color: var(--on-brand) !important; }
-.logo { display: inline-flex; align-items: center; justify-content: center; width: var(--space-10); height: var(--space-10); border-radius: var(--radius-lg); background: var(--white); color: var(--brand); font-size: var(--fs-icon); }
-.role-pill { background: var(--on-brand-tint); border-radius: var(--radius-pill); padding: .1rem .55rem; font-size: var(--fs-caption); margin-left: var(--space-1); }
-.dropdown-item { color: var(--ink); }
+/* Header: brand on the left, main links in the middle, profile on the right */
+.site-header { min-height: var(--nav-height); padding: 0; background: var(--brand); border-bottom: var(--border-width) solid var(--brand-dark); transition: box-shadow var(--transition-fast); }
+.site-header.is-scrolled { box-shadow: var(--shadow-header); }
+.header-inner { min-height: var(--nav-height); gap: var(--space-4); }
+.brand { display: inline-flex; align-items: center; gap: var(--space-3); margin: 0; padding: 0; color: var(--on-brand) !important; font-size: var(--fs-section); font-weight: var(--fw-bold); letter-spacing: -.01em; }
+.logo { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-lg); background: var(--white); color: var(--brand); font-size: var(--fs-label); }
+
+#navbar .nav-link {
+    display: flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md); color: var(--on-brand-muted); font-size: var(--fs-nav); font-weight: var(--fw-medium);
+    line-height: 1.2; white-space: nowrap; transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+#navbar .nav-link i { width: 1em; font-size: var(--fs-nav); text-align: center; opacity: .9; }
+#navbar .nav-link:hover { background: var(--on-brand-hover); color: var(--on-brand); }
+#navbar .nav-link.active { background: var(--on-brand-active); color: var(--on-brand); font-weight: var(--fw-semibold); }
+.main-nav { gap: var(--space-1); }
+
+/* Profile: avatar, name and role, then a list with the account actions */
+.profile-nav { padding-left: var(--space-4); border-left: var(--border-width) solid var(--on-brand-line); }
+#navbar .profile-toggle { gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); }
+#navbar .profile-toggle::after { margin-left: var(--space-1); opacity: .8; }
+.avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: var(--white); color: var(--brand); font-size: var(--fs-caption); font-weight: var(--fw-bold); letter-spacing: .02em; }
+.profile-text { display: flex; flex-direction: column; line-height: 1.2; }
+.profile-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--on-brand); font-weight: var(--fw-semibold); }
+.profile-role { color: var(--on-brand-muted); font-size: var(--fs-caption); font-weight: var(--fw-regular); }
+.profile-menu { min-width: 280px; max-width: calc(100vw - 32px); margin-top: var(--space-2) !important; padding: var(--space-2); border: var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-menu); }
+.profile-menu-head { display: flex; flex-direction: column; padding: var(--space-2) var(--space-3) var(--space-3); margin-bottom: var(--space-2); border-bottom: var(--line); line-height: var(--lh-snug); }
+.profile-menu-name { font-weight: var(--fw-semibold); color: var(--ink); }
+.profile-menu-email { font-size: var(--fs-small); color: var(--muted); overflow-wrap: anywhere; }
+.profile-menu .dropdown-divider { margin: var(--space-2) 0; border-color: var(--border); }
+.dropdown-item { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: var(--ink); font-size: var(--fs-label); }
+.dropdown-item i { width: 1.1em; color: var(--muted); text-align: center; }
+.dropdown-item:hover, .dropdown-item:focus { background: var(--surface); color: var(--ink); }
+.dropdown-item:active, .dropdown-item[aria-current="page"] { background: var(--brand-tint); color: var(--brand-dark); }
+
+/* Signed out: "Sign in" stands out as the main action */
+.auth-nav { gap: var(--space-2); }
+#navbar .nav-cta { color: var(--brand); background: var(--white); font-weight: var(--fw-semibold); padding-left: var(--space-4); padding-right: var(--space-4); }
+#navbar .nav-cta:hover, #navbar .nav-cta.active { color: var(--brand-dark); background: var(--brand-tint); }
+
+/* Menu button for small screens */
+.navbar-toggler { width: 44px; height: 44px; padding: 0; border: var(--border-width) solid var(--on-brand-line); border-radius: var(--radius-md); }
+.navbar-toggler:hover { background: var(--on-brand-hover); }
+.navbar-toggler:focus { box-shadow: none; }
+.navbar-toggler-icon { width: 22px; height: 22px; }
+
+/* Small screens (below 992px): compact header and a full-width menu under it */
+@media (max-width: 991.98px) {
+    .site-header, .header-inner { min-height: var(--nav-height-phone); }
+    .brand { font-size: var(--fs-label); gap: var(--space-2); }
+    .logo { width: 32px; height: 32px; }
+    .navbar-collapse { max-height: calc(100vh - var(--nav-height-phone)); overflow-y: auto; }
+    .navbar-collapse > .navbar-nav { padding: var(--space-2) 0; }
+    .navbar-collapse > .navbar-nav:first-child { border-top: var(--border-width) solid var(--on-brand-line); padding-top: var(--space-3); }
+    #navbar .nav-link { min-height: var(--control-height); padding: var(--space-2) var(--space-3); font-size: var(--fs-label); }
+    .profile-nav { padding: var(--space-3) 0 var(--space-4) !important; border-left: 0; border-top: var(--border-width) solid var(--on-brand-line); }
+    #navbar .profile-toggle { padding: var(--space-2) var(--space-3); }
+    .profile-menu { margin-top: var(--space-1) !important; box-shadow: none; }
+    .auth-nav { flex-direction: column; padding-bottom: var(--space-4) !important; }
+    #navbar .nav-cta { justify-content: center; }
+}
 
 #messages { margin-top: var(--nav-offset); }
 main { margin-bottom: var(--space-10); }

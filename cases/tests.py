@@ -119,3 +119,62 @@ class ReportPhotoTests(TestCase):
         self.assertContains(response, 'data-max-files="5" data-max-mb="10"')
         self.assertContains(response, 'enctype="multipart/form-data"')
         self.assertNotContains(response, 'capture=')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class HeaderTests(TestCase):
+    """The shared header shows each role its own links, marks the current page and signs out."""
+
+    def user_with_role(self, role):
+        user = User.objects.create_user(f'{role}1', f'{role}1@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        self.client.force_login(user)
+        return user
+
+    def nav_links(self, response):
+        html = response.content.decode()
+        return [label for label in ('Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
+                if f'aria-hidden="true"></i> {label}</a>' in html]
+
+    def test_each_role_sees_its_links(self):
+        expected = {
+            'reporter': ['Report an issue'],
+            'handler': ['Report an issue', 'Case queue'],
+            'manager': ['Report an issue', 'Case queue', 'Dashboard', 'People'],
+        }
+        for role, links in expected.items():
+            with self.subTest(role=role):
+                self.user_with_role(role)
+                self.assertEqual(self.nav_links(self.client.get('/')), links)
+                self.client.logout()
+
+    def test_current_page_is_marked(self):
+        self.user_with_role('manager')
+        for path, label in [('/report/', 'Report an issue'), ('/triage/', 'Case queue'),
+                            ('/dashboard/', 'Dashboard'), ('/people/', 'People')]:
+            with self.subTest(path=path):
+                html = self.client.get(path).content.decode()
+                self.assertEqual(html.count('aria-current="page"'), 1)
+                marked = html.split('aria-current="page"')[1].split('</a>')[0]
+                self.assertIn(label, marked)
+        home = self.client.get('/').content.decode()
+        self.assertNotIn('aria-current="page"', home)
+
+    def test_sign_out_still_works(self):
+        self.user_with_role('reporter')
+        html = self.client.get('/').content.decode()
+        self.assertIn('<form method="post" action="/accounts/logout/">', html)
+        self.client.post('/accounts/logout/')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_signed_out_header_offers_sign_in(self):
+        html = self.client.get('/accounts/login/').content.decode()
+        self.assertIn('Create account', html)
+        self.assertIn('nav-cta active" aria-current="page"', html)
