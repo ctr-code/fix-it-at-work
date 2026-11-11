@@ -1,10 +1,10 @@
 /* Fix It at Work - high-contrast, readable defaults (WCAG AA colours) */
 :root {
-    --primary-font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --primary-font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     --brand: #0b4f6c;          /* deep teal, 8.6:1 on white */
     --brand-dark: #073447;
     --accent: #f2a900;
-    --ink: #1b1f23;
+    --ink: #1e2a35;            /* dark slate for main text */
     --muted: #4f5b66;          /* 7:1 on white */
     --surface: #f5f7f9;
     --border: #d5dce2;
@@ -14,19 +14,52 @@
     --low: #3d5a3d;
     --ai: #5b2a86;             /* purple used only for AI content */
     --ai-bg: #f4eefa;
+
+    /* Type scale, built around a 17px body */
+    --fs-body: 1.0625rem;      /* 17px  paragraphs, tables */
+    --fs-h1: 1.875rem;         /* 30px  page headings */
+    --fs-h2: 1.375rem;         /* 22px */
+    --fs-section: 1.25rem;     /* 20px  section and card headings (h3, .h5) */
+    --fs-label: 1rem;          /* 16px  form labels */
+    --fs-input: 1.0625rem;     /* 17px  text typed into fields */
+    --fs-small: .9375rem;      /* 15px  helper text, .small, meta lines */
+    --fs-caption: .8125rem;    /* 13px  badges, pills, uppercase tags */
+    --fs-nav: 1rem;            /* 16px */
+    --fs-button: 1rem;         /* 16px */
+
+    /* Spacing */
+    --space-label: 6px;        /* label to input */
+    --space-field: 18px;       /* between fields */
+    --space-section: 28px;     /* between form sections */
+    --space-panel: 24px;       /* padding inside the form panel */
+
+    /* Form controls */
+    --control-height: 44px;
+    --control-radius: 6px;
+    --control-border: #c3ccd5;
+    --control-border-hover: #8e9ba8;
+    --control-placeholder: #6b7785;   /* 4.6:1 on white */
+    --focus-ring: 0 0 0 3px rgba(11, 79, 108, .28);
 }
 
 body {
     font-family: var(--primary-font);
     color: var(--ink);
     background: var(--surface);
-    font-size: 1.05rem;
-    line-height: 1.55;
+    font-size: var(--fs-body);
+    line-height: 1.6;
 }
 
-h1 { font-weight: 700; padding-top: 1.5rem; padding-bottom: .5rem; font-size: 1.9rem; }
-h2 { font-weight: 700; font-size: 1.35rem; }
-h3 { font-weight: 700; font-size: 1.1rem; }
+h1 { font-weight: 700; padding-top: 1.5rem; padding-bottom: .25rem; font-size: var(--fs-h1); line-height: 1.25; letter-spacing: -.01em; }
+h2 { font-weight: 700; font-size: var(--fs-h2); line-height: 1.3; }
+h3, .h3, h5, .h5 { font-weight: 600; font-size: var(--fs-section); line-height: 1.35; }
+.small, small { font-size: var(--fs-small); }
+.lead { font-size: var(--fs-section); }
+.btn { font-size: var(--fs-button); font-weight: 500; }
+.btn-sm { font-size: var(--fs-small); }
+/* Data tables sit one step below body text; ticket numbers stay on one line */
+.table { font-size: var(--fs-label); }
+.table td > a[href*="/cases/"], .table td > a[href*="/triage/"] { white-space: nowrap; }
 .errorlist { color: var(--urgent); padding-left: 1rem; }
 .text-muted, .form-text { color: var(--muted) !important; }
 
@@ -35,7 +68,7 @@ h3 { font-weight: 700; font-size: 1.1rem; }
 
 /* Nav */
 #navbar { background: var(--brand); }
-#navbar .nav-link { color: #fff; opacity: .9; }
+#navbar .nav-link { color: #fff; opacity: .9; font-size: var(--fs-nav); font-weight: 500; }
 #navbar .nav-link.active, #navbar .nav-link:hover { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
 .navbar-brand { font-weight: 700; color: #fff !important; }
 .logo { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; background: #fff; color: var(--brand); font-size: 1.3rem; }
@@ -53,25 +86,27 @@ main { margin-bottom: 2.5rem; }
 .hero h1 { padding-top: 0; }
 .btn-primary { background: var(--brand); border-color: var(--brand); }
 .btn-primary:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.btn-primary:active { background: var(--brand-dark) !important; border-color: var(--brand-dark) !important; transform: translateY(1px); }
+.btn-primary:disabled { background: var(--brand); border-color: var(--brand); opacity: .7; }
 
 /* Badges */
-.badge-pri { font-weight: 600; padding: .35em .6em; border-radius: 6px; color: #fff; }
+.badge-pri { font-size: var(--fs-caption); font-weight: 600; padding: .35em .6em; border-radius: 6px; color: #fff; }
 .pri-urgent { background: var(--urgent); }
 .pri-high { background: var(--high); }
 .pri-medium { background: var(--medium); }
 .pri-low { background: var(--low); }
-.badge-status { background: #e7ecf0; color: var(--ink); font-weight: 600; padding: .35em .6em; border-radius: 6px; }
+.badge-status { background: #e7ecf0; color: var(--ink); font-size: var(--fs-caption); font-weight: 600; padding: .35em .6em; border-radius: 6px; }
 .overdue { color: var(--urgent); font-weight: 700; }
 
 /* AI content is always clearly marked */
 .ai-box { background: var(--ai-bg); border: 1px solid #d9c8ea; border-left: 5px solid var(--ai); border-radius: 10px; padding: 1rem 1.25rem; }
-.ai-label { color: var(--ai); font-weight: 700; font-size: .9rem; text-transform: uppercase; letter-spacing: .03em; }
+.ai-label { color: var(--ai); font-weight: 700; font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .03em; }
 .confidence { height: 8px; background: #e2d6ee; border-radius: 4px; overflow: hidden; }
 .confidence > span { display: block; height: 100%; background: var(--ai); }
 
 /* Journey tracker */
 .journey { display: flex; list-style: none; padding: 0; margin: 1.5rem 0; counter-reset: step; }
-.journey li { flex: 1; text-align: center; position: relative; font-size: .9rem; color: var(--muted); }
+.journey li { flex: 1; text-align: center; position: relative; font-size: var(--fs-small); color: var(--muted); }
 .journey li::before { counter-increment: step; content: counter(step); display: block; width: 2rem; height: 2rem; line-height: 2rem; margin: 0 auto .4rem; border-radius: 50%; background: #e2e8ee; color: var(--ink); font-weight: 700; position: relative; z-index: 1; }
 .journey li::after { content: ""; position: absolute; top: 1rem; left: -50%; width: 100%; height: 3px; background: #e2e8ee; }
 .journey li:first-child::after { display: none; }
@@ -88,7 +123,7 @@ main { margin-bottom: 2.5rem; }
 /* Dashboard */
 .kpi { text-align: center; }
 .kpi .value { font-size: 2.2rem; font-weight: 800; color: var(--brand); line-height: 1.1; }
-.kpi .label { color: var(--muted); font-size: .95rem; }
+.kpi .label { color: var(--muted); font-size: var(--fs-small); }
 .bar { height: 14px; background: var(--brand); border-radius: 4px; min-width: 2px; }
 .bar-track { background: #e7ecf0; border-radius: 4px; }
 
@@ -98,35 +133,78 @@ main { margin-bottom: 2.5rem; }
 .dictate-on { background: var(--urgent) !important; border-color: var(--urgent) !important; color: #fff !important; }
 
 /* Signed-in user menu */
-.role-pill { background: rgba(255,255,255,.18); border-radius: 999px; padding: .1rem .55rem; font-size: .8rem; margin-left: .25rem; }
+.role-pill { background: rgba(255,255,255,.18); border-radius: 999px; padding: .1rem .55rem; font-size: var(--fs-caption); margin-left: .25rem; }
 .dropdown-item { color: var(--ink); }
 
-/* Radio button groups use a legend, which crispy forms shrinks to 1rem with fs-6.
-   Match it to the other form labels, which use the page text size. */
-form legend.form-label { font-size: inherit !important; }
+/* Forms (all pages) ------------------------------------------------------ */
+/* Labels and radio-group legends share one size; crispy adds fs-6 to legends */
+.form-label, legend.form-label { font-size: var(--fs-label) !important; font-weight: 600; color: var(--ink); margin-bottom: var(--space-label); line-height: 1.4; }
+.asteriskField { color: var(--urgent); margin-left: 2px; }
+.form-text { font-size: var(--fs-small); line-height: 1.45; margin-top: 6px; }
+
+.form-control, .form-select {
+    min-height: var(--control-height); font-size: var(--fs-input); color: var(--ink);
+    background-color: #fff; border: 1px solid var(--control-border); border-radius: var(--control-radius);
+    padding: .5rem .75rem; transition: border-color .15s, box-shadow .15s;
+}
+.form-select { padding-right: 2.25rem; }
+.form-control::placeholder { color: var(--control-placeholder); opacity: 1; }
+.form-control:hover, .form-select:hover { border-color: var(--control-border-hover); }
+.form-control:focus, .form-select:focus { border-color: var(--brand); box-shadow: var(--focus-ring); }
+/* The teal ring is the focus indicator for controls, replacing the amber outline */
+.form-control:focus-visible, .form-select:focus-visible, .form-check-input:focus-visible { outline: none !important; }
+.form-control[type="file"] { padding: 0; line-height: calc(var(--control-height) - 2px); }
+.form-control::file-selector-button { height: 100%; padding: 0 .9rem; margin: 0 .75rem 0 0; border: 0; border-right: 1px solid var(--control-border); background: var(--surface); color: var(--ink); font-weight: 500; }
+
+/* Radios and checkboxes */
+.form-check { min-height: 1.5rem; padding-left: 1.75em; }
+.form-check-label { font-size: var(--fs-input); color: var(--ink); cursor: pointer; }
+.form-check-input { width: 1.15em; height: 1.15em; margin-top: .2em; margin-left: -1.75em; border: 1.5px solid var(--control-border-hover); cursor: pointer; }
+.form-check-input:hover { border-color: var(--brand); }
+.form-check-input:checked { background-color: var(--brand); border-color: var(--brand); }
+.form-check-input:focus { border-color: var(--brand); box-shadow: var(--focus-ring); }
+
+/* Errors: red border, warning icon and text, so colour is not the only cue */
+.form-control.is-invalid, .form-select.is-invalid, .form-check-input.is-invalid { border-color: var(--urgent); }
+.form-control.is-invalid:focus, .form-select.is-invalid:focus { box-shadow: 0 0 0 3px rgba(176, 0, 32, .2); }
+.invalid-feedback { color: var(--urgent); font-size: var(--fs-small); font-weight: 500; margin-top: 6px; }
+.invalid-feedback p { margin: 0; }
+.invalid-feedback p::before { content: "\f06a"; font-family: "Font Awesome 7 Free"; font-weight: 900; margin-right: .35rem; }
+.form-check-input.is-invalid ~ .form-check-label { color: var(--ink); }
+
+/* Large form buttons */
+.btn-lg { min-height: 48px; font-size: var(--fs-input); font-weight: 600; border-radius: var(--control-radius); }
 
 /* Report an issue: centred form up to 700px wide, with 24px side space on
    tablets and 16px on phones. Field pairs sit side by side from 768px (col-md-6). */
 .report-page { max-width: 700px; margin: 0 auto; padding: 0 24px; box-sizing: content-box; }
-.report-page .form-control, .report-page .form-select { min-height: 44px; }
+.report-page > h1 + p { margin-bottom: 20px; }
+.report-page .mb-3 { margin-bottom: var(--space-field) !important; }
 /* Radio options in a wrapping row instead of a tall list */
-.report-page fieldset > div:has(> .form-check) { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
-@media (min-width: 768px) { .report-page .panel { padding: 1.75rem; } }
-@media (max-width: 575.98px) { .report-page { padding: 0 16px; } }
+.report-page fieldset > div:has(> .form-check) { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.report-page fieldset > div > .form-check { margin-bottom: 0; }
+/* crispy puts a radio group's error inside the last option; show it under the whole row */
+.report-page fieldset > div:has(.invalid-feedback) { position: relative; padding-bottom: 26px; }
+.report-page fieldset .form-check .invalid-feedback { position: absolute; left: 0; bottom: 0; margin: 0; }
+.report-page .panel { padding: var(--space-panel); }
+@media (max-width: 575.98px) {
+    .report-page { padding: 0 16px; }
+    .report-page .panel { padding: 20px 16px; }
+}
 
 /* Report form sections: numbered groups inside one panel, split by thin lines */
-.form-section { padding: 1.5rem 0; border-top: 1px solid var(--border); }
+.form-section { padding: var(--space-section) 0; border-top: 1px solid var(--border); }
 .form-section:first-of-type { padding-top: 0; border-top: 0; }
-.form-section-head { display: flex; align-items: flex-start; gap: .85rem; margin-bottom: 1.25rem; }
-.form-section-num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.1rem; height: 2.1rem; border-radius: 8px; background: #e6f0f4; color: var(--brand); font-size: .85rem; font-weight: 700; letter-spacing: .02em; }
-.form-section-title { font-size: 1.2rem; font-weight: 600; margin: 0 0 .15rem; color: var(--brand-dark); }
-.form-section-sub { margin: 0; font-size: .92rem; color: var(--muted); }
+.form-section-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.form-section-num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--control-radius); background: #e6f0f4; color: var(--brand); font-size: var(--fs-caption); font-weight: 700; letter-spacing: .02em; }
+.form-section-title { font-size: var(--fs-section); font-weight: 600; line-height: 1.35; margin: 0 0 4px; color: var(--brand-dark); }
+.form-section-sub { margin: 0; font-size: var(--fs-label); line-height: 1.45; color: var(--muted); }
 /* Trim the gap under a section's last field (both columns when side by side) */
 .form-section > .mb-3:last-child,
 .form-section > .row:last-child > :last-child > .mb-3 { margin-bottom: 0 !important; }
 @media (min-width: 768px) { .form-section > .row:last-child > * > .mb-3 { margin-bottom: 0 !important; } }
-.form-actions { padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.form-actions { padding-top: 24px; border-top: 1px solid var(--border); }
 @media (max-width: 575.98px) {
-    .form-section { padding: 1.25rem 0; }
-    .form-section-head { margin-bottom: 1rem; }
+    .form-section { padding: 24px 0; }
+    .form-section-head { margin-bottom: 16px; }
 }
