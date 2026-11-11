@@ -208,3 +208,18 @@ main { margin-bottom: 2.5rem; }
     .form-section { padding: 24px 0; }
     .form-section-head { margin-bottom: 16px; }
 }
+
+/* Tables that become cards on phones: one card per row, each value with a small
+   label taken from its data-label. The first cell (the ticket number) is the card title. */
+@media (max-width: 767.98px) {
+    .table-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .table-cards, .table-cards tbody, .table-cards tr, .table-cards td { display: block; width: 100%; }
+    .table-cards tr { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .table-cards tr:last-child { border-bottom: 0; }
+    .table-cards td { border: 0; padding: 3px 0; background: transparent; }
+    .table-cards td:first-child { padding-bottom: 6px; font-weight: 600; }
+    .table-cards td[data-label] { position: relative; padding-left: 7.5rem; }
+    .table-cards td[data-label]::before { content: attr(data-label); position: absolute; left: 0; top: 3px; width: 7rem; font-size: var(--fs-small); font-weight: 600; color: var(--muted); }
+    .table-cards td.card-action { padding-top: 10px; }
+    .table-cards td.card-action .btn { width: 100%; min-height: 44px; }
+}

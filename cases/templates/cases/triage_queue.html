@@ -1,22 +1,23 @@
 {% extends "base.html" %}
 {% block head_title %}Case handler - Fix It at Work{% endblock %}
 {% block main %}
+{# table-cards: each row becomes a labelled card on phones (see style.css) #}
 <section class="container">
     <h1>Case handler</h1>
 
     <h2 class="mt-2">Needs triage <span class="badge bg-secondary">{{ new_cases|length }}</span></h2>
     <p class="text-muted">Sorted by the AI's suggested priority. Open a case to check and approve the suggestion.</p>
     <div class="table-responsive panel p-0">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 table-cards">
             <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Where</th><th scope="col">AI suggests</th><th scope="col">Reported</th></tr></thead>
             <tbody>
             {% for c in new_cases %}
             <tr>
                 <td><a href="{% url 'triage_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
-                <td>{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
-                <td>{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
-                <td>{% include "cases/_pri.html" with p=c.ai_priority %} {% if c.ai_category %}{{ c.ai_category.default_team }} / {{ c.ai_category }}{% else %}No suggestion{% endif %}<br><span class="small text-muted">{{ c.ai_confidence }}% confident</span></td>
-                <td>{{ c.date_reported|timesince }} ago</td>
+                <td data-label="Issue">{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
+                <td data-label="Where">{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
+                <td data-label="AI suggests">{% include "cases/_pri.html" with p=c.ai_priority %} {% if c.ai_category %}{{ c.ai_category.default_team }} / {{ c.ai_category }}{% else %}No suggestion{% endif %}<br><span class="small text-muted">{{ c.ai_confidence }}% confident</span></td>
+                <td data-label="Reported">{{ c.date_reported|timesince }} ago</td>
             </tr>
             {% empty %}<tr><td colspan="5" class="p-3">Nothing waiting. Nice.</td></tr>{% endfor %}
             </tbody>
@@ -25,12 +26,12 @@
 
     <h2 class="mt-4">Fixed - reply needed <span class="badge bg-secondary">{{ awaiting_reply|length }}</span></h2>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 table-cards">
             <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Team</th><th scope="col">Language</th><th scope="col"><span class="visually-hidden">Action</span></th></tr></thead>
             <tbody>
             {% for c in awaiting_reply %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}</td><td>{{ c.assigned_team }}</td><td>{{ c.get_preferred_language_display }}</td>
-                <td><a class="btn btn-sm btn-primary" href="{% url 'outcome_letter' c.reference %}">Review AI letter</a></td></tr>
+            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Team">{{ c.assigned_team }}</td><td data-label="Language">{{ c.get_preferred_language_display }}</td>
+                <td class="card-action"><a class="btn btn-sm btn-primary" href="{% url 'outcome_letter' c.reference %}">Review AI letter</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No replies waiting.</td></tr>{% endfor %}
             </tbody>
         </table>
@@ -39,13 +40,13 @@
     <h2 class="mt-4" id="unhappy">Unhappy reporters <span class="badge bg-secondary">{{ unhappy|length }}</span></h2>
     <p class="small text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 table-cards">
             <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Score</th><th scope="col">What they said</th><th scope="col">Reporter</th></tr></thead>
             <tbody>
             {% for c in unhappy %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
-                <td class="overdue">{{ c.satisfaction }}/5</td><td>{{ c.satisfaction_comments|default:"-" }}</td>
-                <td>{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
+            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
+                <td data-label="Score" class="overdue">{{ c.satisfaction }}/5</td><td data-label="What they said">{{ c.satisfaction_comments|default:"-" }}</td>
+                <td data-label="Reporter">{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No unhappy reporters. Nice.</td></tr>{% endfor %}
             </tbody>
         </table>
@@ -53,13 +54,13 @@
 
     <h2 class="mt-4">With teams <span class="badge bg-secondary">{{ in_flight|length }}</span></h2>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 table-cards">
             <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Priority</th><th scope="col">Team / officer</th><th scope="col">Due</th></tr></thead>
             <tbody>
             {% for c in in_flight %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}</td><td>{% include "cases/_pri.html" with p=c.priority %}</td>
-                <td>{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
-                <td class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
+            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority">{% include "cases/_pri.html" with p=c.priority %}</td>
+                <td data-label="Team / officer">{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
+                <td data-label="Due" class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">None.</td></tr>{% endfor %}
             </tbody>
         </table>
