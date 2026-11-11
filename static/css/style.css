@@ -101,3 +101,7 @@ main { margin-bottom: 2.5rem; }
 /* Signed-in user menu */
 .role-pill { background: rgba(255,255,255,.18); border-radius: 999px; padding: .1rem .55rem; font-size: .8rem; margin-left: .25rem; }
 .dropdown-item { color: var(--ink); }
+
+/* Radio button groups use a legend, which crispy forms shrinks to 1rem with fs-6.
+   Match it to the other form labels, which use the page text size. */
+form legend.form-label { font-size: inherit !important; }
