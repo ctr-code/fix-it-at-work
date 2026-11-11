@@ -20,9 +20,10 @@ class ReportForm(forms.ModelForm):
 
     class Meta:
         model = Case
+        labels = {'hs_risk': 'This could hurt someone'}
         fields = [
-            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'photo',
-            'preferred_language', 'preferred_contact',
+            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'impact', 'hs_risk',
+            'asset_tag', 'photo', 'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -32,19 +33,51 @@ class ReportForm(forms.ModelForm):
             'building': forms.TextInput(attrs={'placeholder': 'e.g. Main Office', 'list': 'buildings'}),
             'location_detail': forms.TextInput(attrs={'placeholder': 'e.g. 2nd floor, kitchen'}),
             'reported_urgency': forms.RadioSelect,
+            'impact': forms.RadioSelect,
+            'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
             'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         }
         help_texts = {
             'reported_urgency': 'Urgent = risk to people or property right now.',
+            'hs_risk': 'Tick if someone could get hurt, for example water near electrics, a loose ceiling panel '
+                       'or a trip hazard. We will make it safe first.',
+            'asset_tag': 'Optional. The ID label on the equipment, if it has one.',
             'preferred_language': 'We will reply in this language.',
             'photo': 'Optional, but it helps us bring the right tools first time.',
         }
 
+    def clean_asset_tag(self):
+        return self.cleaned_data['asset_tag'].strip().upper()
+
+
+class FeedbackForm(forms.ModelForm):
+    """The reporter's rating of a closed case."""
+
+    class Meta:
+        model = Case
+        fields = ['satisfaction', 'satisfaction_comments']
+        labels = {
+            'satisfaction': 'How happy are you with how this was handled?',
+            'satisfaction_comments': 'Anything you would like to tell us? (optional)',
+        }
+        widgets = {
+            'satisfaction': forms.RadioSelect,
+            'satisfaction_comments': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['satisfaction'].required = True
+        # Drop Django's empty "---------" option from the radio buttons
+        self.fields['satisfaction'].choices = [c for c in self.fields['satisfaction'].choices if c[0] != '']
+
 
 class TriageForm(forms.Form):
-    category = forms.ModelChoiceField(Category.objects.all())
+    """Choose the team first. The category and officer lists only show options for that team."""
+    team = forms.ModelChoiceField(Team.objects.order_by('name'))
+    category = forms.ModelChoiceField(Category.objects.select_related('default_team'),
+                                      help_text='Only categories handled by the chosen team are listed.')
     priority = forms.ChoiceField(choices=Priority.choices)
-    team = forms.ModelChoiceField(Team.objects.all())
     officer = forms.ModelChoiceField(Officer.objects.select_related('team'), required=False,
                                      help_text='Leave blank to let the team pick it up.')
     duplicate_of = forms.ModelChoiceField(
@@ -57,6 +90,17 @@ class TriageForm(forms.Form):
         if case:
             qs = qs.exclude(pk=case.pk)
         self.fields['duplicate_of'].queryset = qs
+
+    def clean(self):
+        data = super().clean()
+        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
+        if data.get('duplicate_of'):
+            return data  # merging a duplicate doesn't route the case anywhere
+        if team and category and category.default_team_id != team.id:
+            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
+        if team and officer and officer.team_id != team.id:
+            self.add_error('officer', f'{officer.name} is not in {team}.')
+        return data
 
 
 class VisitForm(forms.ModelForm):

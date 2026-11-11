@@ -7,9 +7,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from . import ai
-from .forms import LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
+from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, Case, Category, Communication, Officer, Profile, Role, Status, Team,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, Role, Status, Team,
     get_role,
 )
 from .permissions import can_view_case, role_required
@@ -30,11 +30,14 @@ def home(request):
     if role == Role.REPORTER:
         mine = Case.objects.filter(reporter_user=request.user)
         ctx['my_open'] = mine.filter(status__in=OPEN_STATUSES + [Status.RESOLVED])
-        ctx['my_closed'] = mine.filter(status__in=[Status.CLOSED, Status.DUPLICATE])[:5]
+        ctx['my_closed'] = mine.filter(status__in=[Status.CLOSED, Status.DUPLICATE]).order_by('-date_closed')[:5]
+        ctx['awaiting_feedback'] = [c for c in mine.filter(status=Status.CLOSED, satisfaction__isnull=True)
+                                    if c.feedback_open]
     elif role == Role.HANDLER:
-        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW),
+        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team'),
                                key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported))
         ctx['replies'] = Case.objects.filter(status=Status.RESOLVED).count()
+        ctx['unhappy'] = _unhappy_reporters().count()
         ctx['overdue'] = Case.objects.filter(status__in=OPEN_STATUSES, sla_due__lt=timezone.now()).count()
     elif role == Role.OFFICER:
         officer = getattr(request.user, 'officer', None)
@@ -98,16 +101,36 @@ def track_case(request, ref):
     case = get_object_or_404(Case, reference=ref)
     if not can_view_case(request.user, case):
         raise PermissionDenied
+    feedback_form = None
+    if case.can_give_feedback(request.user):
+        if request.method == 'POST':
+            feedback_form = FeedbackForm(request.POST, instance=case)
+            if feedback_form.is_valid():
+                feedback_form.save()
+                messages.success(request, 'Thank you for your feedback. You can change it until '
+                                          f'{timezone.localtime(case.feedback_deadline):%A %d %B}.')
+                return redirect('track_case', ref=case.reference)
+        else:
+            feedback_form = FeedbackForm(instance=case)
+    elif request.method == 'POST':
+        raise PermissionDenied  # not the reporter, or the 14-day feedback window has closed
     sent = case.communications.filter(date_sent__isnull=False)
-    return render(request, 'cases/track.html', {'case': case, 'sent': sent})
+    return render(request, 'cases/track.html', {'case': case, 'sent': sent, 'feedback_form': feedback_form})
 
 
 # ---------- 2. Triage and route (case handler) ----------
 
+def _unhappy_reporters():
+    """Recently closed cases where the reporter gave a low score, for handlers to follow up."""
+    return (Case.objects.filter(status=Status.CLOSED, satisfaction__lte=UNHAPPY_SCORE,
+                                date_closed__gte=timezone.now() - UNHAPPY_FOLLOW_UP)
+            .select_related('assigned_team').order_by('satisfaction', '-date_closed'))
+
+
 @role_required(*HANDLERS)
 def triage_queue(request):
     new_cases = sorted(
-        Case.objects.filter(status=Status.NEW).select_related('ai_category', 'ai_duplicate_candidate'),
+        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate'),
         key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported),
     )
     awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
@@ -115,6 +138,7 @@ def triage_queue(request):
         'assigned_team', 'assigned_officer').order_by('sla_due')
     return render(request, 'cases/triage_queue.html', {
         'new_cases': new_cases, 'awaiting_reply': awaiting_reply, 'in_flight': in_flight,
+        'unhappy': _unhappy_reporters(),
     })
 
 
@@ -159,23 +183,27 @@ def triage_case(request, ref):
                 case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
                 draft_text=(f'Your report {case.reference} has been passed to our {case.assigned_team} team '
                             f'as {case.get_priority_display().lower()} priority. We aim to resolve it by '
-                            f'{timezone.localtime(case.sla_due):%A %d %B}.'),
+                            f'{timezone.localtime(case.sla_due):%H:%M on %A %d %B}.'),
                 approved_by=approver, date_sent=timezone.now(),
             )
             messages.success(request, f'{case.reference} sent to {case.assigned_team}.')
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
+            'team': case.ai_category.default_team if case.ai_category else None,
             'category': case.ai_category,
             'priority': case.ai_priority,
-            'team': case.ai_category.default_team if case.ai_category else None,
         })
-    officers_by_team = {}
-    for o in Officer.objects.all():
-        officers_by_team.setdefault(o.team_id, []).append(o.id)
-    return render(request, 'cases/triage_case.html', {
-        'case': case, 'form': form, 'officers_by_team': officers_by_team,
-    })
+    # Lets the page narrow the category and officer lists to the chosen team
+    by_team = {
+        'category': {t: [] for t in Team.objects.values_list('id', flat=True)},
+        'officer': {t: [] for t in Team.objects.values_list('id', flat=True)},
+    }
+    for cat_id, team_id in Category.objects.values_list('id', 'default_team_id'):
+        by_team['category'][team_id].append(cat_id)
+    for officer_id, team_id in Officer.objects.values_list('id', 'team_id'):
+        by_team['officer'][team_id].append(officer_id)
+    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': by_team})
 
 
 @role_required(*HANDLERS)
@@ -295,21 +323,24 @@ def _dashboard_stats():
 
     resolved = cases.filter(date_resolved__isnull=False)
     ftf_known = resolved.exclude(first_time_fix__isnull=True)
-    durations = [(c.date_resolved - c.date_reported).total_seconds() / 86400 for c in resolved]
+    durations = [(c.date_resolved - c.date_reported).total_seconds() / 3600 for c in resolved]
     resolved_with_sla = [c for c in resolved if c.sla_due]
     acked = cases.filter(date_acknowledged__isnull=False, sla_acknowledge_due__isnull=False)
     triaged = Case.objects.exclude(ai_suggestion_accepted__isnull=True)
+    scores = list(cases.filter(satisfaction__isnull=False).values_list('satisfaction', flat=True))
 
     return {
         'total': cases.count(), 'open_count': open_cases.count(), 'overdue': overdue,
         'awaiting_triage': cases.filter(status=Status.NEW).count(),
         'ftf_rate': _pct(ftf_known.filter(first_time_fix=True).count(), ftf_known.count()),
-        'avg_days': round(sum(durations) / len(durations), 1) if durations else None,
+        'avg_hours': round(sum(durations) / len(durations), 1) if durations else None,
         'within_sla': _pct(sum(1 for c in resolved_with_sla if c.date_resolved <= c.sla_due), len(resolved_with_sla)),
         'ack_on_time': _pct(sum(1 for c in acked if c.date_acknowledged <= c.sla_acknowledge_due), acked.count()),
         'ai_accept': _pct(triaged.filter(ai_suggestion_accepted=True).count(), triaged.count()),
         'ai_triaged': triaged.count(),
         'duplicates': Case.objects.filter(status=Status.DUPLICATE).count(),
+        'avg_satisfaction': round(sum(scores) / len(scores), 1) if scores else None,
+        'feedback_count': len(scores),
     }
 
 
