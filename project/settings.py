@@ -131,13 +131,14 @@ WSGI_APPLICATION = 'project.wsgi.application'
 #     }
 # }
 
-# Falls back to a local SQLite file when DATABASE_URL is not set
-DATABASES = {
-    'default': dj_database_url.config(default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
-}
+# Uses a local SQLite file when DATABASE_URL is empty or not set, and always when running tests
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+if not DATABASE_URL or 'test' in sys.argv:
+    DATABASE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 
-if 'test' in sys.argv:
-    DATABASES['default']['ENGINE'] = 'django.db.backends.sqlite3'
+DATABASES = {
+    'default': dj_database_url.parse(DATABASE_URL)
+}
 
 
 # Password validation

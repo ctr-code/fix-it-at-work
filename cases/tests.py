@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from .models import Case, ReportPhoto
+from .models import Case, Officer, ReportPhoto, Status, Team
 
 # A real 1x1 PNG, so the upload looks like a phone photo would to the server
 PNG_1PX = (
@@ -203,3 +203,37 @@ class CaseQueueSortTests(TestCase):
         self.assertIn('js/sort-table.js', html)
         self.assertIn('data-label="AI suggests" data-sort-value="4"', html)  # urgent ranks highest
         self.assertIn(f'data-sort-value="{case.date_reported.isoformat()[:19]}', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class OfficerJobPageTests(TestCase):
+    """An officer only gets the visit form once the job is theirs."""
+
+    def setUp(self):
+        user = User.objects.create_user('officer1', 'officer1@example.com', 'not-a-real-password-1')
+        user.profile.role = 'officer'
+        user.profile.save()
+        self.client.force_login(user)
+        team = Team.objects.create(name='Estates Maintenance', contact_email='estates@example.com', manager='H Ward')
+        self.officer = Officer.objects.create(name='Officer One', team=team, contact_email='o1@example.com', user=user)
+        self.case = Case.objects.create(title='Leaking tap', description='Drips.', building='Main Office',
+                                        reporter_name='A Reporter', reporter_email='reporter@example.com',
+                                        priority='medium', status=Status.ASSIGNED, assigned_team=team)
+        self.url = f'/officer/{self.case.reference}/'
+
+    def test_unassigned_job_offers_take_but_not_visit_form(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('Assign this job to me', html)
+        self.assertNotIn('Record your visit', html)
+
+    def test_visit_form_shows_once_taken(self):
+        self.client.post(self.url, {'take': ''})
+        html = self.client.get(self.url).content.decode()
+        self.assertNotIn('Assign this job to me', html)
+        self.assertIn('Record your visit', html)

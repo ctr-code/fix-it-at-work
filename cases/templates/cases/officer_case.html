@@ -21,7 +21,7 @@
     <form method="post" class="mb-3">{% csrf_token %}<button name="take" class="btn btn-outline-primary w-100">Assign this job to me</button></form>
     {% endif %}
 
-    {% if case.is_open %}
+    {% if case.is_open and case.assigned_officer_id == officer.id %}
     <form method="post" enctype="multipart/form-data" class="panel">
         {% csrf_token %}
         <h2 class="h5">Record your visit</h2>
