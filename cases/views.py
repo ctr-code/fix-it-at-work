@@ -10,7 +10,7 @@ from . import ai
 from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
     OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, Role, Status,
-    Team, get_role,
+    Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -233,10 +233,14 @@ def officer_cases(request):
         team_unassigned = Case.objects.filter(
             assigned_team=officer.team, assigned_officer__isnull=True,
             status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
-    # Buildings the officer has jobs in, for the "Location" filter
-    buildings = sorted({c.building for c in [*cases, *team_unassigned] if c.building}, key=str.lower)
+    # Buildings and priorities the officer has jobs in, for the "Location" and "Priority" filters
+    jobs = [*cases, *team_unassigned]
+    buildings = sorted({c.building for c in jobs if c.building}, key=str.lower)
+    priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                  if any(c.priority == value for c in jobs)]
     return render(request, 'cases/officer_cases.html', {
-        'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned, 'buildings': buildings,
+        'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned,
+        'buildings': buildings, 'priorities': priorities,
     })
 
 

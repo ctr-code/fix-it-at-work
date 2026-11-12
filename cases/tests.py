@@ -258,6 +258,14 @@ class OfficerJobPageTests(TestCase):
         self.assertIn('<option value="Main Office">Main Office</option>', html)
         self.assertNotIn('<option value="Depot">', html)
 
+    def test_priority_filter_lists_only_this_officers_priorities(self):
+        self.client.post(self.url, {'take': ''})  # the job set up for this officer is medium
+        html = self.client.get('/officer/').content.decode()
+        self.assertIn('id="job-priority"', html)
+        self.assertIn('<option value="2">Medium</option>', html)
+        for absent in ('Urgent', 'High', 'Low'):
+            self.assertNotIn(f'">{absent}</option>', html)
+
 
 @override_settings(
     MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
