@@ -171,6 +171,7 @@ LOGIN_URL = 'account_login'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 
+
 # Crispy settings
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
@@ -231,3 +232,6 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+# Team alerts (cases/alerts.py) come from this fictional address. With the console backend above they are
+# printed in the server window, not sent, as the brief allows no connection to real systems.
+DEFAULT_FROM_EMAIL = 'Fix It at Work <alerts@fixitatwork.example>'

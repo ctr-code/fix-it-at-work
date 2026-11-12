@@ -7,12 +7,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import ai
+from . import ai, alerts
 from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
     Language, Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
@@ -253,7 +253,8 @@ def triage_case(request, ref):
                             f'{timezone.localtime(case.sla_due):%H:%M on %A %d %B}.'),
                 approved_by=approver, date_sent=timezone.now(),
             )
-            messages.success(request, f'{case.reference} sent to {case.assigned_team}.')
+            alert = alerts.alert_routed(case, request)
+            messages.success(request, f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}')
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
@@ -306,6 +307,7 @@ def reassign_case(request, ref):
                       'category': str(case.category or '-'),
                       'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
             priority_changed = d['priority'] != case.priority
+            old_officer = case.assigned_officer
             case.priority = d['priority']
             case.assigned_team = d['team']
             case.category = d['category']
@@ -326,12 +328,22 @@ def reassign_case(request, ref):
             case.save()
             CaseChange.objects.create(case=case, changed_by=display_name(request.user),
                                       summary='\n'.join(lines), reason=d['reason'])
-            messages.success(request, f'{case.reference} updated.')
+            alert = alerts.alert_changed(case, lines, old_officer, request)
+            messages.success(request, f'{case.reference} updated.{_alert_note(alert)}')
             return redirect('case_detail', ref=ref)
     else:
         form = ReassignForm(initial={'priority': case.priority, 'team': case.assigned_team,
                                      'category': case.category, 'officer': case.assigned_officer})
     return render(request, 'cases/reassign_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+
+
+def _alert_note(alert):
+    """The end of the confirmation message, saying who was alerted."""
+    if alert is None:
+        return ''
+    if not alert.delivered:
+        return ' The alert email could not be sent - please contact the team directly.'
+    return f' Alert sent to {alert.recipients}.'
 
 
 def _when(moment):
@@ -414,6 +426,49 @@ def officer_case(request, ref):
     else:
         form = VisitForm()
     return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer})
+
+
+@role_required(Role.OFFICER)
+def alerts_inbox(request):
+    """Alerts sent to this officer by name or to their team's inbox, newest first, with unread ones marked."""
+    officer = _current_officer(request)
+    if not officer:
+        return redirect('index')
+    visible = Alert.for_officer(officer)
+    show_unread = request.GET.get('show') == 'unread'
+    back = reverse('alerts') + ('?show=unread' if show_unread else '')
+
+    if request.method == 'POST':
+        if 'all' in request.POST:
+            chosen = visible.exclude(reads__user=request.user)
+        else:
+            chosen = visible.filter(pk=request.POST.get('open') or request.POST.get('read') or 0)
+        AlertRead.objects.bulk_create([AlertRead(alert=a, user=request.user) for a in chosen],
+                                      ignore_conflicts=True)
+        opened = chosen.select_related('case').first() if 'open' in request.POST else None
+        if opened:
+            return redirect('officer_case', ref=opened.case.reference)
+        if 'all' in request.POST:
+            messages.success(request, 'All alerts marked as read.')
+        return redirect(back)
+
+    items = list(visible.select_related('case', 'team').prefetch_related('officers'))
+    read = set(AlertRead.objects.filter(user=request.user, alert__in=items).values_list('alert_id', flat=True))
+    for a in items:
+        a.unread = a.pk not in read
+        a.to_you = any(o.pk == officer.pk for o in a.officers.all())
+        a.intro = a.body.split('\n\n')[0]
+        c = a.case
+        # The job link only works while the job is open and still this officer's (or unassigned in their team)
+        a.can_open = (c.status in (Status.ASSIGNED, Status.IN_PROGRESS) and c.assigned_team_id == officer.team_id
+                      and c.assigned_officer_id in (None, officer.pk))
+    all_total, unread_total = len(items), sum(a.unread for a in items)
+    if show_unread:
+        items = [a for a in items if a.unread]
+    return render(request, 'cases/alerts.html', {
+        'alerts': items, 'officer': officer, 'show_unread': show_unread,
+        'unread_total': unread_total, 'all_total': all_total,
+    })
 
 
 # ---------- 5. Respond ----------

@@ -935,3 +935,226 @@ class ReassignCaseTests(TestCase):
         self.client.force_login(self.handler)
         page = self.client.get(f'/cases/{self.case.reference}/')
         self.assertContains(page, f'href="{self.url}"')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class TeamAlertTests(TestCase):
+    """The team (and officer) a case is sent to are emailed automatically, and each alert is kept on the case."""
+
+    # Same teams, officers and case as the reassignment tests
+    make_user = ReassignCaseTests.make_user
+    setUp = ReassignCaseTests.setUp
+    post = ReassignCaseTests.post
+
+    def triage(self, **choices):
+        self.case.status = Status.NEW
+        self.case.assigned_team = self.case.assigned_officer = None
+        self.case.ai_summary = 'Radiator valve seized, room too hot.'
+        self.case.save()
+        data = {'team': self.facilities.pk, 'category': self.heating.pk, 'priority': 'medium',
+                'officer': '', 'duplicate_of': ''}
+        data.update(choices)
+        self.client.force_login(self.handler)
+        response = self.client.post(f'/triage/{self.case.reference}/', data, follow=True)
+        self.case.refresh_from_db()
+        return response
+
+    def test_triage_emails_the_team_and_officer(self):
+        from django.core import mail
+        response = self.triage(officer=self.serena.pk)
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ['fac@example.com', 's@example.com'])
+        self.assertEqual(email.subject, f'[Medium] {self.case.reference} Radiator stuck on full')
+        self.assertIn('Serena, you have a new medium priority job.', email.body)
+        self.assertIn('Radiator valve seized, room too hot.', email.body)
+        self.assertIn(f'http://testserver/officer/{self.case.reference}/', email.body)
+        alert = self.case.alerts.get()
+        self.assertTrue(alert.delivered)
+        self.assertEqual(alert.recipients, 'fac@example.com, s@example.com')
+        self.assertContains(response, 'Alert sent to fac@example.com, s@example.com.')
+
+    def test_triage_without_officer_alerts_the_team_inbox(self):
+        from django.core import mail
+        self.triage()
+        self.assertEqual(mail.outbox[0].to, ['fac@example.com'])
+        self.assertIn('Facilities Helpdesk has a new medium priority job.', mail.outbox[0].body)
+        self.assertIn('anyone in the team can take it', mail.outbox[0].body)
+
+    def test_urgent_and_safety_cases_are_flagged(self):
+        from django.core import mail
+        self.case.hs_risk = True
+        self.case.save()
+        self.triage(priority='urgent')
+        self.assertTrue(mail.outbox[0].subject.startswith('[Urgent] '))
+        self.assertTrue(mail.outbox[0].subject.endswith(' - health and safety risk'))
+        self.assertIn('HEALTH AND SAFETY RISK', mail.outbox[0].body)
+
+    def test_merging_a_duplicate_alerts_nobody(self):
+        from django.core import mail
+        other = Case.objects.create(title='Radiator on full again', description='Same radiator.',
+                                    building='Innovation Centre', reporter_name='Sam', reporter_email='sam@example.com',
+                                    status=Status.ASSIGNED, assigned_team=self.facilities)
+        self.triage(duplicate_of=other.pk)
+        self.assertEqual(self.case.status, Status.DUPLICATE)
+        self.assertEqual(mail.outbox, [])
+
+    def test_reassigning_alerts_new_team_and_both_officers(self):
+        from django.core import mail
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertEqual(mail.outbox[0].to, ['it@example.com', 'p@example.com', 's@example.com'])
+        body = mail.outbox[0].body
+        self.assertIn('- Team: Facilities Helpdesk → IT Service Desk', body)
+        self.assertIn('Serena no longer needs to attend.', body)
+        self.assertEqual(self.case.alerts.get().kind, 'changed')
+
+    def test_priority_change_alerts_the_current_team(self):
+        from django.core import mail
+        self.post(priority='high')
+        self.assertEqual(mail.outbox[0].to, ['fac@example.com', 's@example.com'])
+        self.assertIn('- Priority: Medium → High', mail.outbox[0].body)
+        self.assertNotIn('no longer needs to attend', mail.outbox[0].body)
+
+    def test_no_change_sends_nothing(self):
+        from django.core import mail
+        self.post()
+        self.assertEqual(mail.outbox, [])
+
+    def test_a_mail_failure_is_recorded_and_routing_still_happens(self):
+        from unittest import mock
+        with mock.patch('cases.alerts.send_mail', side_effect=OSError('Mail server unreachable')):
+            response = self.triage()
+        self.assertEqual(self.case.status, Status.ASSIGNED)
+        alert = self.case.alerts.get()
+        self.assertFalse(alert.delivered)
+        self.assertEqual(alert.error, 'Mail server unreachable')
+        self.assertContains(response, 'could not be sent')
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Not sent')
+
+    def test_case_page_lists_alerts(self):
+        self.triage(officer=self.serena.pk)
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Team alerts')
+        self.assertContains(page, 'Emailed')
+        self.assertContains(page, 'fac@example.com, s@example.com')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class AlertInboxTests(TestCase):
+    """Officers see alerts sent to them or their team on the Alerts page, with an unread count in the navbar."""
+
+    make_user = ReassignCaseTests.make_user
+    post = ReassignCaseTests.post
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        # Serena and Tom are in Facilities, Priya is in IT; each gets a sign-in
+        for officer in (self.serena, self.tom, self.priya):
+            officer.user = self.make_user(officer.name.lower(), 'officer')
+            officer.save()
+
+    def page(self, officer, url='/alerts/'):
+        self.client.force_login(officer.user)
+        return self.client.get(url)
+
+    def unread(self, officer):
+        from .alerts import unread_count
+        return unread_count(officer.user)
+
+    def test_new_job_reaches_the_officer_and_their_team(self):
+        self.triage(officer=self.serena.pk)
+        self.assertEqual((self.unread(self.serena), self.unread(self.tom), self.unread(self.priya)), (1, 1, 0))
+        page = self.page(self.serena)
+        self.assertContains(page, 'Sent to you')
+        self.assertContains(page, 'Serena, you have a new medium priority job.')
+        self.assertContains(page, 'class="alert-new"')
+        self.assertContains(self.page(self.tom), 'Sent to Facilities Helpdesk')
+        self.assertContains(self.page(self.priya), 'No alerts yet')
+
+    def test_navbar_shows_the_unread_count(self):
+        self.triage(officer=self.serena.pk)
+        self.client.force_login(self.serena.user)
+        home = self.client.get('/')
+        self.assertContains(home, 'href="/alerts/"')
+        self.assertContains(home, '<span class="nav-badge" aria-hidden="true">1</span>', html=False)
+        self.assertContains(home, ', 1 unread</span>')
+        # On phones the menu button carries the count too
+        self.assertContains(home, 'aria-label="Open menu, 1 unread alert"')
+        self.assertContains(home, 'toggler-badge')
+        # No badge when there's nothing unread
+        self.client.force_login(self.priya.user)
+        home = self.client.get('/')
+        self.assertContains(home, 'href="/alerts/"')
+        self.assertNotContains(home, 'nav-badge')
+
+    def test_mark_as_read_is_per_person(self):
+        self.triage(officer=self.serena.pk)
+        alert = self.case.alerts.get()
+        self.client.force_login(self.serena.user)
+        self.assertRedirects(self.client.post('/alerts/', {'read': alert.pk}), '/alerts/')
+        self.assertEqual((self.unread(self.serena), self.unread(self.tom)), (0, 1))
+        self.assertNotContains(self.page(self.serena), 'class="alert-new"')
+
+    def test_opening_the_job_marks_it_read(self):
+        self.triage(officer=self.serena.pk)
+        self.client.force_login(self.serena.user)
+        response = self.client.post('/alerts/', {'open': self.case.alerts.get().pk})
+        self.assertRedirects(response, f'/officer/{self.case.reference}/')
+        self.assertEqual(self.unread(self.serena), 0)
+
+    def test_mark_all_as_read(self):
+        self.triage(officer=self.serena.pk)
+        self.post(priority='high')
+        self.assertEqual(self.unread(self.serena), 2)
+        self.client.force_login(self.serena.user)
+        self.client.post('/alerts/', {'all': '1'})
+        self.assertEqual(self.unread(self.serena), 0)
+
+    def test_unread_filter(self):
+        self.triage(officer=self.serena.pk)
+        self.post(priority='high')
+        first = self.case.alerts.order_by('pk').first()
+        self.client.force_login(self.serena.user)
+        self.client.post('/alerts/?show=unread', {'read': first.pk})
+        page = self.page(self.serena, '/alerts/?show=unread')
+        self.assertContains(page, 'Priority: Medium → High')
+        self.assertNotContains(page, 'you have a new medium priority job')
+        self.assertContains(self.page(self.serena), 'you have a new medium priority job')
+
+    def test_other_teams_alerts_cannot_be_marked_or_seen(self):
+        self.triage(officer=self.serena.pk)
+        alert = self.case.alerts.get()
+        self.client.force_login(self.priya.user)
+        self.client.post('/alerts/', {'read': alert.pk})
+        self.client.post('/alerts/', {'all': '1'})
+        self.assertFalse(alert.reads.exists())
+        self.assertNotContains(self.page(self.priya), alert.subject)
+
+    def test_officer_taken_off_a_job_is_told_but_cannot_open_it(self):
+        self.triage(officer=self.serena.pk)
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        page = self.page(self.serena)
+        self.assertContains(page, 'Serena no longer needs to attend.')
+        self.assertContains(page, f'{self.case.reference} is no longer with you.')
+        self.assertEqual(page.content.decode().count('name="open"'), 0)
+        # Priya, the new officer, can open it
+        self.assertContains(self.page(self.priya), 'name="open"')
+
+    def test_only_officers_have_an_alerts_page(self):
+        self.client.force_login(self.handler)
+        self.assertEqual(self.client.get('/alerts/').status_code, 403)
+        self.assertNotContains(self.client.get('/'), 'href="/alerts/"')

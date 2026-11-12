@@ -41,6 +41,21 @@
                 </ol>
             </div>
             {% endif %}{% endwith %}
+            {% with sent=case.alerts.all %}{% if sent %}
+            <div class="panel" id="alerts">
+                <h2 class="h5">Team alerts</h2>
+                <ol class="report-updates">
+                    {% for a in sent %}
+                    <li class="report-update">
+                        <p class="report-update-when">{{ a.sent_at|date:"j M Y, H:i" }} &middot; {{ a.get_kind_display }} &middot;
+                            {% if a.delivered %}<i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i> Emailed{% else %}<span class="overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Not sent</span>{% endif %}</p>
+                        <p class="mb-1"><strong>To:</strong> {{ a.recipients }}</p>
+                        <details><summary>{{ a.subject }}</summary><p class="mt-2 mb-0 small">{{ a.body|linebreaksbr }}</p></details>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}{% endwith %}
         </div>
         <div class="col-lg-6">
             <h2 class="h5">Site visits</h2>

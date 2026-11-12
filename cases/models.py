@@ -321,6 +321,48 @@ class CaseChange(models.Model):
         return self.summary.splitlines()
 
 
+class Alert(models.Model):
+    """An email telling a team (and its officer) about a case sent to them, kept so staff can see who was
+    told what and when. Written by cases/alerts.py."""
+    class Kind(models.TextChoices):
+        ROUTED = 'routed', 'New job'
+        CHANGED = 'changed', 'Job changed'
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='alerts')
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    recipients = models.TextField()  # comma separated email addresses
+    subject = models.CharField(max_length=200)
+    body = models.TextField()
+    sent_at = models.DateTimeField(default=timezone.now)
+    delivered = models.BooleanField(default=False)
+    error = models.CharField(max_length=200, blank=True)
+    # Who it was for, so it shows on their Alerts page: the team's inbox (seen by every officer in the
+    # team) and any officers it was addressed to by name
+    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.SET_NULL, related_name='alerts')
+    officers = models.ManyToManyField(Officer, blank=True, related_name='alerts')
+
+    class Meta:
+        ordering = ['-sent_at', '-pk']
+
+    def __str__(self):
+        return f'{self.get_kind_display()} alert for {self.case.reference}'
+
+    @classmethod
+    def for_officer(cls, officer):
+        """Alerts sent to this officer by name or to their team's inbox."""
+        return cls.objects.filter(models.Q(team=officer.team_id) | models.Q(officers=officer)).distinct()
+
+
+class AlertRead(models.Model):
+    """One person has read one alert. Kept per person, because a team alert is shared by everyone in the team."""
+    alert = models.ForeignKey(Alert, on_delete=models.CASCADE, related_name='reads')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    read_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['alert', 'user'], name='one_read_per_person')]
+
+
 class SiteVisit(models.Model):
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='visits')
     officer = models.ForeignKey(Officer, on_delete=models.PROTECT)

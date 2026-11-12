@@ -231,6 +231,14 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 #navbar .nav-link:hover { background: var(--on-brand-hover); color: var(--on-brand); }
 #navbar .nav-link.active { background: var(--on-brand-active); color: var(--on-brand); font-weight: var(--fw-semibold); }
 .main-nav { gap: var(--space-1); }
+/* Unread count on a nav icon (Alerts): a red pill on the icon's top right corner */
+.nav-icon { position: relative; display: inline-flex; }
+.nav-icon.has-badge { margin-right: .6em; }   /* room for the badge before the word */
+.nav-badge {
+    position: absolute; top: -.8em; left: .55em; min-width: 1.5em; height: 1.5em; padding: 0 .35em;
+    border-radius: var(--radius-pill); background: var(--urgent); color: var(--white); box-shadow: 0 0 0 2px var(--brand);
+    font-size: .6875rem; font-weight: var(--fw-bold); line-height: 1.5em; text-align: center;
+}
 
 /* Profile: avatar, name and role, then a list with the account actions */
 .profile-nav { padding-left: var(--space-4); border-left: var(--border-width) solid var(--on-brand-line); }
@@ -260,6 +268,10 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 @media (min-width: 992px) and (max-width: 1199.98px) {
     #navbar .main-nav .nav-link { padding-left: var(--space-2); padding-right: var(--space-2); }
     #navbar .main-nav .nav-link i { display: none; }
+    /* No icon to sit on here, so the count follows the word instead */
+    .nav-icon { order: 2; }
+    .nav-icon.has-badge { margin-right: 0; }
+    .nav-badge { position: static; box-shadow: none; }
     .main-nav { gap: 0; }
     .profile-nav { padding-left: var(--space-3); }
 }
@@ -269,6 +281,8 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 .navbar-toggler:hover { background: var(--on-brand-hover); }
 .navbar-toggler:focus { box-shadow: none; }
 .navbar-toggler-icon { width: 22px; height: 22px; }
+.navbar-toggler { position: relative; }
+.toggler-badge { top: -.55em; left: auto; right: -.55em; }
 
 /* Small screens (below 992px): compact header and a full-width menu under it */
 @media (max-width: 991.98px) {
@@ -546,3 +560,20 @@ main { margin-bottom: var(--space-10); }
     .form-section { padding: var(--space-6) 0; }
     .form-section-head { margin-bottom: var(--space-4); }
 }
+
+/* Alerts page: one card per alert, unread ones with a teal edge and a "New" tag */
+.alert-filter { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.alert-filter .btn { display: inline-flex; align-items: center; gap: var(--space-2); }
+.alert-filter .btn-primary .tab-count { background: var(--white); color: var(--brand); }
+.alert-list { list-style: none; margin: 0; padding: 0; }
+.alert-item { margin-bottom: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--white); border: var(--border-width) solid var(--border); border-left: 4px solid var(--border); border-radius: var(--radius-md); }
+.alert-item.is-unread { border-left-color: var(--brand); background: var(--brand-tint); }
+.alert-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.alert-new { padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--brand); color: var(--on-brand); font-size: var(--fs-caption); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .04em; }
+.alert-kind { font-size: var(--fs-caption); font-weight: var(--fw-semibold); color: var(--brand-dark); text-transform: uppercase; letter-spacing: .04em; }
+.alert-meta { font-size: var(--fs-small); color: var(--muted); }
+.alert-subject { margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
+.alert-item:not(.is-unread) .alert-subject { font-weight: var(--fw-medium); }
+.alert-intro { margin-bottom: var(--space-2); }
+.alert-full { margin-bottom: var(--space-3); font-size: var(--fs-small); }
+.alert-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }

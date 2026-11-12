@@ -14,6 +14,7 @@ urlpatterns = [
     path('cases/<str:ref>/change/', views.reassign_case, name='reassign_case'),
     path('cases/<str:ref>/letter/', views.outcome_letter, name='outcome_letter'),
     path('officer/', views.officer_cases, name='officer_cases'),
+    path('alerts/', views.alerts_inbox, name='alerts'),
     path('officer/<str:ref>/', views.officer_case, name='officer_case'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('people/', views.people, name='people'),

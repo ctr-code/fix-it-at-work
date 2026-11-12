@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
+from .models import Alert, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
 
 
 class ProfileInline(admin.StackedInline):
@@ -77,3 +77,10 @@ admin.site.register([Team, Category, Officer, SLARule])
 class CaseChangeAdmin(admin.ModelAdmin):
     list_display = ('case', 'changed_by', 'changed_at')
     search_fields = ('case__reference', 'changed_by')
+
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):
+    list_display = ('case', 'kind', 'recipients', 'sent_at', 'delivered')
+    list_filter = ('kind', 'delivered')
+    search_fields = ('case__reference', 'recipients')
