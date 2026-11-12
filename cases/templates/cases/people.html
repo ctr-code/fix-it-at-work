@@ -1,17 +1,19 @@
 {% extends "base.html" %}
+{% load static %}
 {% block head_title %}People and roles - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
     <h1>People and roles</h1>
-    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team.</p>
+    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. Select Name or Email to sort.</p>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0">
-            <thead><tr><th scope="col">Name</th><th scope="col" class="d-none d-md-table-cell">Email</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
+        <table class="table align-middle mb-0 table-sortable">
+            <caption class="visually-hidden">People and their roles</caption>
+            <thead><tr><th scope="col" data-sort="text">{% include "cases/_sort_button.html" with label="Name" %}</th><th scope="col" class="d-none d-md-table-cell" data-sort="text">{% include "cases/_sort_button.html" with label="Email" %}</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
             <tbody>
             {% for r in rows %}
             <tr>
-                <td>{{ r.user.get_full_name|default:r.user.username }}<br><span class="small text-muted">{{ r.user.username }}</span></td>
-                <td class="d-none d-md-table-cell">{{ r.user.email }}</td>
+                <td data-sort-value="{{ r.user.get_full_name|default:r.user.username }}">{{ r.user.get_full_name|default:r.user.username }}<br><span class="small text-muted">{{ r.user.username }}</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="{{ r.user.email }}">{{ r.user.email }}</td>
                 {% if r.user == user %}
                 <td colspan="3">{{ user_role_label }} <span class="small text-muted">(you)</span></td>
                 {% else %}
@@ -38,3 +40,7 @@
     </div>
 </section>
 {% endblock %}
+
+{% block extra_body %}
+<script src="{% static 'js/sort-table.js' %}"></script>
+{% endblock extra_body %}

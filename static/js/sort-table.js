@@ -43,7 +43,9 @@
 
             button.addEventListener("click", () => {
                 const rows = Array.from(tbody.rows);
-                if (rows.some((r) => r.querySelector("td[colspan]"))) { return; } // the "nothing here" row
+                // A table showing only its "nothing here" row (one cell across the table) has nothing to sort.
+                // Other rows may still use colspan, e.g. "Manager (you)" on the People page.
+                if (rows.every((r) => r.cells.length === 1)) { return; }
 
                 const current = th.getAttribute("aria-sort");
                 const dir = current === "ascending" ? "descending"

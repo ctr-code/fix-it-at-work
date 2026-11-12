@@ -167,6 +167,15 @@ class HeaderTests(TestCase):
         home = self.client.get('/').content.decode()
         self.assertNotIn('aria-current="page"', home)
 
+    def test_people_page_sorts_by_name_and_email(self):
+        manager = self.user_with_role('manager')
+        html = self.client.get('/people/').content.decode()
+        self.assertIn('table-sortable', html)
+        self.assertIn('js/sort-table.js', html)
+        self.assertIn('data-sort="text"><button type="button" class="sort-btn">Name', html)
+        self.assertIn('data-sort="text"><button type="button" class="sort-btn">Email', html)
+        self.assertIn(f'data-sort-value="{manager.email}"', html)
+
     def test_sign_out_still_works(self):
         self.user_with_role('reporter')
         html = self.client.get('/').content.decode()
