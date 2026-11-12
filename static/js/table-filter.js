@@ -2,8 +2,8 @@
 // Filter table rows with dropdowns and a search box.
 // - <select data-filter-rows="#triage tbody" data-filter-key="priority"> keeps rows whose
 //   data-priority matches the chosen value ("" means any).
-// - <input data-search-rows="#triage tbody" data-search-key="title"> keeps rows whose data-title
-//   contains the typed text, ignoring capitals and accents.
+// - <input data-search-rows="#triage tbody" data-search-key="title ref"> keeps rows whose data-title
+//   or data-ref contains the typed text, ignoring capitals and accents. List one or more keys.
 // Controls pointing at the same table combine: a row shows only if it matches all of them.
 // - If the table is in a tab, that tab's count becomes "2 of 6" while filtering.
 // - [data-row-filter-empty] in the same tab shows (and the table hides) when no rows match;
@@ -50,13 +50,14 @@
 
         const apply = () => {
             const active = selects.filter((s) => s.value);
-            const terms = searches.map((i) => ({ key: i.dataset.searchKey, label: i.dataset.searchLabel || "titles",
+            const terms = searches.map((i) => ({ keys: i.dataset.searchKey.split(/\s+/),
+                                                 label: i.dataset.searchLabel || "titles",
                                                  q: fold(i.value) })).filter((t) => t.q);
             const filtering = active.length + terms.length > 0;
             let shown = 0;
             rows.forEach((row) => {
                 const match = active.every((s) => row.dataset[s.dataset.filterKey] === s.value)
-                    && terms.every((t) => fold(row.dataset[t.key] || "").includes(t.q));
+                    && terms.every((t) => t.keys.some((k) => fold(row.dataset[k] || "").includes(t.q)));
                 row.hidden = !match;
                 shown += match;
             });

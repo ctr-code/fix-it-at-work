@@ -43,8 +43,8 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             <label for="triage-search" class="sort-bar-label">Search</label>
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="triage-search" class="form-control" placeholder="Search issue titles"
-                       autocomplete="off" spellcheck="false" data-search-rows="#triage tbody" data-search-key="title">
+                <input type="search" id="triage-search" class="form-control" placeholder="Search by title or reference"
+                       autocomplete="off" spellcheck="false" data-search-rows="#triage tbody" data-search-key="title ref" data-search-label="titles or references">
             </div>
         </div>
         <div class="sort-bar-field">
@@ -75,7 +75,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in new_cases %}
-            <tr data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.ai_priority %}" data-building="{{ c.building }}">
+            <tr data-title="{{ c.title }}" data-ref="{{ c.reference }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.ai_priority %}" data-building="{{ c.building }}">
                 <td><a href="{% url 'triage_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
                 <td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
                 <td data-label="Where" data-sort-value="{{ c.building }} {{ c.location_detail }}">{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
@@ -99,8 +99,8 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             <label for="reply-search" class="sort-bar-label">Search</label>
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="reply-search" class="form-control" placeholder="Search issue titles"
-                       autocomplete="off" spellcheck="false" data-search-rows="#reply tbody" data-search-key="title">
+                <input type="search" id="reply-search" class="form-control" placeholder="Search by title or reference"
+                       autocomplete="off" spellcheck="false" data-search-rows="#reply tbody" data-search-key="title ref" data-search-label="titles or references">
             </div>
         </div>
         <div class="sort-bar-field">
@@ -131,7 +131,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in awaiting_reply %}
-            <tr data-title="{{ c.title }}" data-team="{{ c.assigned_team.name|default:'' }}" data-language="{{ c.preferred_language }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Team">{{ c.assigned_team }}</td><td data-label="Language">{{ c.get_preferred_language_display }}</td>
+            <tr data-title="{{ c.title }}" data-ref="{{ c.reference }}" data-team="{{ c.assigned_team.name|default:'' }}" data-language="{{ c.preferred_language }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Team">{{ c.assigned_team }}</td><td data-label="Language">{{ c.get_preferred_language_display }}</td>
                 <td class="card-action"><a class="btn btn-sm btn-primary" href="{% url 'outcome_letter' c.reference %}">Review AI letter</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No replies waiting.</td></tr>{% endfor %}
             </tbody>
@@ -144,14 +144,14 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
     <div class="tab-pane fade" id="unhappy" role="tabpanel" aria-labelledby="tab-unhappy" tabindex="0">
     <p class="text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
     {% if unhappy %}
-    {# Title search and reporter filter (static/js/table-filter.js). Shown by the script. #}
+    {# Title or reference search and reporter filter (static/js/table-filter.js). Shown by the script. #}
     <div class="sort-bar" data-row-filter-bar hidden>
         <div class="sort-bar-field sort-bar-search">
             <label for="unhappy-search" class="sort-bar-label">Search</label>
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="unhappy-search" class="form-control" placeholder="Search issue titles"
-                       autocomplete="off" spellcheck="false" data-search-rows="#unhappy tbody" data-search-key="title">
+                <input type="search" id="unhappy-search" class="form-control" placeholder="Search by title or reference"
+                       autocomplete="off" spellcheck="false" data-search-rows="#unhappy tbody" data-search-key="title ref" data-search-label="titles or references">
             </div>
         </div>
         <div class="sort-bar-field">
@@ -175,7 +175,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in unhappy %}
-            <tr data-title="{{ c.title }}" data-reporter="{{ c.reporter_name }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
+            <tr data-title="{{ c.title }}" data-ref="{{ c.reference }}" data-reporter="{{ c.reporter_name }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
                 <td data-label="Score" data-sort-value="{{ c.satisfaction }}" class="overdue">{{ c.satisfaction }}/5</td><td data-label="What they said" data-sort-value="{{ c.satisfaction_comments }}">{{ c.satisfaction_comments|default:"-" }}</td>
                 <td data-label="Reporter" data-sort-value="{{ c.reporter_name }}">{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No unhappy reporters. Nice.</td></tr>{% endfor %}
@@ -195,8 +195,8 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             <label for="teams-search" class="sort-bar-label">Search</label>
             <div class="search-box">
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="teams-search" class="form-control" placeholder="Search issue titles"
-                       autocomplete="off" spellcheck="false" data-search-rows="#teams tbody" data-search-key="title">
+                <input type="search" id="teams-search" class="form-control" placeholder="Search by title or reference"
+                       autocomplete="off" spellcheck="false" data-search-rows="#teams tbody" data-search-key="title ref" data-search-label="titles or references">
             </div>
         </div>
         <div class="sort-bar-field">
@@ -235,7 +235,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in in_flight %}
-            <tr data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}" data-team="{{ c.assigned_team.name|default:'' }}" data-officer="{{ c.assigned_officer.name|default:'-' }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
+            <tr data-title="{{ c.title }}" data-ref="{{ c.reference }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}" data-team="{{ c.assigned_team.name|default:'' }}" data-officer="{{ c.assigned_officer.name|default:'-' }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
                 <td data-label="Team / officer" data-sort-value="{{ c.assigned_team|default:'' }} {{ c.assigned_officer.name|default:'' }}">{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
                 <td data-label="Due" data-sort-value="{{ c.sla_due|date:'c' }}" class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">None.</td></tr>{% endfor %}
