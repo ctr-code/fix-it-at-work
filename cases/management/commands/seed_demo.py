@@ -273,20 +273,28 @@ SATISFACTION_COMMENTS = {
     1: ['Took far too long and nobody kept me informed.'],
 }
 
-# What the officer wrote when they fixed it, by team
+# What the officer wrote when they fixed it, by team: (what they found, what they did)
 VISIT_NOTES = {
-    'Facilities Helpdesk': ('Found the fault and replaced the worn part. Tested and checked again after '
-                            '20 minutes, all working.'),
-    'IT Service Desk': 'Diagnosed hardware fault. Swapped the unit for a tested spare and confirmed it works with the user.',
-    'IT Network Team': 'Replaced a failing access point and checked signal strength across the area. Connection stable.',
-    'Security & Access Team': 'Re-set and tested the reader and lock. Reviewed CCTV and logged with the site security lead.',
-    'Estates Maintenance': 'Made safe and taped off the area, then carried out the repair. Checked the surrounding area.',
-    'Cleaning Services': 'Cleared and cleaned the area. Added it to the weekly check list.',
-    'Health & Safety Team': 'Made the area safe and removed the hazard. Recorded in the H&S log.',
-    'Fleet Services': 'Inspected the vehicle, replaced the faulty part and road tested it. Back in service.',
-    'AV & Meeting Room Support': 'Reset the system and replaced a faulty cable. Tested with a laptop and a Teams call.',
+    'Facilities Helpdesk': ('A worn part was causing the fault.',
+                            'Replaced the worn part. Tested and checked again after 20 minutes, all working.'),
+    'IT Service Desk': ('Hardware fault in the unit.',
+                        'Swapped the unit for a tested spare and confirmed it works with the user.'),
+    'IT Network Team': ('One access point was failing and dropping connections.',
+                        'Replaced the access point and checked signal strength across the area. Connection stable.'),
+    'Security & Access Team': ('The reader and lock had lost their settings.',
+                               'Re-set and tested the reader and lock. Reviewed CCTV and logged with the site '
+                               'security lead.'),
+    'Estates Maintenance': ('The area was unsafe to use.',
+                            'Made safe and taped off the area, then carried out the repair. Checked the '
+                            'surrounding area.'),
+    'Cleaning Services': ('The area needed a full clean.', 'Cleared and cleaned the area. Added it to the weekly check list.'),
+    'Health & Safety Team': ('A hazard was in a walkway.', 'Made the area safe and removed the hazard. Recorded in the H&S log.'),
+    'Fleet Services': ('A faulty part on the vehicle.',
+                       'Replaced the faulty part and road tested the vehicle. Back in service.'),
+    'AV & Meeting Room Support': ('A faulty cable was stopping the system connecting.',
+                                  'Reset the system and replaced the cable. Tested with a laptop and a Teams call.'),
 }
-FOLLOW_UP = 'Part needed that is not in the van. Ordered and booked a return visit.'
+FOLLOW_UP = ('Part needed that is not in the van.', 'Ordered the part and booked a return visit.')
 
 HANDLER = 'Jo Clarke'
 
@@ -398,12 +406,13 @@ class Command(BaseCommand):
         if stage == 'assigned':
             return
 
-        note = VISIT_NOTES[case.assigned_team.name]
+        found, did = VISIT_NOTES[case.assigned_team.name]
         first_visit = min(case.date_acknowledged + timedelta(hours=rule.resolve_hours * rng.uniform(0.1, 0.7)),
                           now - timedelta(hours=2))
         if stage == 'in_progress':
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP, False))
+            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
+                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
+                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
             case.status = Status.IN_PROGRESS
             case.save()
             return
@@ -411,13 +420,14 @@ class Command(BaseCommand):
         two_visits = rng.random() < 0.3
         visit_time = first_visit
         if two_visits:
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP, False))
+            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
+                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
+                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
             visit_time = min(first_visit + timedelta(hours=rule.resolve_hours * rng.uniform(0.2, 0.6)),
                              now - timedelta(hours=1))
-        SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=note,
-                                 fixed=True, transcript_used=rng.random() < 0.4,
-                                 ai_summary=ai.summarise_visit(note, True))
+        SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=found,
+                                 action=did, fixed=True, transcript_used=rng.random() < 0.4,
+                                 ai_summary=ai.summarise_visit(found, True, did))
         case.status = Status.RESOLVED
         case.date_resolved = visit_time
         case.first_time_fix = not two_visits

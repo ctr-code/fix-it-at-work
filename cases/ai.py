@@ -143,10 +143,14 @@ def summarise_report(case):
     return f'{case.title} at {where}. {_first_sentences(case.description)}'
 
 
-def summarise_visit(note, fixed):
-    """Turn an officer's typed or dictated note into a short case-note summary."""
+def summarise_visit(note, fixed, action=''):
+    """Turn an officer's typed or dictated answers into a short case-note summary.
+    note is what they found; action is what they did (blank on visits recorded before the two were split)."""
     outcome = 'Fixed on this visit.' if fixed else 'Not fixed yet - follow-up visit needed.'
-    return f'{_first_sentences(note, n=3, limit=300)} Outcome: {outcome}'
+    if not action:
+        return f'{_first_sentences(note, n=3, limit=300)} Outcome: {outcome}'
+    return (f'Found: {_first_sentences(note, n=2, limit=200)} '
+            f'Done: {_first_sentences(action, n=3, limit=300)} Outcome: {outcome}')
 
 
 LETTERS = {
@@ -192,7 +196,11 @@ LETTERS = {
 def draft_outcome_letter(case):
     """Draft a plain-language outcome letter in the reporter's preferred language."""
     last_visit = case.visits.filter(fixed=True).last() or case.visits.last()
-    outcome = last_visit.note if last_visit else 'The issue was resolved by our team.'
+    # "What we did" comes from what the officer did; older visits only have the combined note
+    if last_visit:
+        outcome = last_visit.action or last_visit.note
+    else:
+        outcome = 'The issue was resolved by our team.'
     outcome = _first_sentences(outcome, n=3, limit=300)
     template = LETTERS.get(case.preferred_language, LETTERS['en'])
     return template.format(

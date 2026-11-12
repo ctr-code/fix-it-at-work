@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from .models import Case, Officer, ReportPhoto, Status, Team
+from .models import Case, Communication, Officer, ReportPhoto, SiteVisit, Status, Team
 
 # A real 1x1 PNG, so the upload looks like a phone photo would to the server
 PNG_1PX = (
@@ -267,8 +267,9 @@ class VisitRecordingTests(TestCase):
         self.url = f'/officer/{self.case.reference}/'
         self.client.force_login(self.user)
 
-    def visit(self, note='Bled the radiator and replaced the valve head. Tested for 20 minutes.', **extra):
-        return self.client.post(self.url, {'note': note, **extra})
+    def visit(self, note='The radiator valve was seized on full.',
+              action='Replaced the valve head and bled the radiator. Tested for 20 minutes.', **extra):
+        return self.client.post(self.url, {'note': note, 'action': action, **extra})
 
     def test_fixed_on_first_visit_resolves_the_case(self):
         response = self.visit(fixed='on')
@@ -313,6 +314,12 @@ class VisitRecordingTests(TestCase):
         self.assertTrue(visit.photo.name.startswith('visits/valve'))
         self.assertTrue(visit.transcript_used)
 
+    def test_missing_action_is_refused(self):
+        response = self.visit(action='', fixed='on')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'This field is required.')
+        self.assertFalse(self.case.visits.exists())
+
     def test_empty_note_is_refused(self):
         response = self.visit(note='', fixed='on')
         self.assertEqual(response.status_code, 200)
@@ -355,3 +362,122 @@ class VisitRecordingTests(TestCase):
         self.assertTrue(self.case.first_time_fix)
         messages = [str(m) for m in response.wsgi_request._messages]
         self.assertIn(f'{self.case.reference} is already marked as fixed, so no visit was recorded.', messages)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class VisitOutcomeFlowTests(TestCase):
+    """An officer's answers (what they found, what they did, whether it's fixed) followed through to the
+    handler's case page, the outcome letter and the reporter's tracking page."""
+
+    FOUND = 'The radiator valve was seized and the room was at 29 degrees.'
+    DID = 'Replaced the valve head and bled the radiator.'
+    CHECKED = 'Room back to 21 degrees after 20 minutes.'
+
+    def make_user(self, username, role, first=''):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1',
+                                        first_name=first)
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.officer_user = self.make_user('officer1', 'officer')
+        self.officer = Officer.objects.create(name='Serena', team=team, contact_email='s@example.com',
+                                              user=self.officer_user)
+        self.handler = self.make_user('handler1', 'handler', 'Jo')
+        self.reporter = self.make_user('reporter1', 'reporter', 'Nina')
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='Nina Gallagher', reporter_email='nina@example.com', reporter_user=self.reporter,
+            priority='medium', status=Status.ASSIGNED, assigned_team=team, assigned_officer=self.officer)
+        self.ref = self.case.reference
+
+    def record(self, found, did, fixed):
+        self.client.force_login(self.officer_user)
+        data = {'note': found, 'action': did}
+        if fixed:
+            data['fixed'] = 'on'
+        self.client.post(f'/officer/{self.ref}/', data)
+        self.case.refresh_from_db()
+        return self.case.visits.last()
+
+    def draft_letter(self):
+        self.client.force_login(self.handler)
+        self.client.get(f'/cases/{self.ref}/letter/')
+        return Communication.objects.get(case=self.case, kind=Communication.Kind.OUTCOME).draft_text
+
+    def test_both_answers_are_saved_with_a_summary(self):
+        visit = self.record(self.FOUND, f'{self.DID} {self.CHECKED}', fixed=True)
+        self.assertEqual((visit.note, visit.action, visit.fixed), (self.FOUND, f'{self.DID} {self.CHECKED}', True))
+        self.assertEqual(visit.ai_summary,
+                         f'Found: {self.FOUND} Done: {self.DID} {self.CHECKED} Outcome: Fixed on this visit.')
+
+    def test_handler_sees_outcome_summary_and_both_answers(self):
+        self.record(self.FOUND, self.DID, fixed=True)
+        self.client.force_login(self.handler)
+        visits = self.client.get(f'/cases/{self.ref}/').content.decode().split('Site visits')[1]
+        self.assertIn('Serena &middot; Fixed', visits)
+        self.assertIn('Outcome: Fixed on this visit.', visits)
+        self.assertIn(f'<strong>Found:</strong> {self.FOUND}', visits)
+        self.assertIn(f'<strong>Did:</strong> {self.DID}', visits)
+
+    def test_letter_says_what_was_done_not_what_was_found(self):
+        self.record(self.FOUND, f'{self.DID} {self.CHECKED}', fixed=True)
+        letter = self.draft_letter()
+        self.assertIn('Dear Nina', letter)
+        self.assertIn(f'What we did: {self.DID} {self.CHECKED}', letter)
+        self.assertNotIn(self.FOUND, letter)
+
+    def test_long_description_of_the_fault_does_not_hide_the_action(self):
+        found = ('Arrived at 9am. The finance office was very hot, about 29 degrees. Staff had opened the windows. '
+                 'The radiator valve was seized on full.')
+        self.record(found, self.DID, fixed=True)
+        self.assertIn(f'What we did: {self.DID}', self.draft_letter())
+        self.assertIn(f'Done: {self.DID}', self.case.visits.get().ai_summary)
+
+    def test_older_visit_with_one_note_still_drafts_a_letter(self):
+        SiteVisit.objects.create(case=self.case, officer=self.officer, fixed=True,
+                                 note='Found the valve seized and replaced it.')
+        Case.objects.filter(pk=self.case.pk).update(status=Status.RESOLVED)
+        self.assertIn('What we did: Found the valve seized and replaced it.', self.draft_letter())
+
+    def test_fixed_job_reaches_reporter_through_approved_letter(self):
+        self.record(self.FOUND, f'{self.DID} {self.CHECKED}', fixed=True)
+        # Before the handler approves a letter, the reporter only sees the status
+        self.client.force_login(self.reporter)
+        html = self.client.get(f'/track/{self.ref}/').content.decode()
+        self.assertIn('Resolved - reply being prepared', html)
+        self.assertNotIn(self.DID, html)
+
+        # Approving the AI draft sends it and closes the case
+        letter = self.draft_letter()
+        self.client.post(f'/cases/{self.ref}/letter/', {'draft_text': letter})
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, Status.CLOSED)
+        self.assertTrue(self.case.first_time_fix)
+
+        # Now the reporter sees the letter, including what was done
+        self.client.force_login(self.reporter)
+        html = self.client.get(f'/track/{self.ref}/').content.decode()
+        self.assertIn('Closed', html)
+        self.assertIn(self.DID, html)
+
+    def test_not_fixed_keeps_reporter_informed_and_no_letter_yet(self):
+        self.record('Valve seized solid.', 'Ordered a new valve. Return visit booked for Thursday.', fixed=False)
+        self.assertEqual(self.case.status, Status.IN_PROGRESS)
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/').content.decode()
+        self.assertIn('Serena &middot; Follow-up needed', html)
+        self.assertIn('Done: Ordered a new valve. Return visit booked for Thursday. '
+                      'Outcome: Not fixed yet - follow-up visit needed.', html)
+        response = self.client.get(f'/cases/{self.ref}/letter/')
+        self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
+        self.client.force_login(self.reporter)
+        self.assertIn('In progress - follow-up needed', self.client.get(f'/track/{self.ref}/').content.decode())

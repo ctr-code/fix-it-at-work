@@ -269,7 +269,7 @@ def officer_case(request, ref):
             visit = form.save(commit=False)
             visit.case = case
             visit.officer = officer
-            visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed)
+            visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed, visit.action)
             visit.save()
             if visit.fixed:
                 case.status = Status.RESOLVED

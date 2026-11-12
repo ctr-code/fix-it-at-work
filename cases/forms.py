@@ -153,11 +153,20 @@ class VisitForm(forms.ModelForm):
 
     class Meta:
         model = SiteVisit
-        fields = ['note', 'photo', 'fixed', 'transcript_used']
+        fields = ['note', 'action', 'photo', 'fixed', 'transcript_used']
         widgets = {
-            'note': forms.Textarea(attrs={'rows': 5, 'placeholder': 'Type or tap "Dictate" and speak.'}),
+            'note': forms.Textarea(attrs={
+                'rows': 3, 'placeholder': 'What was wrong when you got there? Type, or tap "Dictate" and speak.'}),
+            'action': forms.Textarea(attrs={
+                'rows': 3, 'placeholder': 'What did you repair, replace, test or arrange?'}),
             'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         }
+        help_texts = {'action': 'This goes into the letter that tells the reporter what was done.'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Older visits may have no action, but every new visit must say what was done
+        self.fields['action'].required = True
 
 
 class LetterForm(forms.Form):

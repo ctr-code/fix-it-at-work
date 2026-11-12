@@ -282,7 +282,10 @@ class SiteVisit(models.Model):
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='visits')
     officer = models.ForeignKey(Officer, on_delete=models.PROTECT)
     visited_at = models.DateTimeField(default=timezone.now)
-    note = models.TextField('What did you find and do?')
+    # What the officer found, and what they did about it. Visits recorded before the two were split
+    # have everything in note and a blank action.
+    note = models.TextField('What did you find?')
+    action = models.TextField('What did you do?', blank=True)
     transcript_used = models.BooleanField(default=False)
     ai_summary = models.TextField(blank=True)
     photo = models.FileField(upload_to='visits/', blank=True)
