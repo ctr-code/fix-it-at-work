@@ -241,7 +241,7 @@ class CaseQueueSortTests(TestCase):
         options = html.split('id="triage-priority"')[1].split('</select>')[0]
         self.assertIn('<option value="3">High</option>', options)
         self.assertNotIn('Urgent', options)
-        self.assertIn('<tr data-title="Tap dripping" data-priority="3" data-building="Main Office">', html)
+        self.assertIn('data-priority="3" data-building="Main Office">', html)
         places = html.split('id="triage-location"')[1].split('</select>')[0]
         self.assertIn('<option value="Main Office">Main Office</option>', places)
         self.assertEqual(places.count('<option'), 2)  # "All locations" plus the one building with a case
@@ -279,7 +279,7 @@ class CaseQueueSortTests(TestCase):
         html = self.client.get('/triage/').content.decode()
         options = html.split('id="unhappy-reporter"')[1].split('</select>')[0]
         self.assertIn('<option value="Lucía Fernández">Lucía Fernández</option>', options)
-        self.assertIn('<tr data-title="Toilet blocked" data-reporter="Lucía Fernández">', html)
+        self.assertIn('data-reporter="Lucía Fernández">', html)
 
     def test_reply_needed_filters_list_teams_and_languages(self):
         user = User.objects.create_user('handler6', 'handler6@example.com', 'not-a-real-password-1')
@@ -298,9 +298,9 @@ class CaseQueueSortTests(TestCase):
         self.assertIn('<option value="en">English</option>', languages)
         self.assertIn('<option value="pl">Polski (Polish)</option>', languages)
         self.assertNotIn('value="es"', languages)
-        self.assertIn('<tr data-title="Brak internetu" data-team="IT Service Desk" data-language="pl">', html)
+        self.assertIn('data-team="IT Service Desk" data-language="pl">', html)
 
-    def test_every_tab_has_a_title_search(self):
+    def test_every_tab_has_a_title_and_reference_search(self):
         user = User.objects.create_user('handler7', 'handler7@example.com', 'not-a-real-password-1')
         user.profile.role = 'handler'
         user.profile.save()
@@ -318,9 +318,10 @@ class CaseQueueSortTests(TestCase):
                            ('unhappy', 'Toilet blocked'), ('teams', 'Window blind broken')]:
             with self.subTest(tab=tab):
                 self.assertIn(f'id="{tab}-search"', html)
-                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title"', html)
+                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title ref"', html)
                 pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
-                self.assertIn(f'<tr data-title="{title}"', pane)
+                ref = Case.objects.get(title=title).reference
+                self.assertIn(f'<tr data-title="{title}" data-ref="{ref}"', pane)
         self.assertNotIn('{#', html)
 
 
@@ -630,3 +631,170 @@ class VisitOutcomeFlowTests(TestCase):
         self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
         self.client.force_login(self.reporter)
         self.assertIn('In progress - follow-up needed', self.client.get(f'/track/{self.ref}/').content.decode())
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReportUpdateTests(TestCase):
+    """A reporter adding more details and photos to their report after sending it."""
+
+    def make_user(self, username, role):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        self.reporter = self.make_user('reporter1', 'reporter')
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='Nina Gallagher', reporter_email='nina@example.com', reporter_user=self.reporter,
+            status=Status.ASSIGNED)
+        self.url = f'/track/{self.case.reference}/'
+        self.client.force_login(self.reporter)
+
+    def png(self, name):
+        return SimpleUploadedFile(name, PNG_1PX, content_type='image/png')
+
+    def add(self, **data):
+        return self.client.post(self.url, {'add_details': '', **data})
+
+    def test_reporter_adds_details_and_photos(self):
+        response = self.add(text='Now the radiator is leaking too.', photo=[self.png('leak1.png'), self.png('leak2.png')])
+        self.assertRedirects(response, self.url + '#updates', fetch_redirect_response=False)
+        update = self.case.updates.get()
+        self.assertEqual((update.text, update.author), ('Now the radiator is leaking too.', self.reporter))
+        self.assertEqual(update.photos.count(), 2)
+        self.assertTrue(all(p.case == self.case for p in update.photos.all()))
+        # Added photos belong to the update, not to the original report
+        self.assertEqual(self.case.all_photos(), [])
+
+    def test_text_only_and_photo_only_updates_work(self):
+        self.add(text='It started making a banging noise.')
+        self.add(photo=self.png('valve.png'))
+        self.assertEqual(self.case.updates.count(), 2)
+
+    def test_empty_update_is_refused(self):
+        response = self.add(text='   ')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Add some details or at least one photo.')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_photo_limits_apply(self):
+        response = self.add(photo=[self.png(f'p{i}.png') for i in range(6)])
+        self.assertContains(response, 'Please choose up to 5 photos. You chose 6.')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_only_the_reporter_can_add(self):
+        self.client.force_login(self.make_user('handler1', 'handler'))
+        self.assertEqual(self.add(text='Not mine').status_code, 403)
+        self.assertNotContains(self.client.get(self.url), 'Add more details')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_closed_or_merged_case_cannot_be_added_to(self):
+        for status in (Status.CLOSED, Status.DUPLICATE):
+            with self.subTest(status=status):
+                Case.objects.filter(pk=self.case.pk).update(status=status)
+                self.assertEqual(self.add(text='Still broken').status_code, 403)
+                self.assertNotContains(self.client.get(self.url), 'Add more details')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_updates_show_to_reporter_handler_and_officer(self):
+        self.add(text='Now the radiator is leaking too.', photo=self.png('leak.png'))
+        self.assertContains(self.client.get(self.url), 'Now the radiator is leaking too.')
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        officer_user = self.make_user('officer1', 'officer')
+        officer = Officer.objects.create(name='Serena', team=team, contact_email='s@example.com', user=officer_user)
+        Case.objects.filter(pk=self.case.pk).update(assigned_team=team, assigned_officer=officer)
+        for user, url in [(self.make_user('handler2', 'handler'), f'/cases/{self.case.reference}/'),
+                          (officer_user, f'/officer/{self.case.reference}/')]:
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                html = self.client.get(url).content.decode()
+                self.assertIn('Added later by the reporter', html)
+                self.assertIn('Now the radiator is leaking too.', html)
+                self.assertIn('reports/leak', html)
+
+    def test_feedback_still_works_on_closed_case(self):
+        from django.utils import timezone
+        Case.objects.filter(pk=self.case.pk).update(status=Status.CLOSED, date_closed=timezone.now())
+        self.client.post(self.url, {'satisfaction': 5, 'satisfaction_comments': 'Great'})
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.satisfaction, 5)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class MyReportsTests(TestCase):
+    """The My reports page lists the signed-in user's own reports."""
+
+    def make_user(self, username, role):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def report(self, user, title, **extra):
+        return Case.objects.create(title=title, description='x', building='Main Office', reporter_name=user.username,
+                                   reporter_email=user.email, reporter_user=user, **extra)
+
+    def setUp(self):
+        self.me = self.make_user('reporter1', 'reporter')
+        self.client.force_login(self.me)
+
+    def test_lists_only_my_reports_with_links(self):
+        mine = self.report(self.me, 'Tap dripping')
+        self.report(self.make_user('reporter2', 'reporter'), 'Someone else broke this')
+        html = self.client.get('/my-reports/').content.decode()
+        self.assertIn('Tap dripping', html)
+        self.assertNotIn('Someone else broke this', html)
+        self.assertIn(f'href="/track/{mine.reference}/"', html)
+        self.assertIn("You've made 1 report, 1 still open.", html)
+
+    def test_status_filter_lists_only_statuses_i_have(self):
+        self.report(self.me, 'Tap dripping')
+        self.report(self.me, 'Bin overflowing', status=Status.CLOSED)
+        html = self.client.get('/my-reports/').content.decode()
+        options = html.split('id="mine-status"')[1].split('</select>')[0]
+        self.assertIn('<option value="new">New - awaiting triage</option>', options)
+        self.assertIn('<option value="closed">Closed</option>', options)
+        self.assertNotIn('value="assigned"', options)
+        self.assertIn('data-search-key="title ref"', html)
+
+    def test_closed_report_waiting_for_a_rating_is_flagged(self):
+        from django.utils import timezone
+        case = self.report(self.me, 'Bin overflowing', status=Status.CLOSED, date_closed=timezone.now())
+        self.assertContains(self.client.get('/my-reports/'), f'/track/{case.reference}/#feedback')
+
+    def test_staff_see_reports_they_made(self):
+        handler = self.make_user('handler1', 'handler')
+        self.report(handler, 'Projector broken')
+        self.client.force_login(handler)
+        self.assertContains(self.client.get('/my-reports/'), 'Projector broken')
+
+    def test_empty_state(self):
+        self.assertContains(self.client.get('/my-reports/'), 'No reports yet')
+
+    def test_sign_in_needed(self):
+        self.client.logout()
+        self.assertEqual(self.client.get('/my-reports/').status_code, 302)
+
+    def test_header_link_and_current_page(self):
+        case = self.report(self.me, 'Tap dripping')
+        for path in ('/my-reports/', f'/track/{case.reference}/'):
+            with self.subTest(path=path):
+                html = self.client.get(path).content.decode()
+                marked = html.split('aria-current="page"')[1].split('</a>')[0]
+                self.assertIn('My reports', marked)
+        report_page = self.client.get('/report/').content.decode()
+        self.assertIn('Report an issue', report_page.split('aria-current="page"')[1].split('</a>')[0])

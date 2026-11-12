@@ -15,4 +15,8 @@
         {% endfor %}
     </ul>
     {% endif %}{% endwith %}
+    {% with updates=case.updates.all %}{% if updates %}
+    <h3 class="report-updates-title"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i> Added later by the reporter</h3>
+    {% include "cases/_report_updates.html" %}
+    {% endif %}{% endwith %}
 </div>

@@ -235,6 +235,11 @@ class Case(models.Model):
         """Only the person who reported it, and only while the feedback window is open."""
         return user.is_authenticated and self.reporter_user_id == user.id and self.feedback_open
 
+    def can_add_details(self, user):
+        """The person who reported it can add details and photos until the case is closed or merged."""
+        return (user.is_authenticated and self.reporter_user_id == user.id
+                and self.status not in (Status.CLOSED, Status.DUPLICATE))
+
     @property
     def is_open(self):
         return self.status in OPEN_STATUSES
@@ -255,9 +260,10 @@ class Case(models.Model):
         }[self.status]
 
     def all_photos(self):
-        """Every photo the reporter attached: an older report's single photo, then any newer ones."""
+        """The photos sent with the report: an older report's single photo, then any newer ones.
+        Photos added later with an update are shown with that update (see ReportUpdate)."""
         files = [self.photo] if self.photo else []
-        return files + [p.image for p in self.photos.all()]
+        return files + [p.image for p in self.photos.all() if p.update_id is None]
 
 
 # Limits for photos attached to a report, shared by the form and the upload area
@@ -265,9 +271,27 @@ MAX_REPORT_PHOTOS = 5
 MAX_PHOTO_MB = 10
 
 
+class ReportUpdate(models.Model):
+    """More details the reporter added after sending the report, with any extra photos."""
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='updates')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='+')
+    text = models.TextField('What else should we know?', blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
+
+    def __str__(self):
+        return f'Update to {self.case.reference}'
+
+
 class ReportPhoto(models.Model):
-    """A photo the reporter attached to a report. A report can have up to MAX_REPORT_PHOTOS."""
+    """A photo the reporter attached to a report (up to MAX_REPORT_PHOTOS at a time), either with the
+    report itself or with a later update."""
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='photos')
+    update = models.ForeignKey(ReportUpdate, null=True, blank=True, on_delete=models.CASCADE,
+                               related_name='photos')
     image = models.FileField(upload_to='reports/')
     uploaded_at = models.DateTimeField(default=timezone.now)
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags static %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container page-lg">
@@ -15,7 +15,34 @@
         {% if case.asset_tag %}<p class="mb-1"><strong>Asset tag:</strong> {{ case.asset_tag }}</p>{% endif %}
         {% if case.sla_due and case.is_open %}<p class="mb-1"><strong>We aim to fix it by:</strong> {{ case.sla_due|date:"l j F, H:i" }}</p>{% endif %}
         <p class="mt-2 mb-0">{{ case.description|linebreaksbr }}</p>
+        {% with photos=case.all_photos %}{% if photos %}
+        <ul class="photo-grid mt-3" aria-label="Photos you sent with your report">
+            {% for p in photos %}
+            <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Your photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
+            {% endfor %}
+        </ul>
+        {% endif %}{% endwith %}
     </div>
+
+    {% if updates or update_form %}
+    <div class="panel" id="updates">
+        <h2 class="h5">Details you've added</h2>
+        {% if updates %}{% include "cases/_report_updates.html" %}{% else %}<p class="text-muted">Nothing added yet.</p>{% endif %}
+        {% if update_form %}
+        <form method="post" enctype="multipart/form-data" class="add-details" novalidate>
+            {% csrf_token %}
+            <h3 class="h6">Add more details</h3>
+            <p class="small text-muted">Has something changed, or is there anything else we should know? Add it here and the team working on your report will see it.</p>
+            {% if update_form.non_field_errors %}<div class="invalid-feedback d-block mb-2">{% for e in update_form.non_field_errors %}<p><strong>{{ e }}</strong></p>{% endfor %}</div>{% endif %}
+            {{ update_form.text|as_crispy_field }}
+            {% include "cases/_photo_upload.html" with field=update_form.photo form=update_form %}
+            <button type="submit" name="add_details" class="btn btn-primary">Add to my report</button>
+        </form>
+        {% else %}
+        <p class="small text-muted mb-0">This report is {% if case.status == 'duplicate' %}merged with another one{% else %}closed{% endif %}, so it can't be added to. If the problem comes back, please make a new report.</p>
+        {% endif %}
+    </div>
+    {% endif %}
     {% if case.status == 'closed' %}
     <div class="panel" id="feedback">
         <h2 class="h5">Your feedback</h2>
@@ -50,3 +77,7 @@
     {% empty %}<p>No messages yet.</p>{% endfor %}
 </section>
 {% endblock %}
+
+{% block extra_body %}
+{% if update_form %}<script src="{% static 'js/photo-upload.js' %}"></script>{% endif %}
+{% endblock extra_body %}

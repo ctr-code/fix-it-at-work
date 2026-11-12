@@ -3,6 +3,7 @@
 {% url 'account_login' as login_url %}
 {% url 'account_signup' as signup_url %}
 {% url 'profile' as profile_url %}
+{% url 'report' as report_url %}
 
 <!DOCTYPE html>
 <html lang="en-gb">
@@ -49,7 +50,9 @@
                 {% with p=request.path %}
                 {% if user.is_authenticated %}
                 <ul class="navbar-nav main-nav mx-lg-auto">
-                    <li class="nav-item"><a class="nav-link{% if '/report' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p == report_url %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
+                    {# A report's tracking page belongs under "My reports" #}
+                    <li class="nav-item"><a class="nav-link{% if '/my-reports' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'my_reports' %}"><i class="fa-solid fa-folder-open" aria-hidden="true"></i> My reports</a></li>
                     {% if user_role == 'handler' or user_role == 'manager' %}
                     <li class="nav-item"><a class="nav-link{% if '/triage' in p or '/cases' in p %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
                     {% endif %}

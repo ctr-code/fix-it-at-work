@@ -78,21 +78,45 @@ class ReportForm(forms.ModelForm):
         return self.cleaned_data['asset_tag'].strip().upper()
 
     def clean_photo(self):
-        """The same limits the upload area checks in the browser, enforced here too."""
-        photos = self.cleaned_data.get('photo') or []
-        if len(photos) > MAX_REPORT_PHOTOS:
-            raise forms.ValidationError(
-                f'Please choose up to {MAX_REPORT_PHOTOS} photos. You chose {len(photos)}.')
-        problems = []
-        for f in photos:
-            name = f.name or 'A file'
-            if not name.lower().endswith(PHOTO_EXTENSIONS) or (f.content_type and f.content_type not in PHOTO_TYPES):
-                problems.append(f'{name} is not a JPG, PNG or WEBP image.')
-            elif f.size > MAX_PHOTO_MB * 1024 * 1024:
-                problems.append(f'{name} is {f.size / (1024 * 1024):.1f}MB. Each photo must be {MAX_PHOTO_MB}MB or less.')
-        if problems:
-            raise forms.ValidationError(problems)
-        return photos
+        return check_photos(self.cleaned_data.get('photo'))
+
+
+def check_photos(photos):
+    """The same limits the upload area checks in the browser, enforced on the server:
+    how many photos, which file types and how big. Returns the list of photos."""
+    photos = photos or []
+    if len(photos) > MAX_REPORT_PHOTOS:
+        raise forms.ValidationError(
+            f'Please choose up to {MAX_REPORT_PHOTOS} photos. You chose {len(photos)}.')
+    problems = []
+    for f in photos:
+        name = f.name or 'A file'
+        if not name.lower().endswith(PHOTO_EXTENSIONS) or (f.content_type and f.content_type not in PHOTO_TYPES):
+            problems.append(f'{name} is not a JPG, PNG or WEBP image.')
+        elif f.size > MAX_PHOTO_MB * 1024 * 1024:
+            problems.append(f'{name} is {f.size / (1024 * 1024):.1f}MB. Each photo must be {MAX_PHOTO_MB}MB or less.')
+    if problems:
+        raise forms.ValidationError(problems)
+    return photos
+
+
+class ReportUpdateForm(forms.Form):
+    """More details and photos the reporter adds to their report after sending it."""
+    text = forms.CharField(
+        label='What else should we know?', required=False,
+        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'For example: it has got worse, it now affects '
+                                                                'the whole floor, or a better description of where it is.'}))
+    photo = PhotosField(required=False, label='Photos',
+                        help_text='Optional. Extra photos help the officer bring the right tools.')
+
+    def clean_photo(self):
+        return check_photos(self.cleaned_data.get('photo'))
+
+    def clean(self):
+        cleaned = super().clean()
+        if not (cleaned.get('text') or '').strip() and not cleaned.get('photo') and not self.errors:
+            raise forms.ValidationError('Add some details or at least one photo.')
+        return cleaned
 
 
 class FeedbackForm(forms.ModelForm):

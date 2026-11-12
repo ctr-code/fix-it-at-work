@@ -1,0 +1,19 @@
+{% comment %}
+Details and photos the reporter added after sending their report, oldest first.
+Usage: {% include "cases/_report_updates.html" with updates=case.updates.all %}
+{% endcomment %}
+<ol class="report-updates">
+    {% for u in updates %}
+    <li class="report-update">
+        <p class="report-update-when">Added {{ u.created_at|date:"j M Y, H:i" }}</p>
+        {% if u.text %}<p class="mb-2">{{ u.text|linebreaksbr }}</p>{% endif %}
+        {% with photos=u.photos.all %}{% if photos %}
+        <ul class="photo-grid" aria-label="Photos added {{ u.created_at|date:'j M Y, H:i' }}">
+            {% for p in photos %}
+            <li><a href="{{ p.image.url }}" target="_blank" rel="noopener"><img src="{{ p.image.url }}" alt="Added photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
+            {% endfor %}
+        </ul>
+        {% endif %}{% endwith %}
+    </li>
+    {% endfor %}
+</ol>

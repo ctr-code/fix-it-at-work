@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import Case, Category, Communication, Officer, Profile, ReportPhoto, SiteVisit, SLARule, Team, get_role
+from .models import Case, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
 
 
 class ProfileInline(admin.StackedInline):
@@ -42,6 +42,11 @@ class UserWithRoleAdmin(UserAdmin):
         return self.inlines if obj else []
 
 
+class ReportUpdateInline(admin.TabularInline):
+    model = ReportUpdate
+    extra = 0
+
+
 class ReportPhotoInline(admin.TabularInline):
     model = ReportPhoto
     extra = 0
@@ -62,7 +67,7 @@ class CaseAdmin(admin.ModelAdmin):
     list_display = ('reference', 'title', 'status', 'priority', 'assigned_team', 'date_reported', 'sla_due')
     list_filter = ('status', 'priority', 'assigned_team', 'category')
     search_fields = ('reference', 'title', 'description')
-    inlines = [ReportPhotoInline, VisitInline, CommunicationInline]
+    inlines = [ReportUpdateInline, ReportPhotoInline, VisitInline, CommunicationInline]
 
 
 admin.site.register([Team, Category, Officer, SLARule])
