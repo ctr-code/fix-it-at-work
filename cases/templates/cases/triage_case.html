@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load static crispy_forms_tags %}
 {% block head_title %}Triage {{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
@@ -35,25 +35,5 @@
 {% endblock %}
 {% block extra_body %}
 {{ by_team|json_script:"by-team" }}
-<script>
-// Choose a team first: the category and officer lists then only offer that team's options.
-// Options are rebuilt rather than hidden, because hidden <option>s still show in some browsers.
-const byTeam = JSON.parse(document.getElementById('by-team').textContent);
-const team = document.getElementById('id_team');
-const lists = ['category', 'officer'].map(name => {
-    const select = document.getElementById('id_' + name);
-    return {name, select, options: [...select.options]};
-});
-function filterByTeam() {
-    for (const {name, select, options} of lists) {
-        const allowed = byTeam[name][team.value] || [];
-        const current = select.value;
-        select.replaceChildren(...options.filter(o => !o.value || allowed.includes(Number(o.value))));
-        select.value = allowed.includes(Number(current)) ? current : '';
-        select.disabled = !team.value;
-    }
-}
-team.addEventListener('change', filterByTeam);
-filterByTeam();
-</script>
+<script src="{% static 'js/team-filter.js' %}"></script>
 {% endblock %}

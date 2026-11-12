@@ -141,14 +141,26 @@ class FeedbackForm(forms.ModelForm):
         self.fields['satisfaction'].choices = [c for c in self.fields['satisfaction'].choices if c[0] != '']
 
 
-class TriageForm(forms.Form):
-    """Choose the team first. The category and officer lists only show options for that team."""
+class RoutingForm(forms.Form):
+    """Where a case goes: choose the team first. The category and officer lists only show options for that team."""
     team = forms.ModelChoiceField(Team.objects.order_by('name'))
     category = forms.ModelChoiceField(Category.objects.select_related('default_team'),
                                       help_text='Only categories handled by the chosen team are listed.')
     priority = forms.ChoiceField(choices=Priority.choices)
     officer = forms.ModelChoiceField(Officer.objects.select_related('team'), required=False,
                                      help_text='Leave blank to let the team pick it up.')
+
+    def clean(self):
+        data = super().clean()
+        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
+        if team and category and category.default_team_id != team.id:
+            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
+        if team and officer and officer.team_id != team.id:
+            self.add_error('officer', f'{officer.name} is not in {team}.')
+        return data
+
+
+class TriageForm(RoutingForm):
     duplicate_of = forms.ModelChoiceField(
         Case.objects.none(), required=False,
         help_text='If this is the same issue as an open case, merge it.')
@@ -161,15 +173,20 @@ class TriageForm(forms.Form):
         self.fields['duplicate_of'].queryset = qs
 
     def clean(self):
-        data = super().clean()
-        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
-        if data.get('duplicate_of'):
-            return data  # merging a duplicate doesn't route the case anywhere
-        if team and category and category.default_team_id != team.id:
-            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
-        if team and officer and officer.team_id != team.id:
-            self.add_error('officer', f'{officer.name} is not in {team}.')
-        return data
+        if self.cleaned_data.get('duplicate_of'):
+            return self.cleaned_data  # merging a duplicate doesn't route the case anywhere
+        return super().clean()
+
+
+class ReassignForm(RoutingForm):
+    """Change the priority, team, category or officer of a case that has already been triaged."""
+    reason = forms.CharField(
+        max_length=200, required=False, label='Reason for the change (optional)',
+        help_text='Shown in the case history, e.g. "Water now reaching the server room".')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['officer'].empty_label = 'Unassigned - the team picks it up'
 
 
 class VisitForm(forms.ModelForm):

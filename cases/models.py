@@ -302,6 +302,25 @@ class ReportPhoto(models.Model):
         return f'Photo for {self.case.reference}'
 
 
+class CaseChange(models.Model):
+    """A change a case handler or manager made to an open case after triage (priority, team, category or
+    officer), kept so everyone can see who changed what and why."""
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='changes')
+    changed_by = models.CharField(max_length=80)
+    changed_at = models.DateTimeField(default=timezone.now)
+    summary = models.TextField()  # one line per field, e.g. "Priority: Medium → High"
+    reason = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['-changed_at', '-pk']
+
+    def __str__(self):
+        return f'Change to {self.case.reference}'
+
+    def lines(self):
+        return self.summary.splitlines()
+
+
 class SiteVisit(models.Model):
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='visits')
     officer = models.ForeignKey(Officer, on_delete=models.PROTECT)

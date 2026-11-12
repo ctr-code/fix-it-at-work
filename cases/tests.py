@@ -798,3 +798,140 @@ class MyReportsTests(TestCase):
                 self.assertIn('My reports', marked)
         report_page = self.client.get('/report/').content.decode()
         self.assertIn('Report an issue', report_page.split('aria-current="page"')[1].split('</a>')[0])
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReassignCaseTests(TestCase):
+    """Case handlers and managers can change the priority, team, category or officer of a triaged case."""
+
+    def make_user(self, username, role, first=''):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1',
+                                        first_name=first)
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        from .models import Category, SLARule
+        self.facilities = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com',
+                                              manager='R Turner')
+        self.it = Team.objects.create(name='IT Service Desk', contact_email='it@example.com', manager='K Osei')
+        self.heating = Category.objects.create(name='Heating', default_team=self.facilities)
+        self.network = Category.objects.create(name='Network', default_team=self.it)
+        self.serena = Officer.objects.create(name='Serena', team=self.facilities, contact_email='s@example.com')
+        self.tom = Officer.objects.create(name='Tom', team=self.facilities, contact_email='t@example.com')
+        self.priya = Officer.objects.create(name='Priya', team=self.it, contact_email='p@example.com')
+        SLARule.objects.create(priority='medium', acknowledge_hours=8, resolve_hours=72)
+        SLARule.objects.create(priority='high', acknowledge_hours=4, resolve_hours=24)
+        self.handler = self.make_user('handler1', 'handler', 'Jo')
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='Nina Gallagher', reporter_email='nina@example.com', priority='medium',
+            status=Status.ASSIGNED, category=self.heating, assigned_team=self.facilities,
+            assigned_officer=self.serena)
+        self.case.apply_sla()
+        self.case.save()
+        self.url = f'/cases/{self.case.reference}/change/'
+
+    def post(self, user=None, **changes):
+        data = {'team': self.facilities.pk, 'category': self.heating.pk, 'priority': 'medium',
+                'officer': self.serena.pk, 'reason': ''}
+        data.update(changes)
+        self.client.force_login(user or self.handler)
+        response = self.client.post(self.url, data)
+        self.case.refresh_from_db()
+        return response
+
+    def test_handler_and_manager_can_open_the_page(self):
+        for user in (self.handler, self.manager):
+            self.client.force_login(user)
+            response = self.client.get(self.url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'Change priority or assignment')
+            self.assertContains(response, 'js/team-filter.js')
+
+    def test_officers_and_reporters_cannot(self):
+        for role in ('officer', 'reporter'):
+            self.client.force_login(self.make_user(f'someone_{role}', role))
+            self.assertNotEqual(self.client.get(self.url).status_code, 200)
+            self.client.post(self.url, {'team': self.it.pk, 'category': self.network.pk, 'priority': 'high'})
+            self.case.refresh_from_db()
+            self.assertEqual(self.case.assigned_team, self.facilities)
+
+    def test_raising_priority_moves_the_sla_and_is_recorded(self):
+        old_due = self.case.sla_due
+        response = self.post(priority='high', reason='Water now reaching the server room')
+        self.assertRedirects(response, f'/cases/{self.case.reference}/')
+        self.assertEqual(self.case.priority, 'high')
+        self.assertLess(self.case.sla_due, old_due)
+        change = self.case.changes.get()
+        self.assertEqual(change.changed_by, 'Jo')
+        self.assertIn('Priority: Medium → High', change.lines())
+        self.assertTrue(any(line.startswith('SLA due:') for line in change.lines()))
+        self.assertEqual(change.reason, 'Water now reaching the server room')
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Change history')
+        self.assertContains(page, 'Water now reaching the server room')
+
+    def test_change_officer_and_unassign(self):
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.case.assigned_officer, self.tom)
+        self.assertEqual(self.case.status, Status.ASSIGNED)
+        self.post(officer='')
+        self.assertIsNone(self.case.assigned_officer)
+        self.assertEqual([c.lines() for c in self.case.changes.order_by('pk')],
+                         [['Officer: Serena → Tom'], ['Officer: Tom → Unassigned']])
+
+    def test_move_to_another_team(self):
+        self.post(user=self.manager, team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertEqual((self.case.assigned_team, self.case.category, self.case.assigned_officer),
+                         (self.it, self.network, self.priya))
+        self.assertEqual(self.case.changes.get().changed_by, 'Ade')
+
+    def test_officer_or_category_from_another_team_is_refused(self):
+        response = self.post(team=self.it.pk, category=self.heating.pk, officer=self.serena.pk)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Heating is not handled by IT Service Desk')
+        self.assertContains(response, 'Serena is not in IT Service Desk')
+        self.assertEqual(self.case.assigned_team, self.facilities)
+        self.assertFalse(self.case.changes.exists())
+
+    def test_saving_without_changes_records_nothing(self):
+        old_due = self.case.sla_due
+        self.post()
+        self.assertEqual(self.case.sla_due, old_due)
+        self.assertFalse(self.case.changes.exists())
+
+    def test_in_progress_case_keeps_its_status(self):
+        self.case.status = Status.IN_PROGRESS
+        self.case.save()
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.case.status, Status.IN_PROGRESS)
+        self.assertEqual(self.case.assigned_officer, self.tom)
+
+    def test_only_triaged_open_cases_can_be_changed(self):
+        for status in (Status.RESOLVED, Status.CLOSED, Status.DUPLICATE):
+            self.case.status = status
+            self.case.save()
+            self.client.force_login(self.handler)
+            self.assertRedirects(self.client.get(self.url), f'/cases/{self.case.reference}/')
+            self.post(priority='high')
+            self.assertEqual(self.case.priority, 'medium')
+            page = self.client.get(f'/cases/{self.case.reference}/')
+            self.assertNotContains(page, 'Change priority or assignment')
+        self.case.status = Status.NEW
+        self.case.save()
+        self.assertRedirects(self.client.get(self.url), f'/triage/{self.case.reference}/',
+                             fetch_redirect_response=False)
+
+    def test_case_page_shows_the_button(self):
+        self.client.force_login(self.handler)
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, f'href="{self.url}"')

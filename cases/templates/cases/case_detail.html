@@ -23,7 +23,24 @@
                     {% if case.satisfaction %}<dt class="col-5">Reporter feedback</dt><dd class="col-7">{{ case.satisfaction }}/5{% if case.satisfaction_comments %}<br><span class="small">"{{ case.satisfaction_comments }}"</span>{% endif %}</dd>{% endif %}
                     {% if case.duplicate_of %}<dt class="col-5">Duplicate of</dt><dd class="col-7"><a href="{% url 'case_detail' case.duplicate_of.reference %}">{{ case.duplicate_of.reference }}</a></dd>{% endif %}
                 </dl>
+                {% if case.status == 'assigned' or case.status == 'in_progress' %}
+                <a class="btn btn-outline-primary mt-3" href="{% url 'reassign_case' case.reference %}"><i class="fa-solid fa-pen" aria-hidden="true"></i> Change priority or assignment</a>
+                {% endif %}
             </div>
+            {% with changes=case.changes.all %}{% if changes %}
+            <div class="panel" id="history">
+                <h2 class="h5">Change history</h2>
+                <ol class="report-updates">
+                    {% for ch in changes %}
+                    <li class="report-update">
+                        <p class="report-update-when">{{ ch.changed_at|date:"j M Y, H:i" }} by {{ ch.changed_by }}</p>
+                        <ul class="list-unstyled mb-0">{% for line in ch.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+                        {% if ch.reason %}<p class="mt-1 mb-0 small"><strong>Reason:</strong> {{ ch.reason }}</p>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}{% endwith %}
         </div>
         <div class="col-lg-6">
             <h2 class="h5">Site visits</h2>

@@ -11,6 +11,7 @@ urlpatterns = [
     path('triage/', views.triage_queue, name='triage_queue'),
     path('triage/<str:ref>/', views.triage_case, name='triage_case'),
     path('cases/<str:ref>/', views.case_detail, name='case_detail'),
+    path('cases/<str:ref>/change/', views.reassign_case, name='reassign_case'),
     path('cases/<str:ref>/letter/', views.outcome_letter, name='outcome_letter'),
     path('officer/', views.officer_cases, name='officer_cases'),
     path('officer/<str:ref>/', views.officer_case, name='officer_case'),

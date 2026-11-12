@@ -8,9 +8,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import ai
-from .forms import FeedbackForm, LetterForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm
+from .forms import (
+    FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
+)
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
     Language, Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
@@ -259,22 +261,81 @@ def triage_case(request, ref):
             'category': case.ai_category,
             'priority': case.ai_priority,
         })
-    # Lets the page narrow the category and officer lists to the chosen team
+    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+
+
+def _by_team():
+    """Category and officer ids for each team, so the page can narrow those lists to the chosen team."""
     by_team = {
         'category': {t: [] for t in Team.objects.values_list('id', flat=True)},
         'officer': {t: [] for t in Team.objects.values_list('id', flat=True)},
     }
     for cat_id, team_id in Category.objects.values_list('id', 'default_team_id'):
-        by_team['category'][team_id].append(cat_id)
+        if team_id:
+            by_team['category'][team_id].append(cat_id)
     for officer_id, team_id in Officer.objects.values_list('id', 'team_id'):
         by_team['officer'][team_id].append(officer_id)
-    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': by_team})
+    return by_team
 
 
 @role_required(*HANDLERS)
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
     return render(request, 'cases/case_detail.html', {'case': case})
+
+
+# Cases can be re-routed after triage until the work is done
+REASSIGNABLE = [Status.ASSIGNED, Status.IN_PROGRESS]
+
+
+@role_required(*HANDLERS)
+def reassign_case(request, ref):
+    case = get_object_or_404(Case, reference=ref)
+    if case.status == Status.NEW:
+        return redirect('triage_case', ref=ref)
+    if case.status not in REASSIGNABLE:
+        messages.info(request, f'{case.reference} is {case.get_status_display().lower()}, so its priority '
+                               f'and assignment can no longer be changed.')
+        return redirect('case_detail', ref=ref)
+
+    if request.method == 'POST':
+        form = ReassignForm(request.POST)
+        if form.is_valid():
+            d = form.cleaned_data
+            before = {'priority': case.get_priority_display() or '-', 'team': str(case.assigned_team or '-'),
+                      'category': str(case.category or '-'),
+                      'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
+            priority_changed = d['priority'] != case.priority
+            case.priority = d['priority']
+            case.assigned_team = d['team']
+            case.category = d['category']
+            case.assigned_officer = d['officer']
+            after = {'priority': case.get_priority_display(), 'team': str(case.assigned_team),
+                     'category': str(case.category),
+                     'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
+            lines = [f'{field.capitalize()}: {before[field]} → {after[field]}'
+                     for field in ('priority', 'team', 'category', 'officer') if before[field] != after[field]]
+            if not lines:
+                messages.info(request, f'Nothing was changed on {case.reference}.')
+                return redirect('case_detail', ref=ref)
+            if priority_changed:
+                old_due = case.sla_due
+                case.apply_sla()  # the target date follows the priority, counted from when it was reported
+                if case.sla_due != old_due:
+                    lines.append(f'SLA due: {_when(old_due)} → {_when(case.sla_due)}')
+            case.save()
+            CaseChange.objects.create(case=case, changed_by=display_name(request.user),
+                                      summary='\n'.join(lines), reason=d['reason'])
+            messages.success(request, f'{case.reference} updated.')
+            return redirect('case_detail', ref=ref)
+    else:
+        form = ReassignForm(initial={'priority': case.priority, 'team': case.assigned_team,
+                                     'category': case.category, 'officer': case.assigned_officer})
+    return render(request, 'cases/reassign_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+
+
+def _when(moment):
+    return f'{timezone.localtime(moment):%d %b %Y, %H:%M}' if moment else '-'
 
 
 # ---------- 3 & 4. Attend, investigate, record outcome (field officer) ----------
