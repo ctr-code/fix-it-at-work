@@ -3,8 +3,9 @@
 {% block head_title %}My jobs - Fix It at Work{% endblock %}
 {% block main %}
 {% comment %}
-Job cards carry what the "Sort by" list needs: data-title, data-priority (urgent 4 to low 1),
-data-due (ISO date) and data-overdue (1 or 0). static/js/sort-cards.js reorders them.
+Job cards carry what the "Location" and "Sort by" lists need: data-building, data-title,
+data-priority (urgent 4 to low 1), data-due (ISO date) and data-overdue (1 or 0).
+static/js/sort-cards.js filters and reorders them.
 {% endcomment %}
 <section class="container page-sm">
     <h1>My jobs</h1>
@@ -12,44 +13,57 @@ data-due (ISO date) and data-overdue (1 or 0). static/js/sort-cards.js reorders 
 
     {% if officer %}
     {% if cases or team_unassigned %}
-    {# Shown by the script, so there's no control that does nothing without JavaScript #}
+    {# Shown by the script, so there are no controls that do nothing without JavaScript #}
     <div class="sort-bar" data-sort-bar hidden>
-        <label for="job-sort" class="sort-bar-label">Sort by</label>
-        <select id="job-sort" class="form-select" data-sort-cards=".job-list">
-            <option value="due">Due date (soonest first)</option>
-            <option value="priority">Priority (most urgent first)</option>
-            <option value="overdue">Overdue first</option>
-            <option value="title">Title (A to Z)</option>
-        </select>
+        <div class="sort-bar-field">
+            <label for="job-location" class="sort-bar-label">Location</label>
+            <select id="job-location" class="form-select" data-filter-cards=".job-list" data-filter-key="building">
+                <option value="">All locations</option>
+                {% for b in buildings %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="job-sort" class="sort-bar-label">Sort by</label>
+            <select id="job-sort" class="form-select" data-sort-cards=".job-list">
+                <option value="due">Due date (soonest first)</option>
+                <option value="priority">Priority (most urgent first)</option>
+                <option value="overdue">Overdue first</option>
+                <option value="title">Title (A to Z)</option>
+            </select>
+        </div>
     </div>
     <p class="visually-hidden" aria-live="polite" data-sort-status></p>
     {% endif %}
 
-    <h2>Assigned to me <span class="badge bg-secondary">{{ cases|length }}</span></h2>
+    <h2>Assigned to me <span class="badge bg-secondary" data-count>{{ cases|length }}</span></h2>
     <div class="job-list">
     {% for c in cases %}
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}"
-       data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}"
+       data-building="{{ c.building }}" data-title="{{ c.title }}"
+       data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}"
        data-due="{{ c.sla_due|date:'c' }}" data-overdue="{{ c.is_overdue|yesno:'1,0' }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
         <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}{% if c.status == 'in_progress' %} &middot; follow-up visit{% endif %}</div>
     </a>
     {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
+    {% if cases %}<p class="text-muted" data-filter-empty hidden>None of your jobs are in this location.</p>{% endif %}
     </div>
 
     {% if team_unassigned %}
-    <h2 class="mt-4">Unassigned in {{ officer.team }}</h2>
+    <h2 class="mt-4">Unassigned in {{ officer.team }} <span class="badge bg-secondary" data-count>{{ team_unassigned|length }}</span></h2>
     <div class="job-list">
     {% for c in team_unassigned %}
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}"
-       data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}"
+       data-building="{{ c.building }}" data-title="{{ c.title }}"
+       data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}"
        data-due="{{ c.sla_due|date:'c' }}" data-overdue="{{ c.is_overdue|yesno:'1,0' }}">
         <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
         <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</div>
     </a>
     {% endfor %}
+    <p class="text-muted" data-filter-empty hidden>No unassigned team jobs in this location.</p>
     </div>
     {% endif %}
     {% endif %}

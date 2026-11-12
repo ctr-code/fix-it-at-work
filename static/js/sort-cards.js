@@ -1,8 +1,11 @@
 /* jshint esversion: 6 */
-// "Sort by" for lists of job cards. A <select data-sort-cards=".job-list"> reorders the cards
-// inside every matching list. Each card gives its values as data-title, data-priority (number,
-// higher is more urgent), data-due (ISO date) and data-overdue ("1" or "0").
-// The choice is remembered on this device, so it's kept when coming back from a job.
+// "Sort by" and "Location" for lists of job cards.
+// - <select data-sort-cards=".job-list"> reorders the cards in every matching list. Cards give
+//   data-title, data-priority (number, higher is more urgent), data-due (ISO date), data-overdue ("1"/"0").
+// - <select data-filter-cards=".job-list" data-filter-key="building"> shows only cards whose
+//   data-building matches; "" shows all. Each list's heading count becomes "2 of 5", and a list's
+//   [data-filter-empty] message shows when none of its cards match.
+// Both choices are remembered on this device, so they're kept when coming back from a job.
 (() => {
     "use strict";
 
@@ -26,33 +29,68 @@
             words: "title, A to Z",
         },
     };
-    const STORE_KEY = "fiaw-job-sort";
 
+    const load = (key) => { try { return window.localStorage.getItem(key); } catch (e) { return null; } };
+    const save = (key, value) => { try { window.localStorage.setItem(key, value); } catch (e) { /* blocked */ } };
+    const status = document.querySelector("[data-sort-status]");
+    const say = (text) => { if (status) { status.textContent = text; } };
+    const cardsIn = (list) => Array.from(list.querySelectorAll(":scope > [data-due]"));
+
+    document.querySelectorAll("[data-sort-bar]").forEach((bar) => { bar.hidden = false; });
+
+    // Sorting
     document.querySelectorAll("select[data-sort-cards]").forEach((select) => {
         const lists = document.querySelectorAll(select.dataset.sortCards);
-        const status = document.querySelector("[data-sort-status]");
-        const bar = select.closest("[data-sort-bar]");
-        if (bar) { bar.hidden = false; }
-
-        const apply = (key, announce) => {
+        const STORE = "fiaw-job-sort";
+        const apply = (key) => {
             const order = ORDERS[key] || ORDERS.due;
             lists.forEach((list) => {
-                const cards = Array.from(list.querySelectorAll(":scope > [data-due]"));
-                cards.sort(order.compare).forEach((card) => list.appendChild(card));
+                const empty = list.querySelector(":scope > [data-filter-empty]");
+                cardsIn(list).sort(order.compare).forEach((card) => list.insertBefore(card, empty));
             });
-            if (announce && status) { status.textContent = "Jobs sorted by " + order.words + "."; }
+            return order;
         };
-
-        let saved = null;
-        try { saved = window.localStorage.getItem(STORE_KEY); } catch (e) { /* storage blocked */ }
-        if (saved && ORDERS[saved]) {
-            select.value = saved;
-            apply(saved, false);
-        }
-
+        const saved = load(STORE);
+        if (saved && ORDERS[saved]) { select.value = saved; apply(saved); }
         select.addEventListener("change", () => {
-            apply(select.value, true);
-            try { window.localStorage.setItem(STORE_KEY, select.value); } catch (e) { /* storage blocked */ }
+            const order = apply(select.value);
+            save(STORE, select.value);
+            say("Jobs sorted by " + order.words + ".");
+        });
+    });
+
+    // Filtering
+    document.querySelectorAll("select[data-filter-cards]").forEach((select) => {
+        const lists = document.querySelectorAll(select.dataset.filterCards);
+        const key = select.dataset.filterKey;
+        const STORE = "fiaw-job-filter-" + key;
+        const apply = (value) => {
+            let shown = 0;
+            lists.forEach((list) => {
+                const cards = cardsIn(list);
+                let inList = 0;
+                cards.forEach((card) => {
+                    const match = !value || card.dataset[key] === value;
+                    card.hidden = !match;
+                    inList += match;
+                });
+                shown += inList;
+                const empty = list.querySelector(":scope > [data-filter-empty]");
+                if (empty) { empty.hidden = inList > 0 || cards.length === 0; }
+                const heading = list.previousElementSibling;
+                const count = heading && heading.querySelector("[data-count]");
+                if (count) { count.textContent = value ? inList + " of " + cards.length : String(cards.length); }
+            });
+            return shown;
+        };
+        const saved = load(STORE);
+        // Only reuse a saved location if there are still jobs there
+        if (saved && Array.from(select.options).some((o) => o.value === saved)) { select.value = saved; apply(saved); }
+        select.addEventListener("change", () => {
+            const shown = apply(select.value);
+            save(STORE, select.value);
+            say(select.value ? "Showing " + shown + (shown === 1 ? " job" : " jobs") + " in " + select.value + "."
+                : "Showing jobs in all locations.");
         });
     });
 })();

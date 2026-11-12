@@ -244,8 +244,19 @@ class OfficerJobPageTests(TestCase):
         html = self.client.get('/officer/').content.decode()
         self.assertIn('id="job-sort"', html)
         self.assertIn('js/sort-cards.js', html)
-        self.assertIn('data-title="Leaking tap" data-priority="4"', html)
+        self.assertIn('data-building="Main Office" data-title="Leaking tap"', html)
+        self.assertIn('data-priority="4"', html)
         self.assertIn('data-overdue="0"', html)
+
+    def test_location_filter_lists_only_this_officers_buildings(self):
+        self.client.post(self.url, {'take': ''})
+        other_team = Team.objects.create(name='IT Service Desk', contact_email='it@example.com', manager='N Karim')
+        Case.objects.create(title='Laptop broken', description='x', building='Depot', reporter_name='R',
+                            reporter_email='r@example.com', status=Status.ASSIGNED, assigned_team=other_team)
+        html = self.client.get('/officer/').content.decode()
+        self.assertIn('id="job-location"', html)
+        self.assertIn('<option value="Main Office">Main Office</option>', html)
+        self.assertNotIn('<option value="Depot">', html)
 
 
 @override_settings(

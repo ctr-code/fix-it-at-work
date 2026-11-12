@@ -233,8 +233,10 @@ def officer_cases(request):
         team_unassigned = Case.objects.filter(
             assigned_team=officer.team, assigned_officer__isnull=True,
             status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+    # Buildings the officer has jobs in, for the "Location" filter
+    buildings = sorted({c.building for c in [*cases, *team_unassigned] if c.building}, key=str.lower)
     return render(request, 'cases/officer_cases.html', {
-        'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned,
+        'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned, 'buildings': buildings,
     })
 
 
