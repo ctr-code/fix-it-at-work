@@ -311,11 +311,8 @@ main { margin-bottom: var(--space-10); }
 .sort-bar-label { flex: none; width: 4.5rem; margin: 0; font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .sort-bar .form-select { flex: 1; min-width: 0; }
 .sort-bar-search { flex-basis: 100%; }
-[data-row-filter-bar] { max-width: 960px; }   /* filters above a wide table: don't stretch across it */
-[data-row-filter-bar] .sort-bar-field { max-width: 380px; }
-/* The search takes a whole row, so the dropdowns start on the next line; the box itself stays a sensible width */
-[data-row-filter-bar] .sort-bar-search { max-width: none; }
-[data-row-filter-bar] .sort-bar-search .search-box { max-width: 560px; }
+/* Case queue filters use the full width of their tab: the search takes a whole row, and the
+   dropdowns below share the next row equally (they wrap onto more rows on narrow screens) */
 .sort-bar-actions { flex-basis: 100%; display: flex; justify-content: flex-end; }
 .sort-bar-actions:has(> [hidden]) { display: none; }
 .sort-bar-actions .btn { min-height: 36px; }
