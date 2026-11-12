@@ -8,6 +8,7 @@
 //   data-building matches; "" means any. Filters combine: a card shows only if it matches all of them.
 //   Each list's heading count becomes "2 of 5", and a list's [data-filter-empty] message shows when
 //   none of its cards match.
+// - Any [data-clear-filters] button empties the search and resets the filters (not the sort).
 // All choices are remembered on this device, so they're kept when coming back from a job.
 (() => {
     "use strict";
@@ -93,6 +94,8 @@
             const count = heading && heading.querySelector("[data-count]");
             if (count) { count.textContent = filtering ? inList + " of " + cards.length : String(cards.length); }
         });
+        // The "Clear filters" button in the controls only shows while something is filtered
+        document.querySelectorAll("[data-sort-bar] [data-clear-filters]").forEach((b) => { b.hidden = !filtering; });
         // e.g. "Showing 1 job: Main Office, Medium, titles containing "tap"."
         const parts = active.map((s) => s.options[s.selectedIndex].text)
             .concat(terms.map((t) => 'titles containing "' + t.q + '"'));
@@ -121,5 +124,18 @@
             announce = setTimeout(() => say(message), 600);
         });
     });
+    // "Clear filters": empty the search and set every filter back to "All"; the sort order is kept
+    document.querySelectorAll("[data-clear-filters]").forEach((button) => {
+        button.addEventListener("click", () => {
+            searches.forEach((input) => { input.value = ""; });
+            filters.forEach((select) => { select.value = ""; save(storeKey(select), ""); });
+            applyFilters();
+            say("Filters cleared. Showing all jobs.");
+            // The button hides itself, so move focus somewhere sensible
+            const next = searches[0] || filters[0];
+            if (next) { next.focus(); }
+        });
+    });
+
     if (filters.some((s) => s.value) || searches.some((i) => i.value)) { applyFilters(); }
 })();

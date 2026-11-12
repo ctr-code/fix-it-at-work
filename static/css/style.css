@@ -294,6 +294,9 @@ main { margin-bottom: var(--space-10); }
 .sort-bar-label { flex: none; width: 4.5rem; margin: 0; font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .sort-bar .form-select { flex: 1; min-width: 0; }
 .sort-bar-search { flex-basis: 100%; }
+.sort-bar-actions { flex-basis: 100%; display: flex; justify-content: flex-end; }
+.sort-bar-actions:has(> [hidden]) { display: none; }
+.sort-bar-actions .btn { min-height: 36px; }
 .search-box { position: relative; flex: 1; min-width: 0; }
 .search-box i { position: absolute; left: var(--control-pad-x); top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .search-box .form-control { padding-left: calc(var(--control-pad-x) * 2 + 1em); }

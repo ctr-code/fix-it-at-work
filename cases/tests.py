@@ -263,6 +263,7 @@ class OfficerJobPageTests(TestCase):
         html = self.client.get('/officer/').content.decode()
         self.assertIn('id="job-priority"', html)
         self.assertIn('data-search-cards=".job-list" data-search-key="title"', html)
+        self.assertIn('data-clear-filters hidden', html)  # shown by the script once something is filtered
         self.assertIn('<option value="2">Medium</option>', html)
         for absent in ('Urgent', 'High', 'Low'):
             self.assertNotIn(f'">{absent}</option>', html)

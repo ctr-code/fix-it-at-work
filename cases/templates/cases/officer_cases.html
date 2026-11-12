@@ -46,6 +46,12 @@ static/js/sort-cards.js filters and reorders them.
                 <option value="title">Title (A to Z)</option>
             </select>
         </div>
+        {# Only shown while a search or filter is on; sorting is kept #}
+        <div class="sort-bar-actions">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-clear-filters hidden>
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear filters
+            </button>
+        </div>
     </div>
     <p class="visually-hidden" aria-live="polite" data-sort-status></p>
     {% endif %}
@@ -62,7 +68,7 @@ static/js/sort-cards.js filters and reorders them.
         <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}{% if c.status == 'in_progress' %} &middot; follow-up visit{% endif %}</div>
     </a>
     {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
-    {% if cases %}<p class="text-muted" data-filter-empty hidden>None of your jobs match these filters.</p>{% endif %}
+    {% if cases %}<p class="text-muted" data-filter-empty hidden>None of your jobs match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-filters>Clear filters</button></p>{% endif %}
     </div>
 
     {% if team_unassigned %}
@@ -78,7 +84,7 @@ static/js/sort-cards.js filters and reorders them.
         <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</div>
     </a>
     {% endfor %}
-    <p class="text-muted" data-filter-empty hidden>No unassigned team jobs match these filters.</p>
+    <p class="text-muted" data-filter-empty hidden>No unassigned team jobs match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-filters>Clear filters</button></p>
     </div>
     {% endif %}
     {% endif %}
