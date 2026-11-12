@@ -3,7 +3,7 @@
 {% block head_title %}My jobs - Fix It at Work{% endblock %}
 {% block main %}
 {% comment %}
-Job cards carry what the "Location", "Priority" and "Sort by" lists need: data-building, data-title,
+Job cards carry what the search box and the "Location", "Priority" and "Sort by" lists need: data-building, data-title,
 data-priority (urgent 4 to low 1), data-due (ISO date) and data-overdue (1 or 0).
 static/js/sort-cards.js filters and reorders them.
 {% endcomment %}
@@ -15,6 +15,14 @@ static/js/sort-cards.js filters and reorders them.
     {% if cases or team_unassigned %}
     {# Shown by the script, so there are no controls that do nothing without JavaScript #}
     <div class="sort-bar" data-sort-bar hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="job-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="job-search" class="form-control" placeholder="Search job titles"
+                       autocomplete="off" spellcheck="false" data-search-cards=".job-list" data-search-key="title">
+            </div>
+        </div>
         <div class="sort-bar-field">
             <label for="job-location" class="sort-bar-label">Location</label>
             <select id="job-location" class="form-select" data-filter-cards=".job-list" data-filter-key="building">

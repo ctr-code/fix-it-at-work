@@ -262,6 +262,7 @@ class OfficerJobPageTests(TestCase):
         self.client.post(self.url, {'take': ''})  # the job set up for this officer is medium
         html = self.client.get('/officer/').content.decode()
         self.assertIn('id="job-priority"', html)
+        self.assertIn('data-search-cards=".job-list" data-search-key="title"', html)
         self.assertIn('<option value="2">Medium</option>', html)
         for absent in ('Urgent', 'High', 'Low'):
             self.assertNotIn(f'">{absent}</option>', html)

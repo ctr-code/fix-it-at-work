@@ -1,5 +1,7 @@
 /* jshint esversion: 6 */
-// "Sort by" and filters (e.g. "Location", "Priority") for lists of job cards.
+// "Sort by", filters (e.g. "Location", "Priority") and a search box for lists of job cards.
+// - <input data-search-cards=".job-list" data-search-key="title"> keeps cards whose data-title contains
+//   the typed text, ignoring capitals and accents. It combines with the filters.
 // - <select data-sort-cards=".job-list"> reorders the cards in every matching list. Cards give
 //   data-title, data-priority (number, higher is more urgent), data-due (ISO date), data-overdue ("1"/"0").
 // - <select data-filter-cards=".job-list" data-filter-key="building"> keeps only cards whose
@@ -62,18 +64,25 @@
 
     // Filtering: every filter list applies at once
     const filters = Array.from(document.querySelectorAll("select[data-filter-cards]"));
+    const searches = Array.from(document.querySelectorAll("input[data-search-cards]"));
     const filterLists = new Set();
     filters.forEach((select) => document.querySelectorAll(select.dataset.filterCards).forEach((l) => filterLists.add(l)));
+    searches.forEach((input) => document.querySelectorAll(input.dataset.searchCards).forEach((l) => filterLists.add(l)));
+    // Search ignores capitals and accents, so "lucia" finds "Lucía"
+    const fold = (text) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("en-GB").trim();
     const storeKey = (select) => "fiaw-job-filter-" + select.dataset.filterKey;
 
     const applyFilters = () => {
         const active = filters.filter((s) => s.value);
+        const terms = searches.map((i) => ({ key: i.dataset.searchKey, q: fold(i.value) })).filter((t) => t.q);
+        const filtering = active.length + terms.length > 0;
         let shown = 0;
         filterLists.forEach((list) => {
             const cards = cardsIn(list);
             let inList = 0;
             cards.forEach((card) => {
-                const match = active.every((s) => card.dataset[s.dataset.filterKey] === s.value);
+                const match = active.every((s) => card.dataset[s.dataset.filterKey] === s.value)
+                    && terms.every((t) => fold(card.dataset[t.key] || "").includes(t.q));
                 card.hidden = !match;
                 inList += match;
             });
@@ -82,9 +91,14 @@
             if (empty) { empty.hidden = inList > 0 || cards.length === 0; }
             const heading = list.previousElementSibling;
             const count = heading && heading.querySelector("[data-count]");
-            if (count) { count.textContent = active.length ? inList + " of " + cards.length : String(cards.length); }
+            if (count) { count.textContent = filtering ? inList + " of " + cards.length : String(cards.length); }
         });
-        return { shown, active };
+        // e.g. "Showing 1 job: Main Office, Medium, titles containing "tap"."
+        const parts = active.map((s) => s.options[s.selectedIndex].text)
+            .concat(terms.map((t) => 'titles containing "' + t.q + '"'));
+        return parts.length
+            ? "Showing " + shown + (shown === 1 ? " job" : " jobs") + ": " + parts.join(", ") + "."
+            : "Showing all jobs.";
     };
 
     filters.forEach((select) => {
@@ -93,12 +107,19 @@
         if (saved && Array.from(select.options).some((o) => o.value === saved)) { select.value = saved; }
         select.addEventListener("change", () => {
             save(storeKey(select), select.value);
-            const { shown, active } = applyFilters();
-            const chosen = active.map((s) => s.options[s.selectedIndex].text);
-            say(active.length
-                ? "Showing " + shown + (shown === 1 ? " job" : " jobs") + ": " + chosen.join(", ") + "."
-                : "Showing all jobs.");
+            say(applyFilters());
         });
     });
-    if (filters.some((s) => s.value)) { applyFilters(); }
+
+    // Search boxes filter as you type. The text isn't remembered, so a list is never narrowed by an
+    // old search; the result is announced once typing pauses rather than on every key.
+    let announce;
+    searches.forEach((input) => {
+        input.addEventListener("input", () => {
+            const message = applyFilters();
+            clearTimeout(announce);
+            announce = setTimeout(() => say(message), 600);
+        });
+    });
+    if (filters.some((s) => s.value) || searches.some((i) => i.value)) { applyFilters(); }
 })();
