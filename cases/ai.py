@@ -24,9 +24,11 @@ from .models import Case, Category, Impact, Priority, PRIORITY_RANK, OPEN_STATUS
 # words in Polish, Urdu and Spanish so non-English reports are not missed.
 SAFETY_TERMS = {
     'urgent': [
-        'fire', 'smoke', 'burning', 'sparks', 'sparking', 'gas smell', 'smell of gas', 'electric shock',
-        'exposed wire', 'live wire', 'flood', 'flooding', 'pouring', 'gushing', 'trapped', 'stuck in lift',
-        'injured', 'injury', 'collapsed', 'break-in', 'intruder', 'ceiling falling',
+        'fire', 'smoke', 'burning', 'sparks', 'sparking', 'gas smell', 'smell of gas', 'gas leak', 'electric shock',
+        'exposed wire', 'live wire', 'flood', 'flooding', 'water pouring', 'pouring through', 'pouring in',
+        'pouring out', 'pouring from', 'gushing', 'trapped', 'stuck in lift',
+        'injured', 'injury', 'someone collapsed', 'person collapsed', 'has collapsed on', 'ceiling collapsed',
+        'ceiling has collapsed', 'wall has collapsed', 'roof has collapsed', 'break-in', 'intruder', 'ceiling falling',
         'pożar', 'dym', 'gaz', 'zalanie', 'آگ', 'دھواں', 'گیس', 'fuego', 'humo', 'inundación',
     ],
     'high': [
@@ -37,6 +39,23 @@ SAFETY_TERMS = {
     ],
 }
 
+# Phrases that contain a danger word but aren't a danger in themselves. They're blanked out before
+# the danger words are checked, so "fire extinguisher missing" or "locked out of my account" doesn't
+# jump the queue. The category's own default priority still applies (e.g. Fire Equipment is high).
+HARMLESS_PHRASES = [
+    r'fire doors?', r'fire extinguishers?', r'fire blankets?', r'fire exits? signs?', r'fire alarm tests?',
+    r'fire (?:safety )?(?:checks?|drills?|training)', r'smoke (?:alarm|detector)s?', r'intruder alarms?',
+    r'burglar alarms?', r'pouring (?:with )?rain', r'locked out of (?:my |the |our )?'
+    r'(?:account|laptop|computer|pc|email|e-mail|outlook|teams|system|phone|app)',
+]
+# A danger word just after one of these is being ruled out ("not a fire", "no smoke").
+NEGATIONS = {'no', 'not', 'without', 'never', 'isn\'t', 'wasn\'t', 'nothing'}
+
+# Keywords that turn up in reports about many different things ("cold tap", "fire door", "rain"). They
+# still count, but less than specific words, so "the cold tap won't turn off" goes to Plumbing, not Heating.
+GENERIC_KEYWORDS = {'cold', 'door', 'entrance', 'toilet', 'rain', 'smell', 'power', 'lift', 'camera', 'display'}
+PHRASE_WEIGHT, WORD_WEIGHT, GENERIC_WEIGHT, NEAR_MISS_WEIGHT = 2, 1, 0.5, 0.75
+
 
 def _text(*parts):
     return ' '.join(p for p in parts if p).lower()
@@ -44,6 +63,63 @@ def _text(*parts):
 
 def _max_priority(*priorities):
     return max((p for p in priorities if p), key=lambda p: PRIORITY_RANK[p])
+
+
+def _near_miss(word, tokens):
+    """A token that looks like a misspelling of word ("radiater" for "radiator"), or None.
+    Only for longer words, and the first letter must match, to keep false matches rare."""
+    if len(word) < 6 or ' ' in word:
+        return None
+    for tok in tokens:
+        # "lift" isn't a misspelling of "lifted": a shorter or longer form of the word is a different word
+        if tok.startswith(word) or word.startswith(tok):
+            continue
+        if (tok[0] == word[0] and abs(len(tok) - len(word)) <= 2
+                and SequenceMatcher(None, tok, word).ratio() >= 0.8):
+            return tok
+    return None
+
+
+def _score_category(cat, text, tokens):
+    """Weighted keyword score: specific phrases count most, generic words least,
+    near-miss spellings a little less than a correct spelling."""
+    score, hits = 0, []
+    for w in (w.strip().lower() for w in cat.keywords.split(',')):
+        if not w:
+            continue
+        if re.search(r'\b' + re.escape(w), text):
+            score += PHRASE_WEIGHT if ' ' in w else GENERIC_WEIGHT if w in GENERIC_KEYWORDS else WORD_WEIGHT
+            hits.append(w)
+        else:
+            tok = _near_miss(w, tokens)
+            if tok:
+                score += NEAR_MISS_WEIGHT
+                hits.append(f'{w} (spelt "{tok}")')
+    return score, hits
+
+
+FILLERS = {'a', 'an', 'any', 'sign', 'signs', 'of', 'real', 'actual'}
+
+
+def _danger_terms(terms, text):
+    """Danger words in text, skipping harmless phrases and ones that are ruled out ("not a fire")."""
+    for phrase in HARMLESS_PHRASES:
+        text = re.sub(r'\b' + phrase + r'\b', ' ', text)
+    found = []
+    for term in terms:
+        for m in re.finditer(r'\b' + re.escape(term) + r'\b', text):
+            negated = False
+            for word in reversed(text[:m.start()].split()[-3:]):
+                word = word.strip('.,;:!?-"\'')
+                if word in NEGATIONS:
+                    negated = True
+                    break
+                if word not in FILLERS:
+                    break
+            if not negated:
+                found.append(term)
+                break
+    return found
 
 
 def triage(case):
@@ -55,12 +131,12 @@ def triage(case):
     text = _text(case.title, case.description, case.location_detail)
     reasons = []
 
-    # 1. Category (and so team): score each category by keyword hits
+    # 1. Category (and so team): score each category by its keywords (see _score_category)
+    tokens = re.findall(r'\w+', text)
     scores = []
     for cat in Category.objects.select_related('default_team'):
-        words = [w.strip().lower() for w in cat.keywords.split(',') if w.strip()]
-        hits = [w for w in words if re.search(r'\b' + re.escape(w), text)]
-        scores.append((len(hits), cat, hits))
+        score, hits = _score_category(cat, text, tokens)
+        scores.append((score, cat, hits))
     scores.sort(key=lambda s: s[0], reverse=True)
     best_score, category, hits = scores[0] if scores else (0, None, [])
     runner_up = scores[1][0] if len(scores) > 1 else 0
@@ -70,14 +146,14 @@ def triage(case):
         confidence = 30
         reasons.append('No clear category words found, so a person needs to choose the team and category.')
     else:
-        confidence = min(95, 50 + 15 * (best_score - runner_up) + 5 * best_score)
+        confidence = min(95, round(50 + 15 * (best_score - runner_up) + 5 * best_score))
         reasons.append(f'Matched {category.default_team} / {category.name} because the report mentions: '
                        f'{", ".join(hits[:4])}.')
 
     # 2. Priority: highest of category default, safety words, and reporter's own view
     priority = category.default_priority if category else Priority.MEDIUM
     for level in ('urgent', 'high'):
-        found = [t for t in SAFETY_TERMS[level] if re.search(r'\b' + re.escape(t) + r'\b', text)]
+        found = _danger_terms(SAFETY_TERMS[level], text)
         if found:
             if PRIORITY_RANK[level] > PRIORITY_RANK[priority]:
                 reasons.append(f'Raised to {level} because of: {", ".join(found[:3])}.')

@@ -48,14 +48,16 @@ TEAMS = [
 # most common priority for that sub-category in the spreadsheet.
 CATEGORIES = [
     ('Heating', 'Facilities Helpdesk', 'high',
-     'heating, radiator, cold, freezing, boiler, thermostat, ogrzewanie, zimno, calefacción, frío'),
+     'heating, radiator, cold, freezing, boiler, thermostat, gas, gas smell, smell of gas, gas leak, '
+     'ogrzewanie, zimno, calefacción, frío, ہیٹنگ, ٹھنڈ'),
     ('Air Conditioning', 'Facilities Helpdesk', 'medium',
      'air con, air conditioning, aircon, ac unit, hot air, overheating, too hot, ventilation, degrees, stuffy'),
     ('Plumbing', 'Facilities Helpdesk', 'medium',
      'pipe, tap, toilet, sink, washbasin, drain, blocked, burst, hot water, leaking pipe, drip, '
-     'inodoro, atascado, rura, przeciek, fuga'),
+     'inodoro, atascado, grifo, lavabo, rura, kran, przeciek, fuga, نل, رساؤ, باتھ روم'),
     ('Lighting & Electrical', 'Facilities Helpdesk', 'medium',
-     'light, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning, fuse'),
+     'light, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning, fuse, '
+     'światło, prąd, luz, enchufe, بجلی, لائٹ'),
     ('Furniture', 'Facilities Helpdesk', 'low', 'chair, furniture, drawer, cabinet, shelf, shelves'),
 
     ('Hardware', 'IT Service Desk', 'medium',
@@ -91,7 +93,7 @@ CATEGORIES = [
     ('Waste & Bins', 'Cleaning Services', 'low', 'bin, rubbish, waste, overflowing, litter, recycling'),
     ('Deep Clean', 'Cleaning Services', 'medium', 'deep clean, dirty, filthy, smell, hygiene, vomit, unclean'),
     ('Pest Control', 'Cleaning Services', 'high',
-     'mice, mouse droppings, rats, pest, cockroach, ants, wasps, droppings, flies'),
+     'mice, mouse droppings, rats, pest, cockroach, ants, wasp, nest, bees, hornet, stung, droppings, flies'),
     ('Sharps', 'Cleaning Services', 'urgent', 'needle, syringe, sharps, broken glass'),
 
     ('Fire Equipment', 'Health & Safety Team', 'high', 'fire extinguisher, extinguisher, fire blanket, hose reel'),
