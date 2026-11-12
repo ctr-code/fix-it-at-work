@@ -5,3 +5,6 @@ __pycache__/
 staticfiles/
 fixtures
 media/
+
+# Temporary rendered pages used for browser testing; never commit these
+static/_pv_*.html
