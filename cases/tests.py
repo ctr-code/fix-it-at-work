@@ -236,6 +236,27 @@ class CaseQueueSortTests(TestCase):
         places = html.split('id="triage-location"')[1].split('</select>')[0]
         self.assertIn('<option value="Main Office">Main Office</option>', places)
         self.assertEqual(places.count('<option'), 2)  # "All locations" plus the one building with a case
+
+    def test_with_teams_filters_list_priorities_teams_and_officers(self):
+        user = User.objects.create_user('handler4', 'handler4@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        team = Team.objects.create(name='Health & Safety Team', contact_email='hs@example.com', manager='M Shaw')
+        officer = Officer.objects.create(name='Sunita Rao', team=team, contact_email='sr@example.com')
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com',
+                      status=Status.ASSIGNED, assigned_team=team)
+        Case.objects.create(title='Exit blocked', priority='urgent', assigned_officer=officer, **common)
+        Case.objects.create(title='Trailing cable', priority='high', **common)
+        html = self.client.get('/triage/').content.decode()
+        options = lambda sid: html.split(f'id="{sid}"')[1].split('</select>')[0]
+        self.assertIn('<option value="4">Urgent</option>', options('teams-priority'))
+        self.assertNotIn('Medium', options('teams-priority'))
+        self.assertIn('<option value="Health &amp; Safety Team">', options('teams-team'))
+        self.assertIn('<option value="-">Unassigned</option>', options('teams-officer'))
+        self.assertIn('<option value="Sunita Rao">Sunita Rao</option>', options('teams-officer'))
+        self.assertIn('data-team="Health &amp; Safety Team" data-officer="Sunita Rao"', html)
+        self.assertIn('data-officer="-"', html)
         self.assertNotIn('{#', html)
 
 

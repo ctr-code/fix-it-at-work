@@ -143,10 +143,18 @@ def triage_queue(request):
     triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
                          if any(c.ai_priority == value for c in new_cases)]
     triage_buildings = sorted({c.building for c in new_cases if c.building}, key=str.lower)
+    # The same for cases with teams: priorities, teams and officers that are in the "With teams" list
+    in_flight = list(in_flight)
+    teams_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                        if any(c.priority == value for c in in_flight)]
+    teams_names = sorted({c.assigned_team.name for c in in_flight if c.assigned_team}, key=str.lower)
+    teams_officers = sorted({c.assigned_officer.name for c in in_flight if c.assigned_officer}, key=str.lower)
+    teams_unassigned = any(c.assigned_officer_id is None for c in in_flight)
     return render(request, 'cases/triage_queue.html', {
         'new_cases': new_cases, 'awaiting_reply': awaiting_reply, 'in_flight': in_flight,
         'unhappy': _unhappy_reporters(), 'triage_priorities': triage_priorities,
-        'triage_buildings': triage_buildings,
+        'triage_buildings': triage_buildings, 'teams_priorities': teams_priorities,
+        'teams_names': teams_names, 'teams_officers': teams_officers, 'teams_unassigned': teams_unassigned,
     })
 
 

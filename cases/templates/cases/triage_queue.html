@@ -131,6 +131,33 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
 
     <div class="tab-pane fade" id="teams" role="tabpanel" aria-labelledby="tab-teams" tabindex="0">
     <p class="text-muted">Assigned to a team and not fixed yet, soonest due first.</p>
+    {% if in_flight %}
+    {# Priority, team and officer filters; all must match (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field">
+            <label for="teams-priority" class="sort-bar-label">Priority</label>
+            <select id="teams-priority" class="form-select" data-filter-rows="#teams tbody" data-filter-key="priority">
+                <option value="">All priorities</option>
+                {% for rank, label in teams_priorities %}<option value="{{ rank }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="teams-team" class="sort-bar-label">Team</label>
+            <select id="teams-team" class="form-select" data-filter-rows="#teams tbody" data-filter-key="team">
+                <option value="">All teams</option>
+                {% for t in teams_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="teams-officer" class="sort-bar-label">Officer</label>
+            <select id="teams-officer" class="form-select" data-filter-rows="#teams tbody" data-filter-key="officer">
+                <option value="">All officers</option>
+                {% if teams_unassigned %}<option value="-">Unassigned</option>{% endif %}
+                {% for o in teams_officers %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Cases with teams</caption>
@@ -143,13 +170,14 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in in_flight %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
+            <tr data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}" data-team="{{ c.assigned_team.name|default:'' }}" data-officer="{{ c.assigned_officer.name|default:'-' }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
                 <td data-label="Team / officer" data-sort-value="{{ c.assigned_team|default:'' }} {{ c.assigned_officer.name|default:'' }}">{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
                 <td data-label="Due" data-sort-value="{{ c.sla_due|date:'c' }}" class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">None.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
+    {% if in_flight %}<p class="text-muted" data-row-filter-empty hidden>No cases with teams match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear filters</button></p>{% endif %}
     </div>
     </div>
 </section>
