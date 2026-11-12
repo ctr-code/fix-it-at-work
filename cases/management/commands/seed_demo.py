@@ -27,7 +27,7 @@ DEMO_USERS = [
     ('rob', 'Rob', 'Turner', Role.MANAGER),
 ] + [(name.split()[0].lower(), *name.split(), Role.OFFICER) for name in [
     'Sam Okafor', 'Priya Shah', 'Tom Becker', 'Aisha Rahman', 'Dan Walsh', 'Mei Lin', 'Grace Mensah', 'Owen Price',
-]]
+]] + [('serena', 'Serena', '', Role.OFFICER)]
 
 # Teams and categories follow the "Mock data v3" spreadsheet: its Assigned Team column is the team,
 # and its Sub-Category column is the category. Each category belongs to exactly one team.
@@ -132,6 +132,28 @@ OFFICERS = [
     ('Jordan Ellis', 'AV & Meeting Room Support'),
 ]
 
+# Serena: a field officer with a fixed set of five open jobs, so "My jobs" always has a full list to show.
+# She joins her team after the other cases are made, so random assignment never gives her extra jobs.
+SERENA_TEAM = 'Facilities Helpdesk'
+# Same fields as REPORTS, plus the category and priority the handler chose at triage.
+# One job per Facilities category, each in a different building, with a mix of priorities and stages.
+SERENA_JOBS = [
+    ('Desk drawer unit collapsed', 'The drawer unit under hot desk 7 has collapsed and the drawers will not open.',
+     'Depot', 'Hot desk 7', 'low', 'en', 'Ellie Watson', 3, 'assigned', 'Furniture', 'low'),
+    ('Air con dripping onto desks', 'Water is dripping from the air conditioning unit onto two desks by the window. '
+     'We have moved the laptops.', 'Warehouse B', 'Upstairs office', 'high', 'en', 'Oscar Bennett', 2.5,
+     'in_progress', 'Air Conditioning', 'high'),
+    ('Radiator stuck on full in finance office', 'The radiator in the finance office is stuck on full heat and the '
+     'valve will not turn. The room is uncomfortably hot.', 'Innovation Centre', '2nd floor finance office', 'medium',
+     'en', 'Nina Gallagher', 1.2, 'assigned', 'Heating', 'medium'),
+    ('No hot water in 3rd floor kitchen', 'The hot water tap in the 3rd floor kitchen only runs cold. Staff cannot '
+     'wash up.', 'Main Office', '3rd floor kitchen', 'medium', 'en', 'Priyanka Desai', 0.6, 'assigned', 'Plumbing',
+     'medium'),
+    ('Lights out in basement corridor', 'Half the lights in the basement corridor have gone out and it is very dark '
+     'by the stairs.', 'Riverside House', 'Basement corridor', 'urgent', 'en', 'Tariq Malik', 0.1, 'assigned',
+     'Lighting & Electrical', 'urgent'),
+]
+
 # (priority, response target hours, resolution target hours), from the mock data's SLA Settings sheet.
 # Calendar hours: the clock runs 24/7.
 SLA = [('urgent', 1, 4), ('high', 4, 24), ('medium', 8, 72), ('low', 24, 120)]
@@ -226,6 +248,12 @@ REPORT_DETAILS = {
     'Lift making grinding noise': ('building_wide', True, 'LIFT-IC-01'),
     'Heating not working': ('team', False, 'BLR-WB-01'),
     'Broken': ('single_user', False, ''),
+    # Serena's jobs
+    'Desk drawer unit collapsed': ('single_user', False, 'FUR-DP-HD7'),
+    'Air con dripping onto desks': ('team', True, 'AC-WB-U01'),
+    'Radiator stuck on full in finance office': ('team', False, 'RAD-IC-2F3'),
+    'No hot water in 3rd floor kitchen': ('department', False, ''),
+    'Lights out in basement corridor': ('building_wide', True, ''),
 }
 
 # Reporter feedback on closed cases. Weights follow the spreadsheet's spread of scores (mostly 4s and 5s);
@@ -293,6 +321,8 @@ class Command(BaseCommand):
         # The demo reporter can see their own reports on their home page
         Case.objects.filter(reporter_name='Alex Morgan').update(reporter_user=users['alex'])
 
+        self.make_serena(teams[SERENA_TEAM], users['serena'], rng, now)
+
         self.stdout.write(self.style.SUCCESS(f'Loaded {Case.objects.count()} fictional cases.'))
         self.stdout.write('Demo logins: ' + ', '.join(f'{u} ({r.label})' for u, _, _, r in DEMO_USERS[:4]) +
                           ' ... plus one per field officer.')
@@ -312,7 +342,19 @@ class Command(BaseCommand):
             users[username] = user
         return users
 
-    def make_case(self, spec, rng, now):
+    def make_serena(self, team, user, rng, now):
+        """Add Serena to her team and give her the five jobs in SERENA_JOBS. Safe to run again."""
+        Case.objects.filter(title__in=[j[0] for j in SERENA_JOBS]).delete()
+        Officer.objects.filter(name='Serena').delete()
+        officer = Officer.objects.create(name='Serena', team=team, user=user, contact_email='serena@example.com')
+        for spec in sorted(SERENA_JOBS, key=lambda r: -r[7]):
+            *report, category, priority = spec
+            self.make_case(report, rng, now, officer=officer, category=category, priority=priority)
+        return officer
+
+    def make_case(self, spec, rng, now, officer=None, category=None, priority=None):
+        """Create one case and walk it to its stage. officer, category and priority, when given,
+        replace the random officer and the AI's suggestions at triage."""
         title, desc, building, room, urgency, lang, name, days_ago, stage = spec
         reported = now - timedelta(days=days_ago)
         impact, hs_risk, asset_tag = REPORT_DETAILS[title]
@@ -333,13 +375,16 @@ class Command(BaseCommand):
             return
 
         # Triage: the handler accepts most AI suggestions, sometimes raises priority
-        case.category = s['category']
-        case.priority = s['priority']
-        if rng.random() < 0.2 and case.priority != 'urgent':
-            case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
-        case.ai_suggestion_accepted = case.priority == s['priority']
+        case.category = Category.objects.get(name=category) if category else s['category']
+        if priority:
+            case.priority = priority
+        else:
+            case.priority = s['priority']
+            if rng.random() < 0.2 and case.priority != 'urgent':
+                case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
+        case.ai_suggestion_accepted = case.priority == s['priority'] and case.category == s['category']
         case.assigned_team = case.category.default_team
-        case.assigned_officer = rng.choice(list(case.assigned_team.officers.all()))
+        case.assigned_officer = officer or rng.choice(list(case.assigned_team.officers.all()))
         case.triaged_by = HANDLER
         # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
         rule = SLARule.objects.get(priority=case.priority)
