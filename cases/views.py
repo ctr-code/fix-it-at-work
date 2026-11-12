@@ -138,9 +138,12 @@ def triage_queue(request):
     awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
     in_flight = Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).select_related(
         'assigned_team', 'assigned_officer').order_by('sla_due')
+    # Priorities the AI suggested for cases waiting for triage, for the "Priority" filter
+    triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                         if any(c.ai_priority == value for c in new_cases)]
     return render(request, 'cases/triage_queue.html', {
         'new_cases': new_cases, 'awaiting_reply': awaiting_reply, 'in_flight': in_flight,
-        'unhappy': _unhappy_reporters(),
+        'unhappy': _unhappy_reporters(), 'triage_priorities': triage_priorities,
     })
 
 

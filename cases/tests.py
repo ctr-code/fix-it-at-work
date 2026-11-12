@@ -218,6 +218,21 @@ class CaseQueueSortTests(TestCase):
                 self.assertIn(f'id="{pane}" role="tabpanel" aria-labelledby="tab-{pane}"', html)
                 self.assertIn(f'>{label} <span class="tab-count">', html)
         self.assertEqual(html.count('class="tab-pane fade show active"'), 1)
+
+    def test_needs_triage_priority_filter_lists_only_suggested_priorities(self):
+        user = User.objects.create_user('handler3', 'handler3@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        Case.objects.create(title='Tap dripping', description='x', building='Main Office', reporter_name='R',
+                            reporter_email='r@example.com', ai_priority='high')
+        html = self.client.get('/triage/').content.decode()
+        self.assertIn('id="triage-priority"', html)
+        self.assertIn('js/table-filter.js', html)
+        self.assertIn('<tr data-priority="3">', html)
+        options = html.split('id="triage-priority"')[1].split('</select>')[0]
+        self.assertIn('<option value="3">High</option>', options)
+        self.assertNotIn('Urgent', options)
         self.assertNotIn('{#', html)
 
 

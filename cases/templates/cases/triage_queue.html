@@ -36,6 +36,18 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
     <div class="tab-content queue-panes">
     <div class="tab-pane fade show active" id="triage" role="tabpanel" aria-labelledby="tab-triage" tabindex="0">
     <p class="text-muted">Sorted by the AI's suggested priority. Open a case to check and approve the suggestion. Select a column heading to sort by it.</p>
+    {% if new_cases %}
+    {# Filters rows by the AI's suggested priority (static/js/table-filter.js); shown by the script #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field">
+            <label for="triage-priority" class="sort-bar-label">Priority</label>
+            <select id="triage-priority" class="form-select" data-filter-rows="#triage tbody" data-filter-key="priority">
+                <option value="">All priorities</option>
+                {% for rank, label in triage_priorities %}<option value="{{ rank }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table table-hover align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Cases waiting for triage</caption>
@@ -48,7 +60,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in new_cases %}
-            <tr>
+            <tr data-priority="{% include 'cases/_priority_rank.html' with p=c.ai_priority %}">
                 <td><a href="{% url 'triage_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
                 <td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
                 <td data-label="Where" data-sort-value="{{ c.building }} {{ c.location_detail }}">{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
@@ -59,6 +71,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tbody>
         </table>
     </div>
+    {% if new_cases %}<p class="text-muted" data-row-filter-empty hidden>No cases waiting with this suggested priority. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Show all priorities</button></p>{% endif %}
 
     </div>
 
@@ -138,4 +151,5 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
 {% block extra_body %}
 <script src="{% static 'js/sort-table.js' %}"></script>
 <script src="{% static 'js/tabs.js' %}"></script>
+<script src="{% static 'js/table-filter.js' %}"></script>
 {% endblock extra_body %}
