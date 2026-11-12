@@ -232,7 +232,7 @@ class CaseQueueSortTests(TestCase):
         options = html.split('id="triage-priority"')[1].split('</select>')[0]
         self.assertIn('<option value="3">High</option>', options)
         self.assertNotIn('Urgent', options)
-        self.assertIn('<tr data-priority="3" data-building="Main Office">', html)
+        self.assertIn('<tr data-title="Tap dripping" data-priority="3" data-building="Main Office">', html)
         places = html.split('id="triage-location"')[1].split('</select>')[0]
         self.assertIn('<option value="Main Office">Main Office</option>', places)
         self.assertEqual(places.count('<option'), 2)  # "All locations" plus the one building with a case
@@ -270,7 +270,7 @@ class CaseQueueSortTests(TestCase):
         html = self.client.get('/triage/').content.decode()
         options = html.split('id="unhappy-reporter"')[1].split('</select>')[0]
         self.assertIn('<option value="Lucía Fernández">Lucía Fernández</option>', options)
-        self.assertIn('<tr data-reporter="Lucía Fernández">', html)
+        self.assertIn('<tr data-title="Toilet blocked" data-reporter="Lucía Fernández">', html)
 
     def test_reply_needed_filters_list_teams_and_languages(self):
         user = User.objects.create_user('handler6', 'handler6@example.com', 'not-a-real-password-1')
@@ -289,7 +289,29 @@ class CaseQueueSortTests(TestCase):
         self.assertIn('<option value="en">English</option>', languages)
         self.assertIn('<option value="pl">Polski (Polish)</option>', languages)
         self.assertNotIn('value="es"', languages)
-        self.assertIn('<tr data-team="IT Service Desk" data-language="pl">', html)
+        self.assertIn('<tr data-title="Brak internetu" data-team="IT Service Desk" data-language="pl">', html)
+
+    def test_every_tab_has_a_title_search(self):
+        user = User.objects.create_user('handler7', 'handler7@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        from django.utils import timezone
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        Case.objects.create(title='Lift noisy', **common)
+        Case.objects.create(title='Monitor flickering', status=Status.RESOLVED, assigned_team=team, **common)
+        Case.objects.create(title='Toilet blocked', status=Status.CLOSED, date_closed=timezone.now(), satisfaction=1,
+                            **common)
+        Case.objects.create(title='Window blind broken', status=Status.ASSIGNED, assigned_team=team, **common)
+        html = self.client.get('/triage/').content.decode()
+        for tab, title in [('triage', 'Lift noisy'), ('reply', 'Monitor flickering'),
+                           ('unhappy', 'Toilet blocked'), ('teams', 'Window blind broken')]:
+            with self.subTest(tab=tab):
+                self.assertIn(f'id="{tab}-search"', html)
+                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title"', html)
+                pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
+                self.assertIn(f'<tr data-title="{title}"', pane)
         self.assertNotIn('{#', html)
 
 

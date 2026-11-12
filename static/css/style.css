@@ -313,6 +313,7 @@ main { margin-bottom: var(--space-10); }
 .sort-bar-search { flex-basis: 100%; }
 [data-row-filter-bar] { max-width: 960px; }   /* filters above a wide table: don't stretch across it */
 [data-row-filter-bar] .sort-bar-field { max-width: 380px; }
+[data-row-filter-bar] .sort-bar-search { max-width: 640px; }
 .sort-bar-actions { flex-basis: 100%; display: flex; justify-content: flex-end; }
 .sort-bar-actions:has(> [hidden]) { display: none; }
 .sort-bar-actions .btn { min-height: 36px; }

@@ -1,57 +1,69 @@
 /* jshint esversion: 6 */
-// Filter table rows with dropdowns: <select data-filter-rows="#triage tbody" data-filter-key="priority">
-// keeps rows whose data-priority matches the chosen value ("" means any). Dropdowns pointing at the
-// same table combine: a row shows only if it matches all of them.
+// Filter table rows with dropdowns and a search box.
+// - <select data-filter-rows="#triage tbody" data-filter-key="priority"> keeps rows whose
+//   data-priority matches the chosen value ("" means any).
+// - <input data-search-rows="#triage tbody" data-search-key="title"> keeps rows whose data-title
+//   contains the typed text, ignoring capitals and accents.
+// Controls pointing at the same table combine: a row shows only if it matches all of them.
 // - If the table is in a tab, that tab's count becomes "2 of 6" while filtering.
 // - [data-row-filter-empty] in the same tab shows (and the table hides) when no rows match;
-//   any [data-clear-row-filter] button there sets every dropdown back to "All".
-// Choices are remembered on this device, so they're kept when coming back from a case.
+//   any [data-clear-row-filter] button there empties the search and sets every dropdown to "All".
+// Dropdown choices are remembered on this device, so they're kept when coming back from a case.
+// Search text isn't, so a list is never narrowed by an old search.
 (() => {
     "use strict";
 
     const load = (key) => { try { return window.localStorage.getItem(key); } catch (e) { return null; } };
     const save = (key, value) => { try { window.localStorage.setItem(key, value); } catch (e) { /* blocked */ } };
     const storeKey = (select) => "fiaw-filter-" + select.id;
+    // "lucia" finds "Lucía"
+    const fold = (text) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("en-GB").trim();
 
-    // Group the dropdowns by the table they filter
+    // Group the controls by the table they filter
     const groups = new Map();
-    document.querySelectorAll("select[data-filter-rows]").forEach((select) => {
-        const target = select.dataset.filterRows;
-        if (!groups.has(target)) { groups.set(target, []); }
-        groups.get(target).push(select);
-    });
+    const group = (target) => {
+        if (!groups.has(target)) { groups.set(target, { selects: [], searches: [] }); }
+        return groups.get(target);
+    };
+    document.querySelectorAll("select[data-filter-rows]").forEach((s) => group(s.dataset.filterRows).selects.push(s));
+    document.querySelectorAll("input[data-search-rows]").forEach((i) => group(i.dataset.searchRows).searches.push(i));
 
-    groups.forEach((selects, target) => {
+    groups.forEach(({ selects, searches }, target) => {
         const tbody = document.querySelector(target);
         if (!tbody) { return; }
+        const controls = [...searches, ...selects];
         const rows = Array.from(tbody.rows).filter((r) => r.querySelector("td:not([colspan])"));
-        const scope = selects[0].closest(".tab-pane") || document;
+        const scope = controls[0].closest(".tab-pane") || document;
         const wrapper = tbody.closest(".table-responsive");
         const empty = scope.querySelector("[data-row-filter-empty]");
         const tab = scope.id && document.querySelector('[data-bs-target="#' + scope.id + '"] .tab-count');
 
-        const bar = selects[0].closest("[data-row-filter-bar]");
+        const bar = controls[0].closest("[data-row-filter-bar]");
         if (bar) { bar.hidden = false; }
         const status = document.createElement("p");
         status.className = "visually-hidden";
         status.setAttribute("aria-live", "polite");
-        (bar || selects[0]).after(status);
+        (bar || controls[0]).after(status);
 
         const apply = () => {
             const active = selects.filter((s) => s.value);
+            const terms = searches.map((i) => ({ key: i.dataset.searchKey, q: fold(i.value) })).filter((t) => t.q);
+            const filtering = active.length + terms.length > 0;
             let shown = 0;
             rows.forEach((row) => {
-                const match = active.every((s) => row.dataset[s.dataset.filterKey] === s.value);
+                const match = active.every((s) => row.dataset[s.dataset.filterKey] === s.value)
+                    && terms.every((t) => fold(row.dataset[t.key] || "").includes(t.q));
                 row.hidden = !match;
                 shown += match;
             });
-            if (tab) { tab.textContent = active.length ? shown + " of " + rows.length : String(rows.length); }
+            if (tab) { tab.textContent = filtering ? shown + " of " + rows.length : String(rows.length); }
             if (empty) { empty.hidden = shown > 0; }
             if (wrapper) { wrapper.hidden = shown === 0; }
-            // e.g. "Showing 1 of 6 cases: Main Office, High."
-            status.textContent = active.length
-                ? "Showing " + shown + " of " + rows.length + " cases: "
-                    + active.map((s) => s.options[s.selectedIndex].text).join(", ") + "."
+            // e.g. "Showing 1 of 6 cases: Main Office, High, titles containing "leak"."
+            const parts = active.map((s) => s.options[s.selectedIndex].text)
+                .concat(terms.map((t) => 'titles containing "' + t.q + '"'));
+            return parts.length
+                ? "Showing " + shown + " of " + rows.length + " cases: " + parts.join(", ") + "."
                 : "Showing all " + rows.length + " cases.";
         };
 
@@ -61,19 +73,29 @@
             if (saved && Array.from(select.options).some((o) => o.value === saved)) { select.value = saved; }
             select.addEventListener("change", () => {
                 save(storeKey(select), select.value);
-                apply();
+                status.textContent = apply();
             });
         });
-        if (selects.some((s) => s.value)) {
-            apply();
-            status.textContent = "";  // don't announce on page load
-        }
+
+        // Search as you type; announce the result once typing pauses rather than on every key
+        let pause;
+        searches.forEach((input) => {
+            input.addEventListener("input", () => {
+                const message = apply();
+                clearTimeout(pause);
+                pause = setTimeout(() => { status.textContent = message; }, 600);
+            });
+        });
+
+        // Apply anything restored on load (a saved dropdown, or search text the browser kept), quietly
+        if (controls.some((c) => c.value)) { apply(); }
 
         scope.querySelectorAll("[data-clear-row-filter]").forEach((button) => {
             button.addEventListener("click", () => {
+                searches.forEach((i) => { i.value = ""; });
                 selects.forEach((s) => { s.value = ""; save(storeKey(s), ""); });
-                apply();
-                selects[0].focus();
+                status.textContent = apply();
+                controls[0].focus();
             });
         });
     });
