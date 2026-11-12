@@ -8,6 +8,8 @@
 // - If the table is in a tab, that tab's count becomes "2 of 6" while filtering.
 // - [data-row-filter-empty] in the same tab shows (and the table hides) when no rows match;
 //   any [data-clear-row-filter] button there empties the search and sets every dropdown to "All".
+// Spoken messages say "cases" and "titles" unless the bar has data-row-noun (e.g. "people") and the
+// search box has data-search-label (e.g. "names").
 // Dropdown choices are remembered on this device, so they're kept when coming back from a case.
 // Search text isn't, so a list is never narrowed by an old search.
 (() => {
@@ -40,6 +42,7 @@
 
         const bar = controls[0].closest("[data-row-filter-bar]");
         if (bar) { bar.hidden = false; }
+        const noun = (bar && bar.dataset.rowNoun) || "cases";
         const status = document.createElement("p");
         status.className = "visually-hidden";
         status.setAttribute("aria-live", "polite");
@@ -47,7 +50,8 @@
 
         const apply = () => {
             const active = selects.filter((s) => s.value);
-            const terms = searches.map((i) => ({ key: i.dataset.searchKey, q: fold(i.value) })).filter((t) => t.q);
+            const terms = searches.map((i) => ({ key: i.dataset.searchKey, label: i.dataset.searchLabel || "titles",
+                                                 q: fold(i.value) })).filter((t) => t.q);
             const filtering = active.length + terms.length > 0;
             let shown = 0;
             rows.forEach((row) => {
@@ -61,10 +65,10 @@
             if (wrapper) { wrapper.hidden = shown === 0; }
             // e.g. "Showing 1 of 6 cases: Main Office, High, titles containing "leak"."
             const parts = active.map((s) => s.options[s.selectedIndex].text)
-                .concat(terms.map((t) => 'titles containing "' + t.q + '"'));
+                .concat(terms.map((t) => t.label + ' containing "' + t.q + '"'));
             return parts.length
-                ? "Showing " + shown + " of " + rows.length + " cases: " + parts.join(", ") + "."
-                : "Showing all " + rows.length + " cases.";
+                ? "Showing " + shown + " of " + rows.length + " " + noun + ": " + parts.join(", ") + "."
+                : "Showing all " + rows.length + " " + noun + ".";
         };
 
         selects.forEach((select) => {

@@ -1,0 +1,478 @@
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en-gb">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Fix It at Work - report a workplace issue and track it to resolution">
+    <title>
+        People and roles - Fix It at Work
+    </title>
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    
+    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+    
+    <link rel="stylesheet" href="/static/vendor/font-awesome/css/all.min.css">
+    
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body class="d-flex flex-column min-vh-100">
+    <a class="visually-hidden-focusable skip-link" href="#main">Skip to main content</a>
+    
+    <nav id="navbar" class="navbar navbar-expand-lg fixed-top navbar-dark site-header" aria-label="Main">
+        <div class="container header-inner">
+            <a class="navbar-brand brand" href="/">
+                <span class="logo" aria-hidden="true"><i class="fa-solid fa-wrench"></i></span>
+                <span class="brand-name">Fix It at Work</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+                aria-label="Open menu">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                
+                
+                <ul class="navbar-nav main-nav mx-lg-auto">
+                    <li class="nav-item"><a class="nav-link" href="/report/"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
+                    
+                    <li class="nav-item"><a class="nav-link" href="/triage/"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
+                    
+                    
+                    
+                    <li class="nav-item"><a class="nav-link" href="/dashboard/"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link active" aria-current="page" href="/people/"><i class="fa-solid fa-users" aria-hidden="true"></i> People</a></li>
+                    
+                </ul>
+                <ul class="navbar-nav profile-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle profile-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="avatar" aria-hidden="true">RT</span>
+                            <span class="profile-text">
+                                <span class="profile-name">Rob</span>
+                                <span class="profile-role">Manager</span>
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end profile-menu">
+                            <li class="profile-menu-head">
+                                <span class="profile-menu-name">Rob Turner</span>
+                                <span class="profile-menu-email">rob@example.com</span>
+                            </li>
+                            <li><a class="dropdown-item" href="/profile"><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><form method="post" action="/accounts/logout/"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
+                        </ul>
+                    </li>
+                </ul>
+                
+                
+            </div>
+        </div>
+    </nav>
+
+    
+    <div id="messages" class="container">
+        <div class="row">
+            <div class="col-md-10 offset-md-1">
+                
+            </div>
+        </div>
+    </div>
+
+    
+    
+
+    <main id="main">
+        
+        
+<section class="container">
+    <h1>People and roles</h1>
+    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. Search by name, or select Name or Email to sort.</p>
+    
+    <div class="sort-bar" data-row-filter-bar data-row-noun="people" hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="people-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="people-search" class="form-control" placeholder="Search by name"
+                       autocomplete="off" spellcheck="false" data-search-rows="#people-table tbody" data-search-key="name"
+                       data-search-label="names">
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive panel p-0">
+        <table class="table align-middle mb-0 table-sortable" id="people-table">
+            <caption class="visually-hidden">People and their roles</caption>
+            <thead><tr><th scope="col" data-sort="text"><button type="button" class="sort-btn">Name<span class="sort-icon" aria-hidden="true"></span></button>
+</th><th scope="col" class="d-none d-md-table-cell" data-sort="text"><button type="button" class="sort-btn">Email<span class="sort-icon" aria-hidden="true"></span></button>
+</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
+            <tbody>
+            
+            <tr data-name=" Test_User_423532">
+                <td data-sort-value="Test_User_423532">Test_User_423532<br><span class="small text-muted">Test_User_423532</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="Test_User_423532@gmail.com">Test_User_423532@gmail.com</td>
+                
+                <td>
+                    <form method="post" id="role-12"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="12"></form>
+                    <label class="visually-hidden" for="role-select-12">Role for Test_User_423532</label>
+                    <select id="role-select-12" name="role" form="role-12" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" >Field officer</option><option value="manager" selected>Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-12">Team for Test_User_423532</label>
+                    <select id="team-select-12" name="team" form="role-12" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-12" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name=" ci">
+                <td data-sort-value="ci">ci<br><span class="small text-muted">ci</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value=""></td>
+                
+                <td>
+                    <form method="post" id="role-13"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="13"></form>
+                    <label class="visually-hidden" for="role-select-13">Role for ci</label>
+                    <select id="role-select-13" name="role" form="role-13" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" >Field officer</option><option value="manager" selected>Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-13">Team for ci</label>
+                    <select id="team-select-13" name="team" form="role-13" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-13" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Aisha Rahman aisha">
+                <td data-sort-value="Aisha Rahman">Aisha Rahman<br><span class="small text-muted">aisha</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="aisha@example.com">aisha@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-109"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="109"></form>
+                    <label class="visually-hidden" for="role-select-109">Role for aisha</label>
+                    <select id="role-select-109" name="role" form="role-109" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-109">Team for aisha</label>
+                    <select id="team-select-109" name="team" form="role-109" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" selected>IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-109" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Alex Morgan alex">
+                <td data-sort-value="Alex Morgan">Alex Morgan<br><span class="small text-muted">alex</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="alex@example.com">alex@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-103"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="103"></form>
+                    <label class="visually-hidden" for="role-select-103">Role for alex</label>
+                    <select id="role-select-103" name="role" form="role-103" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" selected>Reporter</option><option value="handler" >Case handler</option><option value="officer" >Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-103">Team for alex</label>
+                    <select id="team-select-103" name="team" form="role-103" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-103" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Dan Walsh dan">
+                <td data-sort-value="Dan Walsh">Dan Walsh<br><span class="small text-muted">dan</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="dan@example.com">dan@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-110"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="110"></form>
+                    <label class="visually-hidden" for="role-select-110">Role for dan</label>
+                    <select id="role-select-110" name="role" form="role-110" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-110">Team for dan</label>
+                    <select id="team-select-110" name="team" form="role-110" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" selected>Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-110" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Grace Mensah grace">
+                <td data-sort-value="Grace Mensah">Grace Mensah<br><span class="small text-muted">grace</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="grace@example.com">grace@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-112"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="112"></form>
+                    <label class="visually-hidden" for="role-select-112">Role for grace</label>
+                    <select id="role-select-112" name="role" form="role-112" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-112">Team for grace</label>
+                    <select id="team-select-112" name="team" form="role-112" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" selected>Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-112" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Jo Clarke jo">
+                <td data-sort-value="Jo Clarke">Jo Clarke<br><span class="small text-muted">jo</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="jo@example.com">jo@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-104"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="104"></form>
+                    <label class="visually-hidden" for="role-select-104">Role for jo</label>
+                    <select id="role-select-104" name="role" form="role-104" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" selected>Case handler</option><option value="officer" >Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-104">Team for jo</label>
+                    <select id="team-select-104" name="team" form="role-104" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-104" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Mei Lin mei">
+                <td data-sort-value="Mei Lin">Mei Lin<br><span class="small text-muted">mei</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="mei@example.com">mei@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-111"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="111"></form>
+                    <label class="visually-hidden" for="role-select-111">Role for mei</label>
+                    <select id="role-select-111" name="role" form="role-111" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-111">Team for mei</label>
+                    <select id="team-select-111" name="team" form="role-111" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" selected>Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-111" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Owen Price owen">
+                <td data-sort-value="Owen Price">Owen Price<br><span class="small text-muted">owen</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="owen@example.com">owen@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-113"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="113"></form>
+                    <label class="visually-hidden" for="role-select-113">Role for owen</label>
+                    <select id="role-select-113" name="role" form="role-113" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-113">Team for owen</label>
+                    <select id="team-select-113" name="team" form="role-113" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" selected>Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-113" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Priya Shah priya">
+                <td data-sort-value="Priya Shah">Priya Shah<br><span class="small text-muted">priya</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="priya@example.com">priya@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-107"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="107"></form>
+                    <label class="visually-hidden" for="role-select-107">Role for priya</label>
+                    <select id="role-select-107" name="role" form="role-107" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-107">Team for priya</label>
+                    <select id="team-select-107" name="team" form="role-107" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" selected>Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-107" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Rob Turner rob">
+                <td data-sort-value="Rob Turner">Rob Turner<br><span class="small text-muted">rob</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="rob@example.com">rob@example.com</td>
+                
+                <td colspan="3">Manager <span class="small text-muted">(you)</span></td>
+                
+            </tr>
+            
+            <tr data-name="Sam Okafor sam">
+                <td data-sort-value="Sam Okafor">Sam Okafor<br><span class="small text-muted">sam</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="sam@example.com">sam@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-106"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="106"></form>
+                    <label class="visually-hidden" for="role-select-106">Role for sam</label>
+                    <select id="role-select-106" name="role" form="role-106" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-106">Team for sam</label>
+                    <select id="team-select-106" name="team" form="role-106" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" selected>Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-106" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Serena serena">
+                <td data-sort-value="Serena">Serena<br><span class="small text-muted">serena</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="serena@example.com">serena@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-114"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="114"></form>
+                    <label class="visually-hidden" for="role-select-114">Role for serena</label>
+                    <select id="role-select-114" name="role" form="role-114" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-114">Team for serena</label>
+                    <select id="team-select-114" name="team" form="role-114" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" selected>Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-114" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="Tom Becker tom">
+                <td data-sort-value="Tom Becker">Tom Becker<br><span class="small text-muted">tom</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="tom@example.com">tom@example.com</td>
+                
+                <td>
+                    <form method="post" id="role-108"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="108"></form>
+                    <label class="visually-hidden" for="role-select-108">Role for tom</label>
+                    <select id="role-select-108" name="role" form="role-108" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" >Reporter</option><option value="handler" >Case handler</option><option value="officer" selected>Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-108">Team for tom</label>
+                    <select id="team-select-108" name="team" form="role-108" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" selected>IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-108" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            <tr data-name="wgweg fgwegw wgweg">
+                <td data-sort-value="wgweg fgwegw">wgweg fgwegw<br><span class="small text-muted">wgweg</span></td>
+                <td class="d-none d-md-table-cell" data-sort-value="fwegew@gmail.com">fwegew@gmail.com</td>
+                
+                <td>
+                    <form method="post" id="role-14"><input type="hidden" name="csrfmiddlewaretoken" value="SAN528puIsnFs6fUUK8dq4TQ2UCO7saPyfuVJFOSRw4jmJZzjCMwShcnzZ9jQUTu"><input type="hidden" name="user_id" value="14"></form>
+                    <label class="visually-hidden" for="role-select-14">Role for wgweg</label>
+                    <select id="role-select-14" name="role" form="role-14" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="reporter" selected>Reporter</option><option value="handler" >Case handler</option><option value="officer" >Field officer</option><option value="manager" >Manager</option>
+                    </select>
+                </td>
+                <td>
+                    <label class="visually-hidden" for="team-select-14">Team for wgweg</label>
+                    <select id="team-select-14" name="team" form="role-14" class="form-select form-select-sm" style="min-width: 8rem">
+                        <option value="">-</option>
+                        <option value="19" >Facilities Helpdesk</option><option value="20" >IT Service Desk</option><option value="21" >IT Network Team</option><option value="22" >Security &amp; Access Team</option><option value="23" >Estates Maintenance</option><option value="24" >Cleaning Services</option><option value="25" >Health &amp; Safety Team</option><option value="26" >Fleet Services</option><option value="27" >AV &amp; Meeting Room Support</option>
+                    </select>
+                </td>
+                <td><button form="role-14" class="btn btn-sm btn-primary">Save</button></td>
+                
+            </tr>
+            
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted" data-row-filter-empty hidden>No one matches that name. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear search</button></p>
+</section>
+
+    </main>
+
+    
+    <footer class="mt-auto site-footer">
+        <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center">
+            <p class="mb-3 mb-md-0">© 2026 Cloud Crew &middot; Prototype using fictional data only</p>
+            <div class="social-links">
+                <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook"><i
+                        class="fab fa-facebook-f"></i></a>
+                <a href="https://x.com/" target="_blank" rel="noreferrer" aria-label="X"><i
+                        class="fab fa-x-twitter"></i></a>
+                <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram"><i
+                        class="fab fa-instagram"></i></a>
+                <a href="https://www.linkedin.com/" target="_blank" rel="noreferrer" aria-label="LinkedIn"><i
+                        class="fab fa-linkedin-in"></i></a>
+                <a href="https://github.com/ctr-code/fix-it-at-work" target="_blank" rel="noreferrer"
+                    aria-label="GitHub"><i class="fab fa-github"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    
+    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    
+<script src="/static/js/sort-table.js"></script>
+<script src="/static/js/table-filter.js?n=1"></script>
+
+    
+    <script src="/static/js/nav.js"></script>
+</body>
+
+</html>

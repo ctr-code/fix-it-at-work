@@ -4,14 +4,26 @@
 {% block main %}
 <section class="container">
     <h1>People and roles</h1>
-    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. Select Name or Email to sort.</p>
+    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. Search by name, or select Name or Email to sort.</p>
+    {# Search by name (static/js/table-filter.js); shown by the script #}
+    <div class="sort-bar" data-row-filter-bar data-row-noun="people" hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="people-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="people-search" class="form-control" placeholder="Search by name"
+                       autocomplete="off" spellcheck="false" data-search-rows="#people-table tbody" data-search-key="name"
+                       data-search-label="names">
+            </div>
+        </div>
+    </div>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0 table-sortable">
+        <table class="table align-middle mb-0 table-sortable" id="people-table">
             <caption class="visually-hidden">People and their roles</caption>
             <thead><tr><th scope="col" data-sort="text">{% include "cases/_sort_button.html" with label="Name" %}</th><th scope="col" class="d-none d-md-table-cell" data-sort="text">{% include "cases/_sort_button.html" with label="Email" %}</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
             <tbody>
             {% for r in rows %}
-            <tr>
+            <tr data-name="{{ r.user.get_full_name }} {{ r.user.username }}">
                 <td data-sort-value="{{ r.user.get_full_name|default:r.user.username }}">{{ r.user.get_full_name|default:r.user.username }}<br><span class="small text-muted">{{ r.user.username }}</span></td>
                 <td class="d-none d-md-table-cell" data-sort-value="{{ r.user.email }}">{{ r.user.email }}</td>
                 {% if r.user == user %}
@@ -38,9 +50,11 @@
             </tbody>
         </table>
     </div>
+    <p class="text-muted" data-row-filter-empty hidden>No one matches that name. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear search</button></p>
 </section>
 {% endblock %}
 
 {% block extra_body %}
 <script src="{% static 'js/sort-table.js' %}"></script>
+<script src="{% static 'js/table-filter.js' %}"></script>
 {% endblock extra_body %}
