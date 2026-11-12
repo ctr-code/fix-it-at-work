@@ -255,6 +255,15 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 #navbar .nav-cta { color: var(--brand); background: var(--white); font-weight: var(--fw-semibold); padding-left: var(--space-4); padding-right: var(--space-4); }
 #navbar .nav-cta:hover, #navbar .nav-cta.active { color: var(--brand-dark); background: var(--brand-tint); }
 
+/* Narrow laptops (992-1199px): up to five links plus the profile only just fit, so drop the link
+   icons and tighten the spacing there. Wider screens keep the icons. */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    #navbar .main-nav .nav-link { padding-left: var(--space-2); padding-right: var(--space-2); }
+    #navbar .main-nav .nav-link i { display: none; }
+    .main-nav { gap: 0; }
+    .profile-nav { padding-left: var(--space-3); }
+}
+
 /* Menu button for small screens */
 .navbar-toggler { width: 44px; height: 44px; padding: 0; border: var(--border-width) solid var(--on-brand-line); border-radius: var(--radius-md); }
 .navbar-toggler:hover { background: var(--on-brand-hover); }

@@ -89,6 +89,20 @@ def report(request):
 
 
 @login_required
+def my_reports(request):
+    """Every report the signed-in user has made, newest first. Staff can report issues too."""
+    reports = list(Case.objects.filter(reporter_user=request.user).order_by('-date_reported'))
+    open_count = sum(c.status in OPEN_STATUSES for c in reports)
+    to_rate = [c for c in reports if c.can_give_feedback(request.user) and c.satisfaction is None]
+    # Only the statuses in the list, in the order a report moves through them, for the "Status" filter
+    statuses = [(value, label) for value, label in Status.choices if any(c.status == value for c in reports)]
+    return render(request, 'cases/my_reports.html', {
+        'reports': reports, 'open_count': open_count, 'to_rate': {c.pk for c in to_rate},
+        'statuses': statuses,
+    })
+
+
+@login_required
 def track(request):
     ref = request.GET.get('ref', '').strip().upper()
     if ref:

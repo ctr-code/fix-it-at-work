@@ -726,3 +726,75 @@ class ReportUpdateTests(TestCase):
         self.client.post(self.url, {'satisfaction': 5, 'satisfaction_comments': 'Great'})
         self.case.refresh_from_db()
         self.assertEqual(self.case.satisfaction, 5)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class MyReportsTests(TestCase):
+    """The My reports page lists the signed-in user's own reports."""
+
+    def make_user(self, username, role):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def report(self, user, title, **extra):
+        return Case.objects.create(title=title, description='x', building='Main Office', reporter_name=user.username,
+                                   reporter_email=user.email, reporter_user=user, **extra)
+
+    def setUp(self):
+        self.me = self.make_user('reporter1', 'reporter')
+        self.client.force_login(self.me)
+
+    def test_lists_only_my_reports_with_links(self):
+        mine = self.report(self.me, 'Tap dripping')
+        self.report(self.make_user('reporter2', 'reporter'), 'Someone else broke this')
+        html = self.client.get('/my-reports/').content.decode()
+        self.assertIn('Tap dripping', html)
+        self.assertNotIn('Someone else broke this', html)
+        self.assertIn(f'href="/track/{mine.reference}/"', html)
+        self.assertIn("You've made 1 report, 1 still open.", html)
+
+    def test_status_filter_lists_only_statuses_i_have(self):
+        self.report(self.me, 'Tap dripping')
+        self.report(self.me, 'Bin overflowing', status=Status.CLOSED)
+        html = self.client.get('/my-reports/').content.decode()
+        options = html.split('id="mine-status"')[1].split('</select>')[0]
+        self.assertIn('<option value="new">New - awaiting triage</option>', options)
+        self.assertIn('<option value="closed">Closed</option>', options)
+        self.assertNotIn('value="assigned"', options)
+        self.assertIn('data-search-key="title ref"', html)
+
+    def test_closed_report_waiting_for_a_rating_is_flagged(self):
+        from django.utils import timezone
+        case = self.report(self.me, 'Bin overflowing', status=Status.CLOSED, date_closed=timezone.now())
+        self.assertContains(self.client.get('/my-reports/'), f'/track/{case.reference}/#feedback')
+
+    def test_staff_see_reports_they_made(self):
+        handler = self.make_user('handler1', 'handler')
+        self.report(handler, 'Projector broken')
+        self.client.force_login(handler)
+        self.assertContains(self.client.get('/my-reports/'), 'Projector broken')
+
+    def test_empty_state(self):
+        self.assertContains(self.client.get('/my-reports/'), 'No reports yet')
+
+    def test_sign_in_needed(self):
+        self.client.logout()
+        self.assertEqual(self.client.get('/my-reports/').status_code, 302)
+
+    def test_header_link_and_current_page(self):
+        case = self.report(self.me, 'Tap dripping')
+        for path in ('/my-reports/', f'/track/{case.reference}/'):
+            with self.subTest(path=path):
+                html = self.client.get(path).content.decode()
+                marked = html.split('aria-current="page"')[1].split('</a>')[0]
+                self.assertIn('My reports', marked)
+        report_page = self.client.get('/report/').content.decode()
+        self.assertIn('Report an issue', report_page.split('aria-current="page"')[1].split('</a>')[0])
