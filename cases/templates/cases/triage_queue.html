@@ -11,8 +11,58 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
 <section class="container">
     <h1>Case handler</h1>
 
-    <h2 class="mt-2">Needs triage <span class="badge bg-secondary">{{ new_cases|length }}</span></h2>
+    {% comment %}
+    Each list is a tab. The address ends in #triage, #reply, #unhappy or #teams, so links
+    (e.g. the manager's "Unhappy reporters" figure) and the Back button open the right tab.
+    {% endcomment %}
+    <ul class="nav nav-tabs queue-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-triage" data-bs-toggle="tab" data-bs-target="#triage" type="button"
+                role="tab" aria-controls="triage" aria-selected="true">Needs triage <span class="tab-count">{{ new_cases|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-reply" data-bs-toggle="tab" data-bs-target="#reply" type="button"
+                role="tab" aria-controls="reply" aria-selected="false">Fixed - reply needed <span class="tab-count">{{ awaiting_reply|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-unhappy" data-bs-toggle="tab" data-bs-target="#unhappy" type="button"
+                role="tab" aria-controls="unhappy" aria-selected="false">Unhappy reporters <span class="tab-count">{{ unhappy|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-teams" data-bs-toggle="tab" data-bs-target="#teams" type="button"
+                role="tab" aria-controls="teams" aria-selected="false">With teams <span class="tab-count">{{ in_flight|length }}</span></button>
+    </li>
+    </ul>
+    <div class="tab-content queue-panes">
+    <div class="tab-pane fade show active" id="triage" role="tabpanel" aria-labelledby="tab-triage" tabindex="0">
     <p class="text-muted">Sorted by the AI's suggested priority. Open a case to check and approve the suggestion. Select a column heading to sort by it.</p>
+    {% if new_cases %}
+    {# Filters rows by location and the AI's suggested priority; both must match (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="triage-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="triage-search" class="form-control" placeholder="Search issue titles"
+                       autocomplete="off" spellcheck="false" data-search-rows="#triage tbody" data-search-key="title">
+            </div>
+        </div>
+        <div class="sort-bar-field">
+            <label for="triage-location" class="sort-bar-label">Location</label>
+            <select id="triage-location" class="form-select" data-filter-rows="#triage tbody" data-filter-key="building">
+                <option value="">All locations</option>
+                {% for b in triage_buildings %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="triage-priority" class="sort-bar-label">Priority</label>
+            <select id="triage-priority" class="form-select" data-filter-rows="#triage tbody" data-filter-key="priority">
+                <option value="">All priorities</option>
+                {% for rank, label in triage_priorities %}<option value="{{ rank }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table table-hover align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Cases waiting for triage</caption>
@@ -25,7 +75,7 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in new_cases %}
-            <tr>
+            <tr data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.ai_priority %}" data-building="{{ c.building }}">
                 <td><a href="{% url 'triage_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
                 <td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}{% if c.ai_duplicate_candidate %}<br><span class="small ai-label"><i class="fa-solid fa-clone" aria-hidden="true"></i> Possible duplicate of {{ c.ai_duplicate_candidate.reference }}</span>{% endif %}</td>
                 <td data-label="Where" data-sort-value="{{ c.building }} {{ c.location_detail }}">{{ c.building }}<br><span class="small text-muted">{{ c.location_detail }}</span></td>
@@ -36,8 +86,39 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tbody>
         </table>
     </div>
+    {% if new_cases %}<p class="text-muted" data-row-filter-empty hidden>No cases waiting match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear filters</button></p>{% endif %}
 
-    <h2 class="mt-4">Fixed - reply needed <span class="badge bg-secondary">{{ awaiting_reply|length }}</span></h2>
+    </div>
+
+    <div class="tab-pane fade" id="reply" role="tabpanel" aria-labelledby="tab-reply" tabindex="0">
+    <p class="text-muted">Fixed by an officer. Review the AI's outcome letter and send it to close the case.</p>
+    {% if awaiting_reply %}
+    {# Team and reply language filters; both must match (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="reply-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="reply-search" class="form-control" placeholder="Search issue titles"
+                       autocomplete="off" spellcheck="false" data-search-rows="#reply tbody" data-search-key="title">
+            </div>
+        </div>
+        <div class="sort-bar-field">
+            <label for="reply-team" class="sort-bar-label">Team</label>
+            <select id="reply-team" class="form-select" data-filter-rows="#reply tbody" data-filter-key="team">
+                <option value="">All teams</option>
+                {% for t in reply_teams %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="reply-language" class="sort-bar-label">Language</label>
+            <select id="reply-language" class="form-select" data-filter-rows="#reply tbody" data-filter-key="language">
+                <option value="">All languages</option>
+                {% for code, label in reply_languages %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Fixed cases that need a reply</caption>
@@ -50,15 +131,38 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in awaiting_reply %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Team">{{ c.assigned_team }}</td><td data-label="Language">{{ c.get_preferred_language_display }}</td>
+            <tr data-title="{{ c.title }}" data-team="{{ c.assigned_team.name|default:'' }}" data-language="{{ c.preferred_language }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Team">{{ c.assigned_team }}</td><td data-label="Language">{{ c.get_preferred_language_display }}</td>
                 <td class="card-action"><a class="btn btn-sm btn-primary" href="{% url 'outcome_letter' c.reference %}">Review AI letter</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No replies waiting.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
+    {% if awaiting_reply %}<p class="text-muted" data-row-filter-empty hidden>No replies waiting match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear filters</button></p>{% endif %}
 
-    <h2 class="mt-4" id="unhappy">Unhappy reporters <span class="badge bg-secondary">{{ unhappy|length }}</span></h2>
-    <p class="small text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
+    </div>
+
+    <div class="tab-pane fade" id="unhappy" role="tabpanel" aria-labelledby="tab-unhappy" tabindex="0">
+    <p class="text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
+    {% if unhappy %}
+    {# Title search and reporter filter (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="unhappy-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="unhappy-search" class="form-control" placeholder="Search issue titles"
+                       autocomplete="off" spellcheck="false" data-search-rows="#unhappy tbody" data-search-key="title">
+            </div>
+        </div>
+        <div class="sort-bar-field">
+            <label for="unhappy-reporter" class="sort-bar-label">Reporter</label>
+            <select id="unhappy-reporter" class="form-select" data-filter-rows="#unhappy tbody" data-filter-key="reporter">
+                <option value="">All reporters</option>
+                {% for name in unhappy_names %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Unhappy reporters to contact</caption>
@@ -71,15 +175,54 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in unhappy %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
+            <tr data-title="{{ c.title }}" data-reporter="{{ c.reporter_name }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
                 <td data-label="Score" data-sort-value="{{ c.satisfaction }}" class="overdue">{{ c.satisfaction }}/5</td><td data-label="What they said" data-sort-value="{{ c.satisfaction_comments }}">{{ c.satisfaction_comments|default:"-" }}</td>
                 <td data-label="Reporter" data-sort-value="{{ c.reporter_name }}">{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No unhappy reporters. Nice.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
+    {% if unhappy %}<p class="text-muted" data-row-filter-empty hidden>No unhappy reporters match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear filters</button></p>{% endif %}
 
-    <h2 class="mt-4">With teams <span class="badge bg-secondary">{{ in_flight|length }}</span></h2>
+    </div>
+
+    <div class="tab-pane fade" id="teams" role="tabpanel" aria-labelledby="tab-teams" tabindex="0">
+    <p class="text-muted">Assigned to a team and not fixed yet, soonest due first.</p>
+    {% if in_flight %}
+    {# Priority, team and officer filters; all must match (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field sort-bar-search">
+            <label for="teams-search" class="sort-bar-label">Search</label>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="teams-search" class="form-control" placeholder="Search issue titles"
+                       autocomplete="off" spellcheck="false" data-search-rows="#teams tbody" data-search-key="title">
+            </div>
+        </div>
+        <div class="sort-bar-field">
+            <label for="teams-priority" class="sort-bar-label">Priority</label>
+            <select id="teams-priority" class="form-select" data-filter-rows="#teams tbody" data-filter-key="priority">
+                <option value="">All priorities</option>
+                {% for rank, label in teams_priorities %}<option value="{{ rank }}">{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="teams-team" class="sort-bar-label">Team</label>
+            <select id="teams-team" class="form-select" data-filter-rows="#teams tbody" data-filter-key="team">
+                <option value="">All teams</option>
+                {% for t in teams_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="sort-bar-field">
+            <label for="teams-officer" class="sort-bar-label">Officer</label>
+            <select id="teams-officer" class="form-select" data-filter-rows="#teams tbody" data-filter-key="officer">
+                <option value="">All officers</option>
+                {% if teams_unassigned %}<option value="-">Unassigned</option>{% endif %}
+                {% for o in teams_officers %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Cases with teams</caption>
@@ -92,16 +235,21 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in in_flight %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
+            <tr data-title="{{ c.title }}" data-priority="{% include 'cases/_priority_rank.html' with p=c.priority %}" data-team="{{ c.assigned_team.name|default:'' }}" data-officer="{{ c.assigned_officer.name|default:'-' }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue">{{ c.title }}</td><td data-label="Priority" data-sort-value="{% include 'cases/_priority_rank.html' with p=c.priority %}">{% include "cases/_pri.html" with p=c.priority %}</td>
                 <td data-label="Team / officer" data-sort-value="{{ c.assigned_team|default:'' }} {{ c.assigned_officer.name|default:'' }}">{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
                 <td data-label="Due" data-sort-value="{{ c.sla_due|date:'c' }}" class="{% if c.is_overdue %}overdue{% endif %}">{{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">None.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
+    {% if in_flight %}<p class="text-muted" data-row-filter-empty hidden>No cases with teams match these filters. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Clear filters</button></p>{% endif %}
+    </div>
+    </div>
 </section>
 {% endblock %}
 
 {% block extra_body %}
 <script src="{% static 'js/sort-table.js' %}"></script>
+<script src="{% static 'js/tabs.js' %}"></script>
+<script src="{% static 'js/table-filter.js' %}"></script>
 {% endblock extra_body %}

@@ -31,7 +31,7 @@
             <div class="panel">
                 <p class="small text-muted mb-1">{{ v.visited_at|date:"j M Y, H:i" }} &middot; {{ v.officer.name }} &middot; {% if v.fixed %}Fixed{% else %}Follow-up needed{% endif %}{% if v.transcript_used %} &middot; dictated{% endif %}</p>
                 <div class="ai-box mb-2"><span class="ai-label">AI summary</span><br>{{ v.ai_summary }}</div>
-                <details><summary>Officer's full note</summary><p class="mt-2 mb-0">{{ v.note|linebreaksbr }}</p></details>
+                <details><summary>Officer's full note</summary>{% if v.action %}<p class="mt-2 mb-1"><strong>Found:</strong> {{ v.note|linebreaksbr }}</p><p class="mb-0"><strong>Did:</strong> {{ v.action|linebreaksbr }}</p>{% else %}<p class="mt-2 mb-0">{{ v.note|linebreaksbr }}</p>{% endif %}</details>
                 {% if v.photo %}<img src="{{ v.photo.url }}" alt="Photo from site visit" class="photo-thumb mt-2">{% endif %}
             </div>
             {% empty %}<p>No visits yet.</p>{% endfor %}

@@ -30,7 +30,7 @@
             <span id="dictate-status" class="small text-muted ms-2" aria-live="polite"></span>
         </div>
         {{ form|crispy }}
-        <p class="small text-muted">AI will turn your note into a short case summary. Your full note is kept too.</p>
+        <p class="small text-muted">AI will turn your answers into a short case summary. Your full answers are kept too.</p>
         <button type="submit" class="btn btn-primary btn-lg w-100">Save visit</button>
     </form>
     {% endif %}
@@ -43,7 +43,12 @@
     const btn = document.getElementById('dictate');
     if (!btn) return;
     const status = document.getElementById('dictate-status');
-    const note = document.getElementById('id_note');
+    // Dictation goes into whichever box was last selected: "What did you find?" or "What did you do?"
+    let note = document.getElementById('id_note');
+    ['id_note', 'id_action'].forEach((id) => {
+        const box = document.getElementById(id);
+        if (box) { box.addEventListener('focus', () => { note = box; }); }
+    });
     const used = document.getElementById('id_transcript_used');
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { btn.disabled = true; status.textContent = 'Dictation needs Chrome or Edge.'; return; }

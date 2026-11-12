@@ -27,7 +27,7 @@ DEMO_USERS = [
     ('rob', 'Rob', 'Turner', Role.MANAGER),
 ] + [(name.split()[0].lower(), *name.split(), Role.OFFICER) for name in [
     'Sam Okafor', 'Priya Shah', 'Tom Becker', 'Aisha Rahman', 'Dan Walsh', 'Mei Lin', 'Grace Mensah', 'Owen Price',
-]]
+]] + [('serena', 'Serena', '', Role.OFFICER)]
 
 # Teams and categories follow the "Mock data v3" spreadsheet: its Assigned Team column is the team,
 # and its Sub-Category column is the category. Each category belongs to exactly one team.
@@ -48,14 +48,16 @@ TEAMS = [
 # most common priority for that sub-category in the spreadsheet.
 CATEGORIES = [
     ('Heating', 'Facilities Helpdesk', 'high',
-     'heating, radiator, cold, freezing, boiler, thermostat, ogrzewanie, zimno, calefacción, frío'),
+     'heating, radiator, cold, freezing, boiler, thermostat, gas, gas smell, smell of gas, gas leak, '
+     'ogrzewanie, zimno, calefacción, frío, ہیٹنگ, ٹھنڈ'),
     ('Air Conditioning', 'Facilities Helpdesk', 'medium',
      'air con, air conditioning, aircon, ac unit, hot air, overheating, too hot, ventilation, degrees, stuffy'),
     ('Plumbing', 'Facilities Helpdesk', 'medium',
      'pipe, tap, toilet, sink, washbasin, drain, blocked, burst, hot water, leaking pipe, drip, '
-     'inodoro, atascado, rura, przeciek, fuga'),
+     'inodoro, atascado, grifo, lavabo, rura, kran, przeciek, fuga, نل, رساؤ, باتھ روم'),
     ('Lighting & Electrical', 'Facilities Helpdesk', 'medium',
-     'light, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning, fuse'),
+     'light, bulb, socket, power, electric, wire, flicker, sparking, sparks, plug, burning, fuse, '
+     'światło, prąd, luz, enchufe, بجلی, لائٹ'),
     ('Furniture', 'Facilities Helpdesk', 'low', 'chair, furniture, drawer, cabinet, shelf, shelves'),
 
     ('Hardware', 'IT Service Desk', 'medium',
@@ -91,7 +93,7 @@ CATEGORIES = [
     ('Waste & Bins', 'Cleaning Services', 'low', 'bin, rubbish, waste, overflowing, litter, recycling'),
     ('Deep Clean', 'Cleaning Services', 'medium', 'deep clean, dirty, filthy, smell, hygiene, vomit, unclean'),
     ('Pest Control', 'Cleaning Services', 'high',
-     'mice, mouse droppings, rats, pest, cockroach, ants, wasps, droppings, flies'),
+     'mice, mouse droppings, rats, pest, cockroach, ants, wasp, nest, bees, hornet, stung, droppings, flies'),
     ('Sharps', 'Cleaning Services', 'urgent', 'needle, syringe, sharps, broken glass'),
 
     ('Fire Equipment', 'Health & Safety Team', 'high', 'fire extinguisher, extinguisher, fire blanket, hose reel'),
@@ -130,6 +132,28 @@ OFFICERS = [
     ('Sunita Rao', 'Health & Safety Team'), ('Alan Whitfield', 'Health & Safety Team'),
     ('Darren Cole', 'Fleet Services'), ('Mick Fraser', 'Fleet Services'),
     ('Jordan Ellis', 'AV & Meeting Room Support'),
+]
+
+# Serena: a field officer with a fixed set of five open jobs, so "My jobs" always has a full list to show.
+# She joins her team after the other cases are made, so random assignment never gives her extra jobs.
+SERENA_TEAM = 'Facilities Helpdesk'
+# Same fields as REPORTS, plus the category and priority the handler chose at triage.
+# One job per Facilities category, each in a different building, with a mix of priorities and stages.
+SERENA_JOBS = [
+    ('Desk drawer unit collapsed', 'The drawer unit under hot desk 7 has collapsed and the drawers will not open.',
+     'Depot', 'Hot desk 7', 'low', 'en', 'Ellie Watson', 3, 'assigned', 'Furniture', 'low'),
+    ('Air con dripping onto desks', 'Water is dripping from the air conditioning unit onto two desks by the window. '
+     'We have moved the laptops.', 'Warehouse B', 'Upstairs office', 'high', 'en', 'Oscar Bennett', 2.5,
+     'in_progress', 'Air Conditioning', 'high'),
+    ('Radiator stuck on full in finance office', 'The radiator in the finance office is stuck on full heat and the '
+     'valve will not turn. The room is uncomfortably hot.', 'Innovation Centre', '2nd floor finance office', 'medium',
+     'en', 'Nina Gallagher', 1.2, 'assigned', 'Heating', 'medium'),
+    ('No hot water in 3rd floor kitchen', 'The hot water tap in the 3rd floor kitchen only runs cold. Staff cannot '
+     'wash up.', 'Main Office', '3rd floor kitchen', 'medium', 'en', 'Priyanka Desai', 0.6, 'assigned', 'Plumbing',
+     'medium'),
+    ('Lights out in basement corridor', 'Half the lights in the basement corridor have gone out and it is very dark '
+     'by the stairs.', 'Riverside House', 'Basement corridor', 'urgent', 'en', 'Tariq Malik', 0.1, 'assigned',
+     'Lighting & Electrical', 'urgent'),
 ]
 
 # (priority, response target hours, resolution target hours), from the mock data's SLA Settings sheet.
@@ -226,6 +250,12 @@ REPORT_DETAILS = {
     'Lift making grinding noise': ('building_wide', True, 'LIFT-IC-01'),
     'Heating not working': ('team', False, 'BLR-WB-01'),
     'Broken': ('single_user', False, ''),
+    # Serena's jobs
+    'Desk drawer unit collapsed': ('single_user', False, 'FUR-DP-HD7'),
+    'Air con dripping onto desks': ('team', True, 'AC-WB-U01'),
+    'Radiator stuck on full in finance office': ('team', False, 'RAD-IC-2F3'),
+    'No hot water in 3rd floor kitchen': ('department', False, ''),
+    'Lights out in basement corridor': ('building_wide', True, ''),
 }
 
 # Reporter feedback on closed cases. Weights follow the spreadsheet's spread of scores (mostly 4s and 5s);
@@ -245,20 +275,28 @@ SATISFACTION_COMMENTS = {
     1: ['Took far too long and nobody kept me informed.'],
 }
 
-# What the officer wrote when they fixed it, by team
+# What the officer wrote when they fixed it, by team: (what they found, what they did)
 VISIT_NOTES = {
-    'Facilities Helpdesk': ('Found the fault and replaced the worn part. Tested and checked again after '
-                            '20 minutes, all working.'),
-    'IT Service Desk': 'Diagnosed hardware fault. Swapped the unit for a tested spare and confirmed it works with the user.',
-    'IT Network Team': 'Replaced a failing access point and checked signal strength across the area. Connection stable.',
-    'Security & Access Team': 'Re-set and tested the reader and lock. Reviewed CCTV and logged with the site security lead.',
-    'Estates Maintenance': 'Made safe and taped off the area, then carried out the repair. Checked the surrounding area.',
-    'Cleaning Services': 'Cleared and cleaned the area. Added it to the weekly check list.',
-    'Health & Safety Team': 'Made the area safe and removed the hazard. Recorded in the H&S log.',
-    'Fleet Services': 'Inspected the vehicle, replaced the faulty part and road tested it. Back in service.',
-    'AV & Meeting Room Support': 'Reset the system and replaced a faulty cable. Tested with a laptop and a Teams call.',
+    'Facilities Helpdesk': ('A worn part was causing the fault.',
+                            'Replaced the worn part. Tested and checked again after 20 minutes, all working.'),
+    'IT Service Desk': ('Hardware fault in the unit.',
+                        'Swapped the unit for a tested spare and confirmed it works with the user.'),
+    'IT Network Team': ('One access point was failing and dropping connections.',
+                        'Replaced the access point and checked signal strength across the area. Connection stable.'),
+    'Security & Access Team': ('The reader and lock had lost their settings.',
+                               'Re-set and tested the reader and lock. Reviewed CCTV and logged with the site '
+                               'security lead.'),
+    'Estates Maintenance': ('The area was unsafe to use.',
+                            'Made safe and taped off the area, then carried out the repair. Checked the '
+                            'surrounding area.'),
+    'Cleaning Services': ('The area needed a full clean.', 'Cleared and cleaned the area. Added it to the weekly check list.'),
+    'Health & Safety Team': ('A hazard was in a walkway.', 'Made the area safe and removed the hazard. Recorded in the H&S log.'),
+    'Fleet Services': ('A faulty part on the vehicle.',
+                       'Replaced the faulty part and road tested the vehicle. Back in service.'),
+    'AV & Meeting Room Support': ('A faulty cable was stopping the system connecting.',
+                                  'Reset the system and replaced the cable. Tested with a laptop and a Teams call.'),
 }
-FOLLOW_UP = 'Part needed that is not in the van. Ordered and booked a return visit.'
+FOLLOW_UP = ('Part needed that is not in the van.', 'Ordered the part and booked a return visit.')
 
 HANDLER = 'Jo Clarke'
 
@@ -293,6 +331,8 @@ class Command(BaseCommand):
         # The demo reporter can see their own reports on their home page
         Case.objects.filter(reporter_name='Alex Morgan').update(reporter_user=users['alex'])
 
+        self.make_serena(teams[SERENA_TEAM], users['serena'], rng, now)
+
         self.stdout.write(self.style.SUCCESS(f'Loaded {Case.objects.count()} fictional cases.'))
         self.stdout.write('Demo logins: ' + ', '.join(f'{u} ({r.label})' for u, _, _, r in DEMO_USERS[:4]) +
                           ' ... plus one per field officer.')
@@ -312,7 +352,19 @@ class Command(BaseCommand):
             users[username] = user
         return users
 
-    def make_case(self, spec, rng, now):
+    def make_serena(self, team, user, rng, now):
+        """Add Serena to her team and give her the five jobs in SERENA_JOBS. Safe to run again."""
+        Case.objects.filter(title__in=[j[0] for j in SERENA_JOBS]).delete()
+        Officer.objects.filter(name='Serena').delete()
+        officer = Officer.objects.create(name='Serena', team=team, user=user, contact_email='serena@example.com')
+        for spec in sorted(SERENA_JOBS, key=lambda r: -r[7]):
+            *report, category, priority = spec
+            self.make_case(report, rng, now, officer=officer, category=category, priority=priority)
+        return officer
+
+    def make_case(self, spec, rng, now, officer=None, category=None, priority=None):
+        """Create one case and walk it to its stage. officer, category and priority, when given,
+        replace the random officer and the AI's suggestions at triage."""
         title, desc, building, room, urgency, lang, name, days_ago, stage = spec
         reported = now - timedelta(days=days_ago)
         impact, hs_risk, asset_tag = REPORT_DETAILS[title]
@@ -333,13 +385,16 @@ class Command(BaseCommand):
             return
 
         # Triage: the handler accepts most AI suggestions, sometimes raises priority
-        case.category = s['category']
-        case.priority = s['priority']
-        if rng.random() < 0.2 and case.priority != 'urgent':
-            case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
-        case.ai_suggestion_accepted = case.priority == s['priority']
+        case.category = Category.objects.get(name=category) if category else s['category']
+        if priority:
+            case.priority = priority
+        else:
+            case.priority = s['priority']
+            if rng.random() < 0.2 and case.priority != 'urgent':
+                case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
+        case.ai_suggestion_accepted = case.priority == s['priority'] and case.category == s['category']
         case.assigned_team = case.category.default_team
-        case.assigned_officer = rng.choice(list(case.assigned_team.officers.all()))
+        case.assigned_officer = officer or rng.choice(list(case.assigned_team.officers.all()))
         case.triaged_by = HANDLER
         # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
         rule = SLARule.objects.get(priority=case.priority)
@@ -353,12 +408,13 @@ class Command(BaseCommand):
         if stage == 'assigned':
             return
 
-        note = VISIT_NOTES[case.assigned_team.name]
+        found, did = VISIT_NOTES[case.assigned_team.name]
         first_visit = min(case.date_acknowledged + timedelta(hours=rule.resolve_hours * rng.uniform(0.1, 0.7)),
                           now - timedelta(hours=2))
         if stage == 'in_progress':
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP, False))
+            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
+                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
+                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
             case.status = Status.IN_PROGRESS
             case.save()
             return
@@ -366,13 +422,14 @@ class Command(BaseCommand):
         two_visits = rng.random() < 0.3
         visit_time = first_visit
         if two_visits:
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit, note=FOLLOW_UP,
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP, False))
+            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
+                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
+                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
             visit_time = min(first_visit + timedelta(hours=rule.resolve_hours * rng.uniform(0.2, 0.6)),
                              now - timedelta(hours=1))
-        SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=note,
-                                 fixed=True, transcript_used=rng.random() < 0.4,
-                                 ai_summary=ai.summarise_visit(note, True))
+        SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=found,
+                                 action=did, fixed=True, transcript_used=rng.random() < 0.4,
+                                 ai_summary=ai.summarise_visit(found, True, did))
         case.status = Status.RESOLVED
         case.date_resolved = visit_time
         case.first_time_fix = not two_visits

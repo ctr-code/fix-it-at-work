@@ -10,7 +10,7 @@ from . import ai
 from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
     OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, Role, Status,
-    Team, get_role,
+    Language, Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -138,9 +138,32 @@ def triage_queue(request):
     awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
     in_flight = Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).select_related(
         'assigned_team', 'assigned_officer').order_by('sla_due')
+    # Priorities the AI suggested, and buildings, for cases waiting for triage: the
+    # "Priority" and "Location" filters only list what's in the queue
+    triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                         if any(c.ai_priority == value for c in new_cases)]
+    triage_buildings = sorted({c.building for c in new_cases if c.building}, key=str.lower)
+    # The same for cases with teams: priorities, teams and officers that are in the "With teams" list
+    in_flight = list(in_flight)
+    teams_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                        if any(c.priority == value for c in in_flight)]
+    teams_names = sorted({c.assigned_team.name for c in in_flight if c.assigned_team}, key=str.lower)
+    teams_officers = sorted({c.assigned_officer.name for c in in_flight if c.assigned_officer}, key=str.lower)
+    teams_unassigned = any(c.assigned_officer_id is None for c in in_flight)
+    # Teams and reply languages in the "Fixed - reply needed" list, for its filters
+    awaiting_reply = list(awaiting_reply)
+    reply_teams = sorted({c.assigned_team.name for c in awaiting_reply if c.assigned_team}, key=str.lower)
+    reply_languages = [(code, label) for code, label in Language.choices
+                       if any(c.preferred_language == code for c in awaiting_reply)]
+    # Reporters in the "Unhappy reporters" list, for its "Reporter" filter
+    unhappy = list(_unhappy_reporters())
+    unhappy_names = sorted({c.reporter_name for c in unhappy if c.reporter_name}, key=str.lower)
     return render(request, 'cases/triage_queue.html', {
         'new_cases': new_cases, 'awaiting_reply': awaiting_reply, 'in_flight': in_flight,
-        'unhappy': _unhappy_reporters(),
+        'unhappy': unhappy, 'unhappy_names': unhappy_names, 'triage_priorities': triage_priorities,
+        'triage_buildings': triage_buildings, 'teams_priorities': teams_priorities,
+        'teams_names': teams_names, 'teams_officers': teams_officers, 'teams_unassigned': teams_unassigned,
+        'reply_teams': reply_teams, 'reply_languages': reply_languages,
     })
 
 
@@ -233,8 +256,14 @@ def officer_cases(request):
         team_unassigned = Case.objects.filter(
             assigned_team=officer.team, assigned_officer__isnull=True,
             status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+    # Buildings and priorities the officer has jobs in, for the "Location" and "Priority" filters
+    jobs = [*cases, *team_unassigned]
+    buildings = sorted({c.building for c in jobs if c.building}, key=str.lower)
+    priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
+                  if any(c.priority == value for c in jobs)]
     return render(request, 'cases/officer_cases.html', {
         'officer': officer, 'cases': cases, 'team_unassigned': team_unassigned,
+        'buildings': buildings, 'priorities': priorities,
     })
 
 
@@ -257,12 +286,19 @@ def officer_case(request, ref):
     if request.method == 'POST':
         if case.assigned_officer_id != officer.id:
             raise PermissionDenied
+        # Only open jobs take visits. A visit sent from an old tab, or a second click on Save,
+        # would otherwise reopen a fixed or closed job and spoil its fix record.
+        if case.status not in (Status.ASSIGNED, Status.IN_PROGRESS):
+            state = {Status.RESOLVED: 'marked as fixed', Status.CLOSED: 'closed',
+                     Status.DUPLICATE: 'merged as a duplicate'}.get(case.status, 'not open for visits')
+            messages.info(request, f'{case.reference} is already {state}, so no visit was recorded.')
+            return redirect('officer_cases')
         form = VisitForm(request.POST, request.FILES)
         if form.is_valid():
             visit = form.save(commit=False)
             visit.case = case
             visit.officer = officer
-            visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed)
+            visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed, visit.action)
             visit.save()
             if visit.fixed:
                 case.status = Status.RESOLVED

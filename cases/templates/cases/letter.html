@@ -16,7 +16,7 @@
         <button type="submit" class="btn btn-primary btn-lg"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Approve and send</button>
     </form>
     <details class="panel"><summary>What the officer recorded</summary>
-        {% for v in case.visits.all %}<p class="mt-2 mb-0"><strong>{{ v.visited_at|date:"j M" }}, {{ v.officer.name }}:</strong> {{ v.note }}</p>{% endfor %}
+        {% for v in case.visits.all %}<p class="mt-2 mb-0"><strong>{{ v.visited_at|date:"j M" }}, {{ v.officer.name }}:</strong> {% if v.action %}Found: {{ v.note }} Did: {{ v.action }}{% else %}{{ v.note }}{% endif %}</p>{% endfor %}
     </details>
 </section>
 {% endblock %}
