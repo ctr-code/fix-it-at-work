@@ -11,7 +11,30 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
 <section class="container">
     <h1>Case handler</h1>
 
-    <h2 class="mt-2">Needs triage <span class="badge bg-secondary">{{ new_cases|length }}</span></h2>
+    {% comment %}
+    Each list is a tab. The address ends in #triage, #reply, #unhappy or #teams, so links
+    (e.g. the manager's "Unhappy reporters" figure) and the Back button open the right tab.
+    {% endcomment %}
+    <ul class="nav nav-tabs queue-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-triage" data-bs-toggle="tab" data-bs-target="#triage" type="button"
+                role="tab" aria-controls="triage" aria-selected="true">Needs triage <span class="tab-count">{{ new_cases|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-reply" data-bs-toggle="tab" data-bs-target="#reply" type="button"
+                role="tab" aria-controls="reply" aria-selected="false">Fixed - reply needed <span class="tab-count">{{ awaiting_reply|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-unhappy" data-bs-toggle="tab" data-bs-target="#unhappy" type="button"
+                role="tab" aria-controls="unhappy" aria-selected="false">Unhappy reporters <span class="tab-count">{{ unhappy|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-teams" data-bs-toggle="tab" data-bs-target="#teams" type="button"
+                role="tab" aria-controls="teams" aria-selected="false">With teams <span class="tab-count">{{ in_flight|length }}</span></button>
+    </li>
+    </ul>
+    <div class="tab-content queue-panes">
+    <div class="tab-pane fade show active" id="triage" role="tabpanel" aria-labelledby="tab-triage" tabindex="0">
     <p class="text-muted">Sorted by the AI's suggested priority. Open a case to check and approve the suggestion. Select a column heading to sort by it.</p>
     <div class="table-responsive panel p-0">
         <table class="table table-hover align-middle mb-0 table-cards table-sortable">
@@ -37,7 +60,10 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
         </table>
     </div>
 
-    <h2 class="mt-4">Fixed - reply needed <span class="badge bg-secondary">{{ awaiting_reply|length }}</span></h2>
+    </div>
+
+    <div class="tab-pane fade" id="reply" role="tabpanel" aria-labelledby="tab-reply" tabindex="0">
+    <p class="text-muted">Fixed by an officer. Review the AI's outcome letter and send it to close the case.</p>
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Fixed cases that need a reply</caption>
@@ -57,8 +83,10 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
         </table>
     </div>
 
-    <h2 class="mt-4" id="unhappy">Unhappy reporters <span class="badge bg-secondary">{{ unhappy|length }}</span></h2>
-    <p class="small text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
+    </div>
+
+    <div class="tab-pane fade" id="unhappy" role="tabpanel" aria-labelledby="tab-unhappy" tabindex="0">
+    <p class="text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Unhappy reporters to contact</caption>
@@ -79,7 +107,10 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
         </table>
     </div>
 
-    <h2 class="mt-4">With teams <span class="badge bg-secondary">{{ in_flight|length }}</span></h2>
+    </div>
+
+    <div class="tab-pane fade" id="teams" role="tabpanel" aria-labelledby="tab-teams" tabindex="0">
+    <p class="text-muted">Assigned to a team and not fixed yet, soonest due first.</p>
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Cases with teams</caption>
@@ -99,9 +130,12 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tbody>
         </table>
     </div>
+    </div>
+    </div>
 </section>
 {% endblock %}
 
 {% block extra_body %}
 <script src="{% static 'js/sort-table.js' %}"></script>
+<script src="{% static 'js/tabs.js' %}"></script>
 {% endblock extra_body %}

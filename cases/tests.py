@@ -204,6 +204,22 @@ class CaseQueueSortTests(TestCase):
         self.assertIn('data-label="AI suggests" data-sort-value="4"', html)  # urgent ranks highest
         self.assertIn(f'data-sort-value="{case.date_reported.isoformat()[:19]}', html)
 
+    def test_queue_lists_are_tabs_that_links_can_open(self):
+        user = User.objects.create_user('handler2', 'handler2@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        html = self.client.get('/triage/').content.decode()
+        self.assertIn('js/tabs.js', html)
+        for pane, label in [('triage', 'Needs triage'), ('reply', 'Fixed - reply needed'),
+                            ('unhappy', 'Unhappy reporters'), ('teams', 'With teams')]:
+            with self.subTest(pane=pane):
+                self.assertIn(f'data-bs-target="#{pane}"', html)
+                self.assertIn(f'id="{pane}" role="tabpanel" aria-labelledby="tab-{pane}"', html)
+                self.assertIn(f'>{label} <span class="tab-count">', html)
+        self.assertEqual(html.count('class="tab-pane fade show active"'), 1)
+        self.assertNotIn('{#', html)
+
 
 @override_settings(
     ALLOWED_HOSTS=['testserver'],
@@ -334,7 +350,7 @@ class VisitRecordingTests(TestCase):
         self.visit(fixed='on')
         self.client.force_login(self.make_user('handler1', 'handler'))
         html = self.client.get('/triage/').content.decode()
-        reply_section = html.split('Fixed - reply needed')[1].split('Unhappy reporters')[0]
+        reply_section = html.split('id="reply" role="tabpanel"')[1].split('role="tabpanel"')[0]
         self.assertIn(self.case.reference, reply_section)
 
     def test_visit_photo_and_dictation_flag_are_saved(self):
