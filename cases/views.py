@@ -257,6 +257,13 @@ def officer_case(request, ref):
     if request.method == 'POST':
         if case.assigned_officer_id != officer.id:
             raise PermissionDenied
+        # Only open jobs take visits. A visit sent from an old tab, or a second click on Save,
+        # would otherwise reopen a fixed or closed job and spoil its fix record.
+        if case.status not in (Status.ASSIGNED, Status.IN_PROGRESS):
+            state = {Status.RESOLVED: 'marked as fixed', Status.CLOSED: 'closed',
+                     Status.DUPLICATE: 'merged as a duplicate'}.get(case.status, 'not open for visits')
+            messages.info(request, f'{case.reference} is already {state}, so no visit was recorded.')
+            return redirect('officer_cases')
         form = VisitForm(request.POST, request.FILES)
         if form.is_valid():
             visit = form.save(commit=False)

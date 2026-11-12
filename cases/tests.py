@@ -237,3 +237,121 @@ class OfficerJobPageTests(TestCase):
         html = self.client.get(self.url).content.decode()
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class VisitRecordingTests(TestCase):
+    """What happens when a field officer records a visit on one of their jobs."""
+
+    def make_user(self, username, role):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.user = self.make_user('officer1', 'officer')
+        self.officer = Officer.objects.create(name='Officer One', team=self.team, contact_email='o1@example.com',
+                                              user=self.user)
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='A Reporter', reporter_email='reporter@example.com', priority='medium',
+            status=Status.ASSIGNED, assigned_team=self.team, assigned_officer=self.officer)
+        self.url = f'/officer/{self.case.reference}/'
+        self.client.force_login(self.user)
+
+    def visit(self, note='Bled the radiator and replaced the valve head. Tested for 20 minutes.', **extra):
+        return self.client.post(self.url, {'note': note, **extra})
+
+    def test_fixed_on_first_visit_resolves_the_case(self):
+        response = self.visit(fixed='on')
+        self.assertRedirects(response, '/officer/', fetch_redirect_response=False)
+        self.case.refresh_from_db()
+        visit = self.case.visits.get()
+        self.assertEqual((visit.officer, visit.fixed), (self.officer, True))
+        self.assertIn('Outcome: Fixed on this visit.', visit.ai_summary)
+        self.assertEqual(self.case.status, Status.RESOLVED)
+        self.assertIsNotNone(self.case.date_resolved)
+        self.assertTrue(self.case.first_time_fix)
+
+    def test_not_fixed_keeps_the_case_open(self):
+        self.visit(note='Valve seized. Part ordered, return visit booked.')
+        self.case.refresh_from_db()
+        visit = self.case.visits.get()
+        self.assertFalse(visit.fixed)
+        self.assertIn('Not fixed yet - follow-up visit needed.', visit.ai_summary)
+        self.assertEqual(self.case.status, Status.IN_PROGRESS)
+        self.assertIsNone(self.case.date_resolved)
+        self.assertIsNone(self.case.first_time_fix)
+
+    def test_fixed_on_second_visit_is_not_a_first_time_fix(self):
+        self.visit(note='Valve seized. Part ordered.')
+        self.visit(note='Fitted the new valve. Working.', fixed='on')
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.visits.count(), 2)
+        self.assertEqual(self.case.status, Status.RESOLVED)
+        self.assertFalse(self.case.first_time_fix)
+
+    def test_fixed_case_moves_to_handler_reply_list(self):
+        self.visit(fixed='on')
+        self.client.force_login(self.make_user('handler1', 'handler'))
+        html = self.client.get('/triage/').content.decode()
+        reply_section = html.split('Fixed - reply needed')[1].split('Unhappy reporters')[0]
+        self.assertIn(self.case.reference, reply_section)
+
+    def test_visit_photo_and_dictation_flag_are_saved(self):
+        photo = SimpleUploadedFile('valve.png', PNG_1PX, content_type='image/png')
+        self.visit(photo=photo, transcript_used='True')
+        visit = self.case.visits.get()
+        self.assertTrue(visit.photo.name.startswith('visits/valve'))
+        self.assertTrue(visit.transcript_used)
+
+    def test_empty_note_is_refused(self):
+        response = self.visit(note='', fixed='on')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.case.visits.exists())
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, Status.ASSIGNED)
+
+    def test_other_officer_cannot_record_a_visit(self):
+        other = self.make_user('officer2', 'officer')
+        Officer.objects.create(name='Officer Two', team=self.team, contact_email='o2@example.com', user=other)
+        self.client.force_login(other)
+        response = self.visit(fixed='on')
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.case.visits.exists())
+
+    def test_reporter_cannot_record_a_visit(self):
+        self.client.force_login(self.make_user('reporter1', 'reporter'))
+        self.visit(fixed='on')
+        self.assertFalse(self.case.visits.exists())
+
+    def test_fixed_or_closed_job_refuses_a_visit(self):
+        for status in (Status.RESOLVED, Status.CLOSED, Status.DUPLICATE):
+            with self.subTest(status=status):
+                resolved_at = self.case.date_resolved
+                Case.objects.filter(pk=self.case.pk).update(status=status, first_time_fix=True)
+                response = self.visit(note='Popped back to check.')
+                self.assertRedirects(response, '/officer/', fetch_redirect_response=False)
+                self.case.refresh_from_db()
+                self.assertEqual(self.case.status, status)
+                self.assertTrue(self.case.first_time_fix)
+                self.assertEqual(self.case.date_resolved, resolved_at)
+                self.assertFalse(self.case.visits.exists())
+
+    def test_second_click_on_fixed_does_not_spoil_first_time_fix(self):
+        self.visit(fixed='on')
+        response = self.visit(fixed='on')  # e.g. Save pressed twice
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.visits.count(), 1)
+        self.assertEqual(self.case.status, Status.RESOLVED)
+        self.assertTrue(self.case.first_time_fix)
+        messages = [str(m) for m in response.wsgi_request._messages]
+        self.assertIn(f'{self.case.reference} is already marked as fixed, so no visit was recorded.', messages)
