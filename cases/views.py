@@ -10,7 +10,7 @@ from . import ai
 from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
 from .models import (
     OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, Role, Status,
-    Priority, Team, get_role,
+    Language, Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -150,6 +150,11 @@ def triage_queue(request):
     teams_names = sorted({c.assigned_team.name for c in in_flight if c.assigned_team}, key=str.lower)
     teams_officers = sorted({c.assigned_officer.name for c in in_flight if c.assigned_officer}, key=str.lower)
     teams_unassigned = any(c.assigned_officer_id is None for c in in_flight)
+    # Teams and reply languages in the "Fixed - reply needed" list, for its filters
+    awaiting_reply = list(awaiting_reply)
+    reply_teams = sorted({c.assigned_team.name for c in awaiting_reply if c.assigned_team}, key=str.lower)
+    reply_languages = [(code, label) for code, label in Language.choices
+                       if any(c.preferred_language == code for c in awaiting_reply)]
     # Reporters in the "Unhappy reporters" list, for its "Reporter" filter
     unhappy = list(_unhappy_reporters())
     unhappy_names = sorted({c.reporter_name for c in unhappy if c.reporter_name}, key=str.lower)
@@ -158,6 +163,7 @@ def triage_queue(request):
         'unhappy': unhappy, 'unhappy_names': unhappy_names, 'triage_priorities': triage_priorities,
         'triage_buildings': triage_buildings, 'teams_priorities': teams_priorities,
         'teams_names': teams_names, 'teams_officers': teams_officers, 'teams_unassigned': teams_unassigned,
+        'reply_teams': reply_teams, 'reply_languages': reply_languages,
     })
 
 

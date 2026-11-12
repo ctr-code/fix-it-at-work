@@ -271,6 +271,25 @@ class CaseQueueSortTests(TestCase):
         options = html.split('id="unhappy-reporter"')[1].split('</select>')[0]
         self.assertIn('<option value="Lucía Fernández">Lucía Fernández</option>', options)
         self.assertIn('<tr data-reporter="Lucía Fernández">', html)
+
+    def test_reply_needed_filters_list_teams_and_languages(self):
+        user = User.objects.create_user('handler6', 'handler6@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        team = Team.objects.create(name='IT Service Desk', contact_email='it@example.com', manager='N Karim')
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com',
+                      status=Status.RESOLVED, assigned_team=team)
+        Case.objects.create(title='Monitor flickering', preferred_language='en', **common)
+        Case.objects.create(title='Brak internetu', preferred_language='pl', **common)
+        html = self.client.get('/triage/').content.decode()
+        teams = html.split('id="reply-team"')[1].split('</select>')[0]
+        languages = html.split('id="reply-language"')[1].split('</select>')[0]
+        self.assertIn('<option value="IT Service Desk">IT Service Desk</option>', teams)
+        self.assertIn('<option value="en">English</option>', languages)
+        self.assertIn('<option value="pl">Polski (Polish)</option>', languages)
+        self.assertNotIn('value="es"', languages)
+        self.assertIn('<tr data-team="IT Service Desk" data-language="pl">', html)
         self.assertNotIn('{#', html)
 
 
