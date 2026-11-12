@@ -311,7 +311,7 @@ main { margin-bottom: var(--space-10); }
 .sort-bar-label { flex: none; width: 4.5rem; margin: 0; font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .sort-bar .form-select { flex: 1; min-width: 0; }
 .sort-bar-search { flex-basis: 100%; }
-[data-row-filter-bar] { max-width: 420px; }   /* a single filter above a wide table */
+[data-row-filter-bar] { max-width: 720px; }   /* filters above a wide table: don't stretch across it */
 .sort-bar-actions { flex-basis: 100%; display: flex; justify-content: flex-end; }
 .sort-bar-actions:has(> [hidden]) { display: none; }
 .sort-bar-actions .btn { min-height: 36px; }
