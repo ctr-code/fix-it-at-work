@@ -238,6 +238,15 @@ class OfficerJobPageTests(TestCase):
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
 
+    def test_job_list_gives_sort_values(self):
+        self.client.post(self.url, {'take': ''})
+        Case.objects.filter(pk=self.case.pk).update(priority='urgent')
+        html = self.client.get('/officer/').content.decode()
+        self.assertIn('id="job-sort"', html)
+        self.assertIn('js/sort-cards.js', html)
+        self.assertIn('data-title="Leaking tap" data-priority="4"', html)
+        self.assertIn('data-overdue="0"', html)
+
 
 @override_settings(
     MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
