@@ -150,9 +150,12 @@ def triage_queue(request):
     teams_names = sorted({c.assigned_team.name for c in in_flight if c.assigned_team}, key=str.lower)
     teams_officers = sorted({c.assigned_officer.name for c in in_flight if c.assigned_officer}, key=str.lower)
     teams_unassigned = any(c.assigned_officer_id is None for c in in_flight)
+    # Reporters in the "Unhappy reporters" list, for its "Reporter" filter
+    unhappy = list(_unhappy_reporters())
+    unhappy_names = sorted({c.reporter_name for c in unhappy if c.reporter_name}, key=str.lower)
     return render(request, 'cases/triage_queue.html', {
         'new_cases': new_cases, 'awaiting_reply': awaiting_reply, 'in_flight': in_flight,
-        'unhappy': _unhappy_reporters(), 'triage_priorities': triage_priorities,
+        'unhappy': unhappy, 'unhappy_names': unhappy_names, 'triage_priorities': triage_priorities,
         'triage_buildings': triage_buildings, 'teams_priorities': teams_priorities,
         'teams_names': teams_names, 'teams_officers': teams_officers, 'teams_unassigned': teams_unassigned,
     })

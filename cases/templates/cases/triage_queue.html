@@ -107,6 +107,18 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
 
     <div class="tab-pane fade" id="unhappy" role="tabpanel" aria-labelledby="tab-unhappy" tabindex="0">
     <p class="text-muted">Closed cases scored 2 or less in the last four weeks. Get in touch to put things right.</p>
+    {% if unhappy %}
+    {# Reporter filter (static/js/table-filter.js). Shown by the script. #}
+    <div class="sort-bar" data-row-filter-bar hidden>
+        <div class="sort-bar-field">
+            <label for="unhappy-reporter" class="sort-bar-label">Reporter</label>
+            <select id="unhappy-reporter" class="form-select" data-filter-rows="#unhappy tbody" data-filter-key="reporter">
+                <option value="">All reporters</option>
+                {% for name in unhappy_names %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
     <div class="table-responsive panel p-0">
         <table class="table align-middle mb-0 table-cards table-sortable">
             <caption class="visually-hidden">Unhappy reporters to contact</caption>
@@ -119,13 +131,14 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
             </tr></thead>
             <tbody>
             {% for c in unhappy %}
-            <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
+            <tr data-reporter="{{ c.reporter_name }}"><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}<br><span class="small text-muted">{{ c.assigned_team }} &middot; closed {{ c.date_closed|date:"j M" }}</span></td>
                 <td data-label="Score" data-sort-value="{{ c.satisfaction }}" class="overdue">{{ c.satisfaction }}/5</td><td data-label="What they said" data-sort-value="{{ c.satisfaction_comments }}">{{ c.satisfaction_comments|default:"-" }}</td>
                 <td data-label="Reporter" data-sort-value="{{ c.reporter_name }}">{{ c.reporter_name }}<br><a class="small" href="mailto:{{ c.reporter_email }}?subject={{ c.reference|urlencode }}">{{ c.reporter_email }}</a></td></tr>
             {% empty %}<tr><td colspan="5" class="p-3">No unhappy reporters. Nice.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
+    {% if unhappy %}<p class="text-muted" data-row-filter-empty hidden>No unhappy reporters match this filter. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-clear-row-filter>Show all reporters</button></p>{% endif %}
 
     </div>
 

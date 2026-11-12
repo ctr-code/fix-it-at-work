@@ -257,6 +257,20 @@ class CaseQueueSortTests(TestCase):
         self.assertIn('<option value="Sunita Rao">Sunita Rao</option>', options('teams-officer'))
         self.assertIn('data-team="Health &amp; Safety Team" data-officer="Sunita Rao"', html)
         self.assertIn('data-officer="-"', html)
+
+    def test_unhappy_reporters_filter_lists_their_names(self):
+        from django.utils import timezone
+        user = User.objects.create_user('handler5', 'handler5@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        Case.objects.create(title='Toilet blocked', description='x', building='Depot', reporter_name='Lucía Fernández',
+                            reporter_email='l@example.com', status=Status.CLOSED, date_closed=timezone.now(),
+                            satisfaction=2)
+        html = self.client.get('/triage/').content.decode()
+        options = html.split('id="unhappy-reporter"')[1].split('</select>')[0]
+        self.assertIn('<option value="Lucía Fernández">Lucía Fernández</option>', options)
+        self.assertIn('<tr data-reporter="Lucía Fernández">', html)
         self.assertNotIn('{#', html)
 
 
