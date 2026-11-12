@@ -422,6 +422,15 @@ main { margin-bottom: var(--space-10); }
 .photo-error-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--thumb-size); height: var(--thumb-size); color: var(--urgent); font-size: var(--fs-icon); }
 .photo-count { margin: var(--space-3) 0 0; font-size: var(--fs-small); color: var(--muted); }
 .photo-count + .photo-list { margin-top: var(--space-2); }
+/* Details the reporter added after sending their report */
+.report-updates-title { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-label); font-weight: var(--fw-semibold); color: var(--brand-dark); }
+.report-updates { list-style: none; margin: 0; padding: 0; }
+.report-update { padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); border-left: 3px solid var(--brand); background: var(--surface); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.report-update:last-child { margin-bottom: 0; }
+.report-update .photo-grid { margin: 0; }
+.report-update-when { margin: 0 0 var(--space-1); font-size: var(--fs-small); color: var(--muted); }
+.add-details { margin-top: var(--space-5); padding-top: var(--space-5); border-top: var(--line); }
+
 /* Reporter's photos on case pages */
 .photo-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-2); }
 .photo-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: var(--line); border-radius: var(--radius-lg); background: var(--surface-sunken); }

@@ -4,12 +4,13 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from . import ai
-from .forms import FeedbackForm, LetterForm, ReportForm, RoleForm, TriageForm, VisitForm
+from .forms import FeedbackForm, LetterForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, Role, Status,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
     Language, Priority, Team, get_role,
 )
 from .permissions import can_view_case, role_required
@@ -103,6 +104,23 @@ def track_case(request, ref):
     case = get_object_or_404(Case, reference=ref)
     if not can_view_case(request.user, case):
         raise PermissionDenied
+
+    # The reporter can add more details and photos until the case is closed
+    update_form = ReportUpdateForm() if case.can_add_details(request.user) else None
+    if request.method == 'POST' and 'add_details' in request.POST:
+        if update_form is None:
+            raise PermissionDenied  # not the reporter, or the case is closed or merged
+        update_form = ReportUpdateForm(request.POST, request.FILES)
+        if update_form.is_valid():
+            update = ReportUpdate.objects.create(case=case, author=request.user,
+                                                 text=update_form.cleaned_data['text'].strip())
+            for photo in update_form.cleaned_data['photo']:
+                ReportPhoto.objects.create(case=case, update=update, image=photo)
+            messages.success(request, 'Thank you - your extra details have been added to '
+                                      f'{case.reference}. The team working on it can see them now.')
+            return redirect(f"{reverse('track_case', args=[case.reference])}#updates")
+        return _render_track(request, case, None, update_form)
+
     feedback_form = None
     if case.can_give_feedback(request.user):
         if request.method == 'POST':
@@ -116,8 +134,16 @@ def track_case(request, ref):
             feedback_form = FeedbackForm(instance=case)
     elif request.method == 'POST':
         raise PermissionDenied  # not the reporter, or the 14-day feedback window has closed
+    return _render_track(request, case, feedback_form, update_form)
+
+
+def _render_track(request, case, feedback_form, update_form):
     sent = case.communications.filter(date_sent__isnull=False)
-    return render(request, 'cases/track.html', {'case': case, 'sent': sent, 'feedback_form': feedback_form})
+    updates = case.updates.prefetch_related('photos')
+    return render(request, 'cases/track.html', {
+        'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
+        'updates': updates,
+    })
 
 
 # ---------- 2. Triage and route (case handler) ----------

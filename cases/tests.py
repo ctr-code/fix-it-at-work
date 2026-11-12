@@ -631,3 +631,98 @@ class VisitOutcomeFlowTests(TestCase):
         self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
         self.client.force_login(self.reporter)
         self.assertIn('In progress - follow-up needed', self.client.get(f'/track/{self.ref}/').content.decode())
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReportUpdateTests(TestCase):
+    """A reporter adding more details and photos to their report after sending it."""
+
+    def make_user(self, username, role):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1')
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        self.reporter = self.make_user('reporter1', 'reporter')
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='Nina Gallagher', reporter_email='nina@example.com', reporter_user=self.reporter,
+            status=Status.ASSIGNED)
+        self.url = f'/track/{self.case.reference}/'
+        self.client.force_login(self.reporter)
+
+    def png(self, name):
+        return SimpleUploadedFile(name, PNG_1PX, content_type='image/png')
+
+    def add(self, **data):
+        return self.client.post(self.url, {'add_details': '', **data})
+
+    def test_reporter_adds_details_and_photos(self):
+        response = self.add(text='Now the radiator is leaking too.', photo=[self.png('leak1.png'), self.png('leak2.png')])
+        self.assertRedirects(response, self.url + '#updates', fetch_redirect_response=False)
+        update = self.case.updates.get()
+        self.assertEqual((update.text, update.author), ('Now the radiator is leaking too.', self.reporter))
+        self.assertEqual(update.photos.count(), 2)
+        self.assertTrue(all(p.case == self.case for p in update.photos.all()))
+        # Added photos belong to the update, not to the original report
+        self.assertEqual(self.case.all_photos(), [])
+
+    def test_text_only_and_photo_only_updates_work(self):
+        self.add(text='It started making a banging noise.')
+        self.add(photo=self.png('valve.png'))
+        self.assertEqual(self.case.updates.count(), 2)
+
+    def test_empty_update_is_refused(self):
+        response = self.add(text='   ')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Add some details or at least one photo.')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_photo_limits_apply(self):
+        response = self.add(photo=[self.png(f'p{i}.png') for i in range(6)])
+        self.assertContains(response, 'Please choose up to 5 photos. You chose 6.')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_only_the_reporter_can_add(self):
+        self.client.force_login(self.make_user('handler1', 'handler'))
+        self.assertEqual(self.add(text='Not mine').status_code, 403)
+        self.assertNotContains(self.client.get(self.url), 'Add more details')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_closed_or_merged_case_cannot_be_added_to(self):
+        for status in (Status.CLOSED, Status.DUPLICATE):
+            with self.subTest(status=status):
+                Case.objects.filter(pk=self.case.pk).update(status=status)
+                self.assertEqual(self.add(text='Still broken').status_code, 403)
+                self.assertNotContains(self.client.get(self.url), 'Add more details')
+        self.assertFalse(self.case.updates.exists())
+
+    def test_updates_show_to_reporter_handler_and_officer(self):
+        self.add(text='Now the radiator is leaking too.', photo=self.png('leak.png'))
+        self.assertContains(self.client.get(self.url), 'Now the radiator is leaking too.')
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        officer_user = self.make_user('officer1', 'officer')
+        officer = Officer.objects.create(name='Serena', team=team, contact_email='s@example.com', user=officer_user)
+        Case.objects.filter(pk=self.case.pk).update(assigned_team=team, assigned_officer=officer)
+        for user, url in [(self.make_user('handler2', 'handler'), f'/cases/{self.case.reference}/'),
+                          (officer_user, f'/officer/{self.case.reference}/')]:
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                html = self.client.get(url).content.decode()
+                self.assertIn('Added later by the reporter', html)
+                self.assertIn('Now the radiator is leaking too.', html)
+                self.assertIn('reports/leak', html)
+
+    def test_feedback_still_works_on_closed_case(self):
+        from django.utils import timezone
+        Case.objects.filter(pk=self.case.pk).update(status=Status.CLOSED, date_closed=timezone.now())
+        self.client.post(self.url, {'satisfaction': 5, 'satisfaction_comments': 'Great'})
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.satisfaction, 5)
