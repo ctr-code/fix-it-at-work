@@ -3,7 +3,49 @@
 {% block main %}
 <section class="container">
     <h1>Manager dashboard</h1>
-    <div class="row g-3">
+
+    {% comment %}
+    Needs attention: cases a manager may need to act on now, grouped by what's wrong (see _needs_attention
+    in views.py). Groups with nothing in them are left out. Each shows up to five cases; "more" links to the
+    matching Case queue tab.
+    {% endcomment %}
+    <section class="panel attention" aria-labelledby="attention-title">
+        <div class="attention-head">
+            <h2 id="attention-title" class="mb-0"><i class="fa-solid fa-bell" aria-hidden="true"></i> Needs attention</h2>
+            {% if attention %}<p class="mb-0 text-muted">{{ attention_total }} case{{ attention_total|pluralize }} across {{ attention|length }} area{{ attention|length|pluralize }}</p>{% endif %}
+        </div>
+        {% if attention %}
+        <ul class="attention-jump" aria-label="Jump to an area">
+            {% for g in attention %}<li><a href="#attention-{{ g.key }}" class="attention-chip tone-{{ g.key }}">{{ g.title }} <span class="tab-count">{{ g.total }}</span></a></li>{% endfor %}
+        </ul>
+        <div class="row g-3">
+            {% for g in attention %}
+            <div class="col-lg-6">
+                <section class="attention-group tone-{{ g.key }}" id="attention-{{ g.key }}" aria-labelledby="attention-{{ g.key }}-title">
+                    <h3 class="attention-group-title" id="attention-{{ g.key }}-title"><i class="fa-solid {{ g.icon }}" aria-hidden="true"></i> {{ g.title }} <span class="tab-count">{{ g.total }}</span></h3>
+                    <p class="attention-help">{{ g.help }}</p>
+                    <ul class="attention-list">
+                        {% for c, note in g.items %}
+                        <li>
+                            <a href="{% url 'case_detail' c.reference %}" class="fw-semibold">{{ c.reference }}</a>
+                            {% if c.priority %}{% include "cases/_pri.html" with p=c.priority %}{% endif %}
+                            <span class="attention-title">{{ c.title }}</span>
+                            <span class="attention-note">{{ note }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if g.more %}
+                    <a class="small fw-semibold" href="{% url 'triage_queue' %}{% if g.key == 'slow-triage' %}#triage{% elif g.key == 'slow-reply' %}#reply{% elif g.key == 'unhappy' %}#unhappy{% else %}#teams{% endif %}">and {{ g.more }} more in the Case queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+                    {% endif %}
+                </section>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="mb-0 mt-2"><i class="fa-solid fa-circle-check text-success" aria-hidden="true"></i> Nothing needs attention right now: nothing overdue or due today, every urgent job has an officer, and no one is waiting on triage or a reply.</p>
+        {% endif %}
+    </section>
+    <div class="row g-3 mt-1">
         <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
         <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
         <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
@@ -45,20 +87,5 @@
         </div>
     </div>
 
-    <div class="panel mt-3">
-        <h2>Overdue cases - act now</h2>
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead><tr><th scope="col">Ref</th><th scope="col">Issue</th><th scope="col">Priority</th><th scope="col">Team / officer</th><th scope="col">Was due</th></tr></thead>
-                <tbody>
-                {% for c in overdue %}
-                <tr><td><a href="{% url 'case_detail' c.reference %}">{{ c.reference }}</a></td><td>{{ c.title }}</td><td>{% include "cases/_pri.html" with p=c.priority %}</td>
-                    <td>{{ c.assigned_team }}<br><span class="small text-muted">{{ c.assigned_officer.name|default:"Unassigned" }}</span></td>
-                    <td class="overdue">{{ c.sla_due|timesince }} ago</td></tr>
-                {% empty %}<tr><td colspan="5">Nothing overdue.</td></tr>{% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
 </section>
 {% endblock %}

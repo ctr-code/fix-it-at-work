@@ -1360,3 +1360,101 @@ class CaseQueueCountTests(TestCase):
             page = self.nav(self.make_user(f'someone_{role}', role))
             self.assertNotIn('cases waiting', page)
             self.assertNotIn('case waiting', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardAttentionTests(TestCase):
+    """The manager dashboard opens with the cases that need acting on now, grouped by what's wrong."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import SLARule
+        self.now = timezone.now()
+        self.hours = lambda h: self.now + timedelta(hours=h)
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.officer = Officer.objects.create(name='Serena', team=self.team, contact_email='s@example.com')
+        SLARule.objects.create(priority='high', acknowledge_hours=4, resolve_hours=24)
+        SLARule.objects.create(priority='medium', acknowledge_hours=8, resolve_hours=72)
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+
+    def add(self, title, status=Status.ASSIGNED, **extra):
+        extra.setdefault('assigned_team', self.team if status != Status.NEW else None)
+        extra.setdefault('priority', 'medium')
+        return Case.objects.create(title=title, description='Test.', building='Main Office', reporter_name='Sam',
+                                   reporter_email='sam@example.com', status=status, **extra)
+
+    def dashboard(self):
+        self.client.force_login(self.manager)
+        return self.client.get('/dashboard/').content.decode()
+
+    def group(self, page, key):
+        """The HTML of one group, or '' if it isn't shown."""
+        start = page.find(f'id="attention-{key}"')
+        return '' if start < 0 else page[start:page.find('</section>', start)]
+
+    def test_each_kind_of_problem_has_its_group(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        self.add('Due soon heating', sla_due=self.hours(5), assigned_officer=self.officer)
+        self.add('Plenty of time', sla_due=self.hours(24 * 5), assigned_officer=self.officer)
+        self.add('Urgent with nobody', priority='urgent', sla_due=self.hours(48))
+        self.add('Unsafe with nobody', hs_risk=True, sla_due=self.hours(48))
+        self.add('Medium with nobody', sla_due=self.hours(48))
+        self.add('Slow triage', status=Status.NEW, ai_priority='high', date_reported=self.hours(-6))
+        self.add('Fresh report', status=Status.NEW, ai_priority='high', date_reported=self.hours(-1))
+        self.add('Letter waiting', status=Status.RESOLVED, date_resolved=self.hours(-30))
+        self.add('Just fixed', status=Status.RESOLVED, date_resolved=self.hours(-2))
+        self.add('Grumpy', status=Status.CLOSED, satisfaction=1, satisfaction_comments='Took ages',
+                 date_closed=self.hours(-24))
+        page = self.dashboard()
+        expected = {
+            'overdue': ['Overdue leak'], 'due-soon': ['Due soon heating'],
+            'no-officer': ['Urgent with nobody', 'Unsafe with nobody'], 'slow-triage': ['Slow triage'],
+            'slow-reply': ['Letter waiting'], 'unhappy': ['Grumpy'],
+        }
+        for key, titles in expected.items():
+            with self.subTest(group=key):
+                html = self.group(page, key)
+                for title in titles:
+                    self.assertIn(title, html)
+        for title in ('Plenty of time', 'Medium with nobody', 'Fresh report', 'Just fixed'):
+            self.assertNotIn(title, self.group(page, 'overdue') + self.group(page, 'due-soon')
+                             + self.group(page, 'no-officer') + self.group(page, 'slow-triage')
+                             + self.group(page, 'slow-reply'))
+        self.assertIn('target 4 hours', self.group(page, 'slow-triage'))
+        self.assertIn('Rated 1/5', self.group(page, 'unhappy'))
+        self.assertIn('health and safety risk', self.group(page, 'no-officer'))
+        self.assertIn('Facilities Helpdesk · Serena', self.group(page, 'overdue'))
+        self.assertIn('7 cases across 6 areas', page)
+
+    def test_long_groups_show_five_and_link_to_the_rest(self):
+        for i in range(7):
+            self.add(f'Late job {i}', sla_due=self.hours(-10 + i), assigned_officer=self.officer)
+        html = self.group(self.dashboard(), 'overdue')
+        self.assertEqual(html.count('<li>'), 5)
+        self.assertIn('Late job 0', html)  # most overdue first
+        self.assertNotIn('Late job 6', html)
+        self.assertIn('and 2 more in the Case queue', html)
+        self.assertIn('href="/triage/#teams"', html)
+
+    def test_empty_groups_are_left_out(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        page = self.dashboard()
+        self.assertIn('id="attention-overdue"', page)
+        self.assertNotIn('id="attention-unhappy"', page)
+        self.assertIn('1 case across 1 area', page)
+
+    def test_all_clear(self):
+        page = self.dashboard()
+        self.assertIn('Nothing needs attention right now', page)
+        self.assertNotIn('Overdue cases - act now', page)

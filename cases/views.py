@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -6,6 +8,7 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.timesince import timesince, timeuntil
 
 from . import ai, alerts, reporter_messages
 from .forms import (
@@ -13,7 +16,7 @@ from .forms import (
 )
 from .models import (
     OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
-    Language, Priority, Team, get_role,
+    Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -535,6 +538,64 @@ def _dashboard_stats():
     }
 
 
+DUE_SOON = timedelta(hours=24)
+REPLY_WAIT = timedelta(hours=24)
+ATTENTION_SHOWN = 5  # rows shown in each group; the rest are counted
+
+
+def _who(c):
+    team = c.assigned_team.name if c.assigned_team else 'No team'
+    return f'{team} · {c.assigned_officer.name if c.assigned_officer else "no officer"}'
+
+
+def _needs_attention(now):
+    """Cases a manager may need to act on now, grouped by what's wrong. A case can be in more than one
+    group (an urgent job with no officer can also be overdue), because each group needs a different action.
+    Each item is (case, note)."""
+    open_cases = (Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS])
+                  .select_related('assigned_team', 'assigned_officer'))
+    overdue = [(c, f'Due {timesince(c.sla_due, now)} ago · {_who(c)}')
+               for c in open_cases.filter(sla_due__lt=now).order_by('sla_due')]
+    due_soon = [(c, f'Due in {timeuntil(c.sla_due, now)} · {_who(c)}')
+                for c in open_cases.filter(sla_due__gte=now, sla_due__lt=now + DUE_SOON).order_by('sla_due')]
+    no_officer = [(c, f'{c.assigned_team or "No team"} · reported {timesince(c.date_reported, now)} ago'
+                      f'{" · health and safety risk" if c.hs_risk else ""}')
+                  for c in open_cases.filter(assigned_officer__isnull=True)
+                  .filter(Q(priority=Priority.URGENT) | Q(hs_risk=True)).order_by('sla_due')]
+
+    # New reports waiting longer than the response target for the priority the AI suggested
+    # (or the reporter chose), which is when the reporter should have heard from a person
+    targets = dict(SLARule.objects.values_list('priority', 'acknowledge_hours'))
+    slow_triage = []
+    for c in Case.objects.filter(status=Status.NEW).order_by('date_reported'):
+        hours = targets.get(c.ai_priority or c.reported_urgency)
+        if hours is not None and now > c.date_reported + timedelta(hours=hours):
+            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {hours} '
+                                   f'hour{"s" if hours != 1 else ""}'))
+
+    slow_reply = [(c, f'Fixed {timesince(c.date_resolved, now)} ago · {c.assigned_team or "No team"}')
+                  for c in Case.objects.filter(status=Status.RESOLVED, date_resolved__lt=now - REPLY_WAIT)
+                  .select_related('assigned_team').order_by('date_resolved')]
+    unhappy = [(c, f'Rated {c.satisfaction}/5 · closed {timesince(c.date_closed, now)} ago'
+                   f'{" · " + chr(8220) + c.satisfaction_comments[:80] + chr(8221) if c.satisfaction_comments else ""}')
+               for c in _unhappy_reporters()]
+
+    groups = [
+        ('overdue', 'Overdue', 'Past the date we promised the reporter.', 'fa-clock', overdue),
+        ('due-soon', 'Due in the next 24 hours', 'Check these are on track.', 'fa-hourglass-half', due_soon),
+        ('no-officer', 'Urgent or unsafe, no officer', 'Nobody has been sent yet.', 'fa-user-slash', no_officer),
+        ('slow-triage', 'Waiting too long for triage', "Past the response target, and the reporter hasn't heard from a person.",
+         'fa-inbox', slow_triage),
+        ('slow-reply', 'Fixed, no reply after a day', 'The outcome letter is still waiting for approval.',
+         'fa-envelope', slow_reply),
+        ('unhappy', 'Unhappy reporters', 'Rated the fix 2/5 or lower in the last four weeks.', 'fa-face-frown', unhappy),
+    ]
+    return [{'key': key, 'title': title, 'help': help_text, 'icon': icon, 'total': len(items),
+             'items': items[:ATTENTION_SHOWN], 'more': max(len(items) - ATTENTION_SHOWN, 0),
+             'case_ids': {c.pk for c, _ in items}}
+            for key, title, help_text, icon, items in groups if items]
+
+
 @role_required(Role.MANAGER)
 def dashboard(request):
     now = timezone.now()
@@ -559,7 +620,9 @@ def dashboard(request):
     max_cat = max([c.n for c in categories] + [1])
 
     ctx = _dashboard_stats()
-    ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat})
+    attention = _needs_attention(now)
+    ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat,
+                'attention': attention, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
     return render(request, 'cases/dashboard.html', ctx)
 
 
