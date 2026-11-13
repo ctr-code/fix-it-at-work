@@ -55,6 +55,13 @@
     --warning-ink: #8a5300;        /* 5.3:1 on the warning background */
 
     /* Colours: AI content (purple is only used for AI) */
+    /* Chart series, checked with the dataviz palette validator against the white panel (both pass
+       lightness, chroma, colour-blind separation and 3:1 contrast). The brand teal is too dark for a series. */
+    --series-1: #2a78d6;           /* blue: reported */
+    --series-2: #eb6834;           /* orange: resolved */
+    --series-muted: #b4bec8;       /* the bars that aren't the story */
+    --chart-grid: #e7ecf0;
+    --chart-baseline: #c4ccd4;
     --ai: #5b2a86;
     --ai-bg: #f4eefa;
     --ai-border: #d9c8ea;
@@ -602,3 +609,41 @@ main { margin-bottom: var(--space-10); }
 .attention-title { flex: 1 1 12rem; min-width: 0; }
 .attention-note { flex-basis: 100%; font-size: var(--fs-small); color: var(--muted); }
 .attention-chip.tone-overdue, .attention-chip.tone-no-officer { border-color: var(--urgent-border); }
+
+/* Dashboard trend charts (static/js/trend-chart.js draws the weekly columns) */
+.chart-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-2); padding: 0; list-style: none; font-size: var(--fs-small); color: var(--ink); }
+.chart-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.chart-key { width: 12px; height: 12px; border-radius: 3px; background: var(--series-1); }
+.chart-key.series-resolved, .chart-key-line.series-resolved { background: var(--series-2); }
+.chart-key-line { display: inline-block; width: 14px; height: 2px; margin-right: var(--space-2); vertical-align: middle; border-radius: 1px; background: var(--series-1); }
+.trend-chart { position: relative; min-height: 240px; }
+.trend-svg { display: block; overflow: visible; }
+.chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart-baseline { stroke: var(--chart-baseline); stroke-width: 1; }
+.chart-tick { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-value { fill: var(--ink); font-size: 12px; font-weight: var(--fw-semibold); }
+.chart-col.series-reported { fill: var(--series-1); }
+.chart-col.series-resolved { fill: var(--series-2); }
+.chart-week.is-partial .chart-col { opacity: .55; }   /* this week isn't over yet */
+.chart-week.is-hover .chart-col { filter: brightness(1.12); }
+.chart-hit { fill: transparent; cursor: default; }
+.chart-hit:focus { outline: none; }
+.chart-hit:focus-visible { fill: rgba(11, 79, 108, .06); stroke: var(--brand); stroke-width: 2; }
+.chart-tip { position: absolute; z-index: 2; min-width: 9rem; padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--white); box-shadow: var(--shadow-menu); pointer-events: none; font-size: var(--fs-small); }
+.chart-tip-head { margin: 0 0 var(--space-1); color: var(--muted); }
+.chart-tip-row { margin: 0; color: var(--ink); }
+.chart-tip-row strong { font-variant-numeric: tabular-nums; }
+.chart-table { margin-top: var(--space-2); font-size: var(--fs-small); }
+.chart-table summary { color: var(--brand); font-weight: var(--fw-medium); cursor: pointer; }
+.chart-table table { margin-top: var(--space-2); }
+
+.stage-bars { margin: 0; padding: 0; list-style: none; }
+.stage-bar { padding: var(--space-3) 0; border-top: var(--border-width) solid var(--border); }
+.stage-bar:first-child { border-top: 0; padding-top: 0; }
+.stage-bar-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.stage-bar-row { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-1); }
+.stage-bar-track { flex: 1; height: 12px; }
+.stage-bar-fill { height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--series-muted); }
+.stage-bar.is-longest .stage-bar-fill { background: var(--series-1); }
+.stage-bar-value { flex: none; min-width: 5.5rem; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.stage-bar-note { margin: var(--space-1) 0 0; font-size: var(--fs-small); color: var(--muted); }

@@ -1458,3 +1458,83 @@ class DashboardAttentionTests(TestCase):
         page = self.dashboard()
         self.assertIn('Nothing needs attention right now', page)
         self.assertNotIn('Overdue cases - act now', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardTrendTests(TestCase):
+    """The dashboard shows reports in vs fixes out each week, and the median time at each stage."""
+
+    make_user = ReassignCaseTests.make_user
+    add = DashboardAttentionTests.add
+
+    def setUp(self):
+        from datetime import datetime, timedelta
+
+        from django.utils import timezone
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+        # A fixed "now": Wednesday 11 November 2026, midday, so the weeks are predictable
+        self.now = timezone.make_aware(datetime(2026, 11, 11, 12, 0))
+        self.at = lambda days, hours=0: self.now - timedelta(days=days, hours=hours)
+
+    def trends(self):
+        from .views import _trends
+        return _trends(self.now)
+
+    def test_weeks_run_monday_to_sunday_with_this_week_last(self):
+        weeks = self.trends()['weeks']
+        self.assertEqual(len(weeks), 8)
+        self.assertEqual(weeks[0]['start'], '2026-09-21')
+        self.assertEqual(weeks[-1]['start'], '2026-11-09')
+        self.assertEqual(weeks[-1]['label'], 'This week')
+        self.assertTrue(weeks[-1]['partial'])
+        self.assertEqual(weeks[-2]['label'], '2 Nov')
+
+    def test_reports_and_fixes_are_counted_in_their_week(self):
+        self.add('This week A', status=Status.NEW, date_reported=self.at(1))            # Tue 10 Nov
+        self.add('This week B', status=Status.NEW, date_reported=self.at(2))            # Mon 9 Nov
+        self.add('Last week', status=Status.RESOLVED, date_reported=self.at(4),         # Sat 7 Nov
+                 date_resolved=self.at(1))
+        self.add('Merged', status=Status.DUPLICATE, date_reported=self.at(3), date_resolved=self.at(3))
+        self.add('Too old', status=Status.NEW, date_reported=self.at(70))
+        t = self.trends()
+        self.assertEqual((t['weeks'][-1]['reported'], t['weeks'][-1]['resolved']), (2, 1))
+        self.assertEqual((t['weeks'][-2]['reported'], t['weeks'][-2]['resolved']), (2, 0))  # merged counts as reported only
+        self.assertEqual((t['reported_total'], t['resolved_total']), (4, 1))
+
+    def test_median_time_at_each_stage(self):
+        for triage_h, fix_h, reply_h in [(1, 10, 2), (3, 20, 4), (2, 30, 6)]:
+            reported = self.at(5)
+            from datetime import timedelta
+            acked = reported + timedelta(hours=triage_h)
+            fixed = acked + timedelta(hours=fix_h)
+            self.add('Done', status=Status.CLOSED, date_reported=reported, date_acknowledged=acked,
+                     date_resolved=fixed, date_closed=fixed + timedelta(hours=reply_h))
+        self.add('Waiting', status=Status.NEW, date_reported=self.at(1))
+        stages = {st['name']: st for st in self.trends()['stages']}
+        self.assertEqual(stages['Waiting for triage']['text'], '2.0 hours')
+        self.assertEqual(stages['Being fixed']['text'], '20.0 hours')
+        self.assertEqual(stages['Waiting for the reply']['text'], '4.0 hours')
+        self.assertEqual(stages['Waiting for triage']['now'], 1)
+        self.assertEqual(self.trends()['longest_stage']['name'], 'Being fixed')
+
+    def test_durations_read_naturally(self):
+        from .views import _duration
+        self.assertEqual([_duration(h) for h in (None, 0.5, 6.25, 72)], ['-', '30 min', '6.2 hours', '3.0 days'])
+
+    def test_dashboard_shows_the_charts_and_a_table(self):
+        self.add('Recent', status=Status.NEW)
+        self.client.force_login(self.manager)
+        page = self.client.get('/dashboard/').content.decode()
+        self.assertIn('Reported and resolved each week', page)
+        self.assertIn('id="trend-data"', page)
+        self.assertIn('js/trend-chart.js', page)
+        self.assertIn('Show as a table', page)
+        self.assertIn('This week (so far)', page)
+        self.assertIn('Where the time goes', page)

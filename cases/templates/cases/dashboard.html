@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block head_title %}Manager dashboard - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
@@ -55,6 +56,49 @@
         <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value is-ai">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted ({{ ai_triaged }})</div></div></div>
     </div>
 
+
+    {# Trends: reports in vs fixes out each week, and where the time goes (see _trends in views.py) #}
+    <div class="row g-3 mt-1">
+        <div class="col-lg-7">
+            <section class="panel h-100" aria-labelledby="trend-title">
+                <h2 id="trend-title" class="mb-1">Reported and resolved each week</h2>
+                <p class="small text-muted">Last {{ trends.weeks|length }} weeks: {{ trends.reported_total }} reported, {{ trends.resolved_total }} resolved.{% if trends.reported_total > trends.resolved_total %} More are coming in than being fixed, so the backlog is growing.{% elif trends.resolved_total > trends.reported_total %} More are being fixed than coming in, so the backlog is shrinking.{% endif %}</p>
+                <ul class="chart-legend" aria-label="Key">
+                    <li><span class="chart-key series-reported" aria-hidden="true"></span>Reported</li>
+                    <li><span class="chart-key series-resolved" aria-hidden="true"></span>Resolved</li>
+                </ul>
+                <div class="trend-chart" data-trend-chart></div>
+                <details class="chart-table">
+                    <summary>Show as a table</summary>
+                    <table class="table table-sm mb-0">
+                        <caption class="visually-hidden">Cases reported and resolved each week</caption>
+                        <thead><tr><th scope="col">Week of</th><th scope="col" class="text-end">Reported</th><th scope="col" class="text-end">Resolved</th></tr></thead>
+                        <tbody>
+                        {% for w in trends.weeks %}<tr><th scope="row" class="fw-normal">{% if w.partial %}This week (so far){% else %}{{ w.label }}{% endif %}</th><td class="text-end">{{ w.reported }}</td><td class="text-end">{{ w.resolved }}</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </details>
+            </section>
+        </div>
+        <div class="col-lg-5">
+            <section class="panel h-100" aria-labelledby="stages-title">
+                <h2 id="stages-title" class="mb-1">Where the time goes</h2>
+                <p class="small text-muted">Median time at each stage, for cases that finished it in the last {{ trends.weeks|length }} weeks.{% if trends.longest_stage %} The longest is <strong>{{ trends.longest_stage.name|lower }}</strong>.{% endif %}</p>
+                <ul class="stage-bars">
+                    {% for st in trends.stages %}
+                    <li class="stage-bar{% if st is trends.longest_stage %} is-longest{% endif %}">
+                        <div class="stage-bar-label"><strong>{{ st.name }}</strong><span class="small text-muted">{{ st.help }}</span></div>
+                        <div class="stage-bar-row">
+                            <div class="stage-bar-track">{% if st.hours %}<div class="stage-bar-fill" style="width: {% widthratio st.hours trends.longest_stage.hours 100 %}%"></div>{% endif %}</div>
+                            <span class="stage-bar-value">{{ st.text }}</span>
+                        </div>
+                        <p class="stage-bar-note">{% if st.count %}From {{ st.count }} case{{ st.count|pluralize }}{% else %}No cases yet{% endif %} &middot; {{ st.now }} there now</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </div>
+    </div>
     <div class="row g-3 mt-1">
         <div class="col-lg-6">
             <div class="panel h-100">
@@ -89,3 +133,8 @@
 
 </section>
 {% endblock %}
+
+{% block extra_body %}
+{{ trend_chart|json_script:"trend-data" }}
+<script src="{% static 'js/trend-chart.js' %}"></script>
+{% endblock extra_body %}

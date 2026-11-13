@@ -596,6 +596,85 @@ def _needs_attention(now):
             for key, title, help_text, icon, items in groups if items]
 
 
+TREND_WEEKS = 8
+
+
+def _median(values):
+    values = sorted(values)
+    if not values:
+        return None
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
+def _duration(hours):
+    """Hours as people say them: "45 min", "6.5 hours", "3.2 days"."""
+    if hours is None:
+        return '-'
+    if hours < 1:
+        return f'{round(hours * 60)} min'
+    if hours < 48:
+        return f'{hours:.1f} hours'
+    return f'{hours / 24:.1f} days'
+
+
+def _trends(now):
+    """Weekly reports in and fixes out for the last TREND_WEEKS weeks (Monday to Sunday, this week so far
+    last), and the median time a case spends at each stage, for cases that moved on in the same period."""
+    today = timezone.localtime(now).date()
+    this_monday = today - timedelta(days=today.weekday())
+    mondays = [this_monday - timedelta(weeks=n) for n in range(TREND_WEEKS - 1, -1, -1)]
+    start = timezone.make_aware(timezone.datetime.combine(mondays[0], timezone.datetime.min.time()))
+
+    def week_of(moment):
+        day = timezone.localtime(moment).date()
+        return (day - mondays[0]).days // 7
+
+    reported = [0] * TREND_WEEKS
+    resolved = [0] * TREND_WEEKS
+    for moment in Case.objects.filter(date_reported__gte=start).values_list('date_reported', flat=True):
+        reported[week_of(moment)] += 1
+    for moment in (Case.objects.exclude(status=Status.DUPLICATE).filter(date_resolved__gte=start)
+                   .values_list('date_resolved', flat=True)):
+        resolved[week_of(moment)] += 1
+    weeks = [{'label': 'This week' if i == TREND_WEEKS - 1 else f'{m.day} {m:%b}', 'start': m.isoformat(),
+              'reported': r, 'resolved': f, 'partial': i == TREND_WEEKS - 1}
+             for i, (m, r, f) in enumerate(zip(mondays, reported, resolved))]
+
+    def hours(a, b):
+        return (b - a).total_seconds() / 3600
+
+    triage = [hours(r, a) for r, a in Case.objects.filter(date_acknowledged__gte=start)
+              .values_list('date_reported', 'date_acknowledged')]
+    fix = [hours(a, r) for a, r in Case.objects.filter(date_resolved__gte=start, date_acknowledged__isnull=False)
+           .exclude(status=Status.DUPLICATE).values_list('date_acknowledged', 'date_resolved')]
+    reply = [hours(r, c) for r, c in Case.objects.filter(status=Status.CLOSED, date_closed__gte=start,
+                                                         date_resolved__isnull=False)
+             .values_list('date_resolved', 'date_closed')]
+    # The medians only count cases that have finished a stage, so say how many are still in each one
+    in_stage = dict(Case.objects.order_by().values_list('status').annotate(n=Count('pk')))
+    stages = [
+        {'name': 'Waiting for triage', 'help': 'Reported to sent to a team', 'values': triage,
+         'now': in_stage.get(Status.NEW, 0)},
+        {'name': 'Being fixed', 'help': 'Sent to a team to fixed', 'values': fix,
+         'now': in_stage.get(Status.ASSIGNED, 0) + in_stage.get(Status.IN_PROGRESS, 0)},
+        {'name': 'Waiting for the reply', 'help': 'Fixed to outcome letter sent', 'values': reply,
+         'now': in_stage.get(Status.RESOLVED, 0)},
+    ]
+    for st in stages:
+        st['median'] = _median(st['values'])
+        st['count'] = len(st['values'])
+        st['text'] = _duration(st['median'])
+        st['hours'] = round(st['median'], 1) if st['median'] is not None else None
+        del st['values']
+    longest = max((st for st in stages if st['median'] is not None), key=lambda st: st['median'], default=None)
+    return {
+        'weeks': weeks, 'stages': stages, 'longest_stage': longest,
+        'reported_total': sum(reported), 'resolved_total': sum(resolved),
+        'since': mondays[0],
+    }
+
+
 @role_required(Role.MANAGER)
 def dashboard(request):
     now = timezone.now()
@@ -621,7 +700,10 @@ def dashboard(request):
 
     ctx = _dashboard_stats()
     attention = _needs_attention(now)
+    trends = _trends(now)
     ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat,
+                'trends': trends,
+                'trend_chart': {'weeks': trends['weeks'], 'stages': trends['stages']},
                 'attention': attention, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
     return render(request, 'cases/dashboard.html', ctx)
 
