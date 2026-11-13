@@ -26,19 +26,30 @@
             </div>
             {{ form.address|as_crispy_field }}
             {% comment %}
-            Optional map point from the reporter's own device, for problems outside our buildings (a car park,
-            a yard). Shown only when the browser can do it (static/js/locate.js). Nothing is shared until they
-            press the button and allow it, and they can remove it again before sending.
+            Optional exact spot (static/js/locate.js): the reporter's own position, or a pin they drop on a map.
+            Nothing is shared until they choose one, and they can remove it before sending. The map and its
+            library load from OpenStreetMap and cdnjs only when they press "Pick on a map".
             {% endcomment %}
-            {{ form.latitude }}{{ form.longitude }}
+            {{ form.latitude }}{{ form.longitude }}{{ form.location_method }}
             <div class="locate" data-locate hidden>
+                <p class="locate-title">Show us the exact spot <span class="text-muted fw-normal">(optional)</span></p>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-primary" data-locate-button><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> Use my current location</button>
-                    <button type="button" class="btn btn-link btn-sm" data-locate-clear hidden>Remove my location</button>
+                    <button type="button" class="btn btn-outline-primary" data-locate-button hidden><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> Use my current location</button>
+                    <button type="button" class="btn btn-outline-primary" data-pin-open aria-expanded="false" aria-controls="pin-map-wrap"><i class="fa-solid fa-map-pin" aria-hidden="true"></i> Pick on a map</button>
+                    <button type="button" class="btn btn-link btn-sm" data-locate-clear hidden>Remove location</button>
                 </div>
                 <p class="locate-status" data-locate-status aria-live="polite"></p>
-                <p class="form-text mb-0">Only if you're standing by the problem now. We use it to find the problem, and it's only seen by the team fixing it.</p>
+                <div class="pin-map-wrap" id="pin-map-wrap" data-pin-wrap hidden>
+                    <p class="small mb-2">Tap or click where the problem is, then drag the pin to adjust it. Using a keyboard? Move the map with the arrow keys and zoom with + and -, then choose "Pin the centre of the map".</p>
+                    <div class="pin-map" data-pin-map></div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-pin-centre><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> Pin the centre of the map</button>
+                        <button type="button" class="btn btn-link btn-sm" data-pin-close>Close the map</button>
+                    </div>
+                </div>
+                <p class="form-text mb-0">Use your current location only if you're standing by the problem. A location is only seen by the team fixing it. The map comes from OpenStreetMap and loads only when you open it.</p>
             </div>
+            {{ building_points|json_script:"building-points" }}
         </section>
 
         <section class="form-section" aria-labelledby="section-urgency">

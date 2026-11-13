@@ -68,7 +68,7 @@ def report(request):
         if form.is_valid():
             case = form.save(commit=False)
             if case.has_map_point:
-                case.location_source = 'device'
+                case.location_source = form.cleaned_data['location_method'] or 'device'
             case.fill_location_from_building()
             case.reporter_user = request.user
             case.reporter_name = display_name(request.user)
@@ -92,7 +92,11 @@ def report(request):
     # Suggest the building directory first, then any other place names people have used
     buildings = sorted(set(Building.objects.values_list('name', flat=True))
                        | set(Case.objects.values_list('building', flat=True)), key=str.lower)
-    return render(request, 'cases/report.html', {'form': form, 'buildings': buildings})
+    # Where each known building is, so the map opens on the building the reporter chose
+    building_points = {b.name: [float(b.latitude), float(b.longitude)]
+                       for b in Building.objects.exclude(latitude=None).exclude(longitude=None)}
+    return render(request, 'cases/report.html', {'form': form, 'buildings': buildings,
+                                                 'building_points': building_points})
 
 
 @login_required

@@ -169,7 +169,8 @@ class Case(models.Model):
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     location_source = models.CharField(max_length=10, blank=True, choices=[
-        ('device', "Reporter's phone or computer"), ('building', 'Building address')])
+        ('device', "Reporter's phone or computer"), ('map', 'Pinned on a map by the reporter'),
+        ('building', 'Building address')])
     reported_urgency = models.CharField(
         'How urgent is it?', max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     impact = models.CharField('Who is affected?', max_length=15, choices=Impact.choices, default=Impact.SINGLE_USER)

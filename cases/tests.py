@@ -1643,3 +1643,45 @@ class CaseLocationTests(TestCase):
         self.assertEqual(old.location_source, 'building')
         self.assertEqual((mine.latitude, mine.location_source), (Decimal('52.100000'), 'device'))
         self.assertEqual(mine.address, '5 Demo Wharf, Birmingham')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class MapPinTests(TestCase):
+    """Reporters can drop a pin on a map; the case records that the spot was pinned on a map."""
+
+    report = ReportPhotoTests.report
+    setUp = CaseLocationTests.setUp
+    latest = CaseLocationTests.latest
+
+    def test_a_pinned_spot_is_recorded_as_a_map_pin(self):
+        self.report(latitude='52.47911', longitude='-1.90202', location_method='map')
+        case = self.latest()
+        self.assertEqual(case.location_source, 'map')
+        self.assertEqual(str(case.latitude), '52.479110')
+        self.assertContains(self.client.get(f'/track/{case.reference}/'), 'the spot you pinned')
+        handler = User.objects.create_user('handler1', 'h@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        self.assertContains(self.client.get(f'/cases/{case.reference}/'), 'pinned on a map by the reporter')
+
+    def test_unknown_methods_count_as_the_device(self):
+        self.report(latitude='52.47911', longitude='-1.90202', location_method='<script>')
+        self.assertEqual(self.latest().location_source, 'device')
+        self.report(latitude='52.47911', longitude='-1.90202')
+        self.assertEqual(self.latest().location_source, 'device')
+
+    def test_form_offers_the_map_with_the_buildings(self):
+        page = self.client.get('/report/').content.decode()
+        self.assertIn('Pick on a map', page)
+        self.assertIn('Pin the centre of the map', page)
+        self.assertIn('id="building-points"', page)
+        self.assertIn('"Main Office": [52.481, -1.899]', page)
+        # The map library loads from the page script only when the map is opened, so the page itself has none
+        self.assertNotIn('leaflet', page.lower())

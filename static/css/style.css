@@ -665,3 +665,11 @@ main { margin-bottom: var(--space-10); }
 }
 @media (max-width: 991.98px) { .attention-tabs.queue-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 575.98px) { .attention-tabs.queue-tabs { grid-template-columns: 1fr 1fr; } }
+
+/* "Pick on a map" on the report form (Leaflet, loaded on demand by static/js/locate.js) */
+.locate-title { margin-bottom: var(--space-2); font-weight: var(--fw-semibold); }
+.pin-map-wrap { margin-top: var(--space-3); }
+.pin-map { height: 320px; border: var(--border-width) solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.pin-map:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.map-pin-icon { display: flex; align-items: flex-end; justify-content: center; color: var(--urgent); font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35)); }
+@media (max-width: 575.98px) { .pin-map { height: 260px; } }

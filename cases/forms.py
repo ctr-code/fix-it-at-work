@@ -51,6 +51,13 @@ class ReportForm(forms.ModelForm):
     # and rounded to about a metre in clean().
     latitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
     longitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
+    # How the point was chosen: their device's position, or a pin they dropped on the map
+    location_method = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    def clean_location_method(self):
+        # A hidden field the reporter never sees, so an unexpected value is ignored rather than shown as an error
+        value = self.cleaned_data.get('location_method', '')
+        return value if value in ('device', 'map') else ''
 
     class Meta:
         model = Case
