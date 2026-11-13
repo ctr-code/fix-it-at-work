@@ -1960,3 +1960,89 @@ class CaseHistoryTests(TestCase):
         badge = 'Day <span class="day-badge">{}</span>'
         self.assertInOrder(html, badge.format(0), 'Reported by Nina', badge.format(1), badge.format(3))
         self.assertNotIn('Change history', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class InfoRequestTests(TestCase):
+    """A handler can ask the reporter for more information; the reporter answers by adding to their report."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.status = Status.NEW
+        self.case.save()
+        self.ref = self.case.reference
+
+    def ask(self, text='Which room is it in?', next_url=None):
+        self.client.force_login(self.handler)
+        return self.client.post(f'/cases/{self.ref}/request-info/',
+                                {'text': text, 'next': next_url or f'/triage/{self.ref}/'})
+
+    def track(self):
+        self.client.force_login(self.nina)
+        return self.client.get(f'/track/{self.ref}/')
+
+    def test_handler_pages_offer_the_popup_with_a_draft(self):
+        self.client.force_login(self.handler)
+        page = self.client.get(f'/triage/{self.ref}/')
+        self.assertContains(page, 'data-bs-target="#request-info"')
+        self.assertContains(page, f'To deal with your report {self.ref} (&quot;Radiator stuck on full&quot;)')
+        self.assertContains(page, f'action="/cases/{self.ref}/request-info/"')
+        self.assertContains(self.client.get(f'/cases/{self.ref}/'), 'Request more information')
+
+    def test_not_offered_to_officers_or_on_closed_cases(self):
+        self.serena.user = self.make_user('serena', 'officer')
+        self.serena.save()
+        self.case.status = Status.ASSIGNED
+        self.case.save()
+        self.client.force_login(self.serena.user)
+        self.assertNotContains(self.client.get(f'/officer/{self.ref}/'), 'Request more information')
+        self.case.status = Status.CLOSED
+        self.case.save()
+        self.client.force_login(self.handler)
+        self.assertNotContains(self.client.get(f'/cases/{self.ref}/'), 'Request more information')
+        self.ask()
+        self.assertFalse(self.case.communications.filter(kind='info').exists())
+
+    def test_request_reaches_the_reporter_and_changes_their_form(self):
+        from django.core import mail
+        response = self.ask()
+        self.assertRedirects(response, f'/triage/{self.ref}/', fetch_redirect_response=False)
+        message = self.case.communications.get(kind='info')
+        self.assertEqual((message.draft_text, message.approved_by), ('Which room is it in?', 'Jo'))
+        self.assertIn('Which room is it in?', mail.outbox[-1].body)
+        page = self.track()
+        self.assertContains(page, 'We need more information about this report.')
+        self.assertContains(page, 'Send the information we asked for')
+        self.assertContains(page, '>Send the information requested</button>')
+        self.client.force_login(self.handler)
+        self.assertContains(self.client.get(f'/cases/{self.ref}/'), 'Waiting for Nina Gallagher to send the information')
+
+        self.client.force_login(self.nina)
+        response = self.client.post(f'/track/{self.ref}/', {'add_details': '1', 'text': 'Room 2.14.'}, follow=True)
+        self.assertContains(response, 'the information you sent has been added')
+        self.assertNotContains(response, 'We need more information about this report.')
+        self.assertContains(response, '>Add to my report</button>')
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/').content.decode().split('Case history')[1]
+        self.assertNotIn('Waiting for Nina', html)
+        reported, asked, answered = (html.index('Reported by Nina'),
+                                     html.index('More information requested from the reporter'),
+                                     html.index('Reporter sent the information requested'))
+        self.assertLess(reported, asked)
+        self.assertLess(asked, answered)
+        self.assertIn('Room 2.14.', html[answered:])
+
+    def test_empty_message_and_outside_links_are_refused(self):
+        response = self.ask(text='  ', next_url='https://example.org/')
+        self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
+        self.assertFalse(self.case.communications.filter(kind='info').exists())

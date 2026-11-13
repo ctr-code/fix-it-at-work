@@ -22,4 +22,34 @@
     <h3 class="report-updates-title"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i> Added later by the reporter</h3>
     {% include "cases/_report_updates.html" %}
     {% endif %}{% endwith %}
+    {% if info_draft %}
+    {# Handlers only (the view passes info_draft while the case is open): ask the reporter for more information #}
+    <div class="info-request mt-3 pt-3">
+        {% with pending=case.info_request_pending %}{% if pending %}
+        <p class="small mb-2"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Waiting for {{ case.reporter_name }} to send the information requested on {{ pending.date_sent|date:"j M Y, H:i" }}.</p>
+        {% endif %}{% endwith %}
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#request-info"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> Request more information</button>
+    </div>
+    <div class="modal fade" id="request-info" tabindex="-1" aria-labelledby="request-info-title" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <form class="modal-content" method="post" action="{% url 'request_info' case.reference %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="request-info-title">Request more information</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted" id="request-info-help">Say what you need to know. {{ case.reporter_name }} will get this by email and on their report, where they can add the information and photos. The draft is in {{ case.get_preferred_language_display }}, the language they chose.</p>
+                    <label class="form-label" for="request-info-text">Message to {{ case.reporter_name }}</label>
+                    <textarea class="form-control" id="request-info-text" name="text" rows="7" required aria-describedby="request-info-help" lang="{{ case.preferred_language }}"{% if case.preferred_language == 'ur' %} dir="rtl"{% endif %}>{{ info_draft }}</textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Send to reporter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 </div>

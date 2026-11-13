@@ -307,6 +307,13 @@ class Case(models.Model):
         return (user.is_authenticated and self.reporter_user_id == user.id
                 and self.status not in (Status.CLOSED, Status.DUPLICATE))
 
+    def info_request_pending(self):
+        """The latest request for more information, if the reporter hasn't added anything since; else None."""
+        request = self.communications.filter(kind='info', date_sent__isnull=False).order_by('-date_sent').first()
+        if request and not self.updates.filter(created_at__gt=request.date_sent).exists():
+            return request
+        return None
+
     @property
     def has_map_point(self):
         return self.latitude is not None and self.longitude is not None
@@ -504,6 +511,7 @@ class Communication(models.Model):
         ACKNOWLEDGEMENT = 'ack', 'Acknowledgement'
         UPDATE = 'update', 'Progress update'
         OUTCOME = 'outcome', 'Outcome letter'
+        INFO = 'info', 'Request for more information'
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='communications')
     kind = models.CharField(max_length=10, choices=Kind.choices)

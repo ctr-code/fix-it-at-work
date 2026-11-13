@@ -54,7 +54,14 @@
                         <p class="mb-1"><strong>{{ e.title }}</strong></p>
                         {% if e.lines %}<ul class="list-unstyled mb-1 small">{% for line in e.lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
                         {% if e.note %}<p class="mb-1 small{% if e.note_failed %} overdue{% endif %}"><i class="fa-solid {% if e.note_failed %}fa-triangle-exclamation{% else %}fa-envelope-circle-check{% endif %}" aria-hidden="true"></i> {{ e.note }}</p>{% endif %}
-                        {% if e.kind == 'details' and e.item.text %}<p class="mb-0 small">{{ e.item.text|linebreaksbr }}</p>{% endif %}
+                        {% if e.kind == 'details' %}{% with u=e.item %}
+                        {% if u.text %}<p class="mb-0 small">{{ u.text|linebreaksbr }}</p>{% endif %}
+                        {% with photos=u.photos.all %}{% if photos %}
+                        <ul class="photo-grid mt-2" aria-label="Photos the reporter added {{ u.created_at|date:'j M Y, H:i' }}">
+                            {% for p in photos %}<li><a href="{{ p.image.url }}" target="_blank" rel="noopener"><img src="{{ p.image.url }}" alt="Added photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>{% endfor %}
+                        </ul>
+                        {% endif %}{% endwith %}
+                        {% endwith %}{% endif %}
                         {% if e.kind == 'visit' %}{% with v=e.item %}
                         {% if v.transcript_used %}<p class="small text-muted mb-1">Dictated</p>{% endif %}
                         <div class="ai-box mb-2"><span class="ai-label">AI summary</span><br>{{ v.ai_summary }}</div>

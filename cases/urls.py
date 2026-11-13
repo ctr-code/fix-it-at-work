@@ -13,6 +13,7 @@ urlpatterns = [
     path('cases/<str:ref>/', views.case_detail, name='case_detail'),
     path('cases/<str:ref>/change/', views.reassign_case, name='reassign_case'),
     path('cases/<str:ref>/letter/', views.outcome_letter, name='outcome_letter'),
+    path('cases/<str:ref>/request-info/', views.request_info, name='request_info'),
     path('officer/', views.officer_cases, name='officer_cases'),
     path('alerts/', views.alerts_inbox, name='alerts'),
     path('officer/<str:ref>/', views.officer_case, name='officer_case'),

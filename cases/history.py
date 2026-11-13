@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .models import Alert, Status
+from .models import Alert, Communication, Status
 
 # A change and the alert it sends are saved in the same request, so the alert follows within moments
 ALERT_WINDOW = timedelta(minutes=1)
@@ -62,8 +62,15 @@ def _change_title(lines):
 def case_history(case):
     events = [Event(case.date_reported, 'reported', f'Reported by {case.reporter_name}')]
 
+    # Details sent after a request for more information are the answer to it
+    asked = sorted(c.date_sent for c in case.communications.all()
+                   if c.kind == Communication.Kind.INFO and c.date_sent)
+    previous = None
     for u in case.updates.all():
-        events.append(Event(u.created_at, 'details', 'Reporter added more details', item=u))
+        answer = any((previous is None or previous < t) and t <= u.created_at for t in asked)
+        events.append(Event(u.created_at, 'details', 'Reporter sent the information requested' if answer
+                            else 'Reporter added more details', item=u))
+        previous = u.created_at
 
     alerts = list(case.alerts.order_by('sent_at', 'pk').prefetch_related('officers').select_related('team'))
     routed = next((a for a in alerts if a.kind == Alert.Kind.ROUTED), None)
@@ -99,7 +106,10 @@ def case_history(case):
                             by=v.officer.name, item=v))
 
     for c in case.communications.all():
-        if c.date_sent:
+        if c.date_sent and c.kind == Communication.Kind.INFO:
+            events.append(Event(c.date_sent, 'message', 'More information requested from the reporter',
+                                by=c.approved_by, item=c))
+        elif c.date_sent:
             events.append(Event(c.date_sent, 'message', f'Message to reporter: {c.get_kind_display()}',
                                 by=c.approved_by, item=c))
         else:

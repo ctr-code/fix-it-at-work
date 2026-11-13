@@ -30,6 +30,9 @@ TEXTS = {
                      'and we will keep you updated.',
         'fixed': 'Good news: an officer has fixed "{title}" ({ref}). We will send you a letter shortly '
                  'explaining what was done.',
+        'more_info': 'Thanks {name}. To deal with your report {ref} ("{title}") we need a little more information. '
+                     'Please tell us more about the problem and exactly where it is, and add a photo if you can. '
+                     'You can add this to your report on the Fix It at Work site.',
         'priority': {'urgent': 'urgent', 'high': 'high', 'medium': 'medium', 'low': 'low'},
     },
     'pl': {
@@ -46,6 +49,9 @@ TEXTS = {
                      'rozwiązać problem. Będziemy Cię informować.',
         'fixed': 'Dobra wiadomość: nasz pracownik rozwiązał problem „{title}” ({ref}). Wkrótce wyślemy '
                  'list z informacją, co zostało zrobione.',
+        'more_info': 'Dziękujemy, {name}. Aby zająć się Twoim zgłoszeniem {ref} („{title}”), potrzebujemy trochę '
+                     'więcej informacji. Opisz dokładniej problem i miejsce, w którym występuje, a jeśli możesz, '
+                     'dodaj zdjęcie. Możesz dodać te informacje do swojego zgłoszenia na stronie Fix It at Work.',
         'priority': {'urgent': 'pilny', 'high': 'wysoki', 'medium': 'średni', 'low': 'niski'},
     },
     'ur': {
@@ -62,6 +68,9 @@ TEXTS = {
                      'درکار ہے۔ ہم آپ کو باخبر رکھیں گے۔',
         'fixed': 'اچھی خبر: ہمارے افسر نے "{title}" ({ref}) کا مسئلہ حل کر دیا ہے۔ ہم جلد ہی آپ کو ایک خط '
                  'بھیجیں گے جس میں بتایا جائے گا کہ کیا کیا گیا۔',
+        'more_info': 'شکریہ {name}۔ آپ کی رپورٹ {ref} ("{title}") پر کارروائی کے لیے ہمیں کچھ مزید معلومات درکار ہیں۔ '
+                     'براہ کرم مسئلے کے بارے میں اور یہ کہ یہ بالکل کہاں ہے مزید بتائیں، اور اگر ممکن ہو تو ایک تصویر '
+                     'شامل کریں۔ آپ یہ معلومات Fix It at Work کی ویب سائٹ پر اپنی رپورٹ میں شامل کر سکتے ہیں۔',
         'priority': {'urgent': 'فوری', 'high': 'زیادہ', 'medium': 'درمیانی', 'low': 'کم'},
     },
     'es': {
@@ -78,6 +87,9 @@ TEXTS = {
                      'Le mantendremos informado/a.',
         'fixed': 'Buenas noticias: un técnico ha solucionado "{title}" ({ref}). En breve le enviaremos una '
                  'carta explicando lo que se hizo.',
+        'more_info': 'Gracias, {name}. Para gestionar su informe {ref} ("{title}") necesitamos un poco más de '
+                     'información. Describa con más detalle el problema y dónde está exactamente y, si puede, '
+                     'añada una foto. Puede añadirlo a su informe en el sitio web de Fix It at Work.',
         'priority': {'urgent': 'urgente', 'high': 'alta', 'medium': 'media', 'low': 'baja'},
     },
 }
@@ -160,6 +172,16 @@ def visited(case, visit):
         return send(case, Communication.Kind.UPDATE, _text(case, 'fixed'))
     text = _text(case, 'update') + ' ' + _text(case, 'follow_up', date=_when(visit.visited_at))
     return send(case, Communication.Kind.UPDATE, text)
+
+
+def more_info_draft(case):
+    """The starting text for a request for more information, for the handler to edit before sending."""
+    return _text(case, 'more_info')
+
+
+def ask_for_more_info(case, text, approved_by):
+    """Send the handler's request for more information. The reporter answers by adding to their report."""
+    return send(case, Communication.Kind.INFO, text, approved_by)
 
 
 def unread_count(user):
