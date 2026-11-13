@@ -1847,3 +1847,33 @@ class WorkingTimeTests(TestCase):
         call_command('sync_sla', '--recalculate', stdout=StringIO())
         case.refresh_from_db()
         self.assertEqual(self.local(case.sla_due), 'Wed 2026-11-25 10:00')  # 10 working days
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class TicketLinkTests(TestCase):
+    """Ticket numbers in messages to reporters link to the track page, the same for everyone who sees them."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        from django.utils import timezone
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.save()
+        ref = self.case.reference
+        Communication.objects.create(case=self.case, kind='update', date_sent=timezone.now(), approved_by='Jo',
+                                     draft_text=f'Your report {ref} is linked to TKT-2026-9999 <b>now</b>.')
+        self.expected = (f'Your report <a href="/track/{ref}/">{ref}</a> is linked to '
+                         '<a href="/track/TKT-2026-9999/">TKT-2026-9999</a> &lt;b&gt;now&lt;/b&gt;.')
+
+    def test_reporter_and_handler_see_the_same_links(self):
+        for user, url in ((self.nina, f'/track/{self.case.reference}/'), (self.handler, f'/cases/{self.case.reference}/')):
+            self.client.force_login(user)
+            self.assertContains(self.client.get(url), self.expected, html=False)

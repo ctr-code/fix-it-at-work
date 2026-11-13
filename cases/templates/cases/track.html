@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags static %}
+{% load crispy_forms_tags static ticket_links %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container page-lg">
@@ -15,7 +15,7 @@
             {% for c in sent %}
             <li class="report-update reporter-message{% if c.is_new %} is-new{% endif %}">
                 <p class="report-update-when">{% if c.is_new %}<span class="alert-new">New</span> {% endif %}<strong>{{ c.get_kind_display }}</strong> &middot; {{ c.date_sent|date:"j M Y, H:i" }}</p>
-                <p class="letter mb-0" lang="{{ c.language }}"{% if c.language == 'ur' %} dir="rtl"{% endif %}>{{ c.draft_text }}</p>
+                <p class="letter mb-0" lang="{{ c.language }}"{% if c.language == 'ur' %} dir="rtl"{% endif %}>{{ c.draft_text|ticket_links }}</p>
                 {% if c.ai_drafted %}<p class="small mt-2 mb-0 ai-label"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted with AI help and checked by {{ c.approved_by }}</p>{% endif %}
             </li>
             {% endfor %}

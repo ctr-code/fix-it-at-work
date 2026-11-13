@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ticket_links %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
@@ -71,7 +72,7 @@
             {% for c in case.communications.all %}
             <div class="panel">
                 <p class="small text-muted mb-1">{{ c.get_kind_display }} &middot; {{ c.get_language_display }} &middot; {% if c.date_sent %}sent {{ c.date_sent|date:"j M H:i" }} by {{ c.approved_by }}{% else %}draft{% endif %}{% if c.ai_drafted %} &middot; <span class="ai-label">AI drafted</span>{% endif %}</p>
-                <p class="letter mb-0" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text }}</p>
+                <p class="letter mb-0" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text|ticket_links }}</p>
             </div>
             {% endfor %}
             {% if case.status == 'resolved' %}<a class="btn btn-primary" href="{% url 'outcome_letter' case.reference %}">Review outcome letter</a>{% endif %}
