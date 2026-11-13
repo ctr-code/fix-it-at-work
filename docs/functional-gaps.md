@@ -16,13 +16,20 @@ The first comparison with the brief found six functional gaps. All six are now b
 | No trends on the dashboard | Weekly reported vs resolved, and the median time at each stage |
 | The receipt was English only | Every message to the reporter is in their chosen language |
 
+Since then, a teammate's work (merged from main) closed most of another gap:
+
+| Gap | Now |
+|---|---|
+| Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production. The links are still public (see below) |
+
 ## Still open
 
 ### 1. Would break in a real deployment
 
 | Gap | Why it matters | Suggested fix |
 |---|---|---|
-| **Uploads don't work in production** | Report photos, visit photos and voice notes are saved on the server's own disk. With debug mode off they aren't served, Heroku wipes the disk on every restart, and in development they're served without checking who's signed in | Private cloud storage (S3 or Azure Blob), served through a view that checks the user can see the case, using short-lived signed links |
+| **Uploaded files have public links** | Anyone with the link to a photo or voice note can open it without signing in. The links are hard to guess and only shown to people allowed to see the case, but they can be copied or shared | Cloudinary's authenticated delivery, with files served through a view that checks the user can see the case, using short-lived signed links |
+| **Cloudinary holds personal data** | Photos and voice recordings are stored by an outside service | A data processing agreement, and storage in the UK or EU |
 | **Email is printed, not sent** | Right for the brief's "no real systems" rule, but nobody actually receives alerts or messages | A mail service, with its key in the environment |
 
 ### 2. Missing pieces of the journey
@@ -30,7 +37,7 @@ The first comparison with the brief found six functional gaps. All six are now b
 | Gap | Why it matters | Suggested fix |
 |---|---|---|
 | **No early warning for urgent or unsafe reports** | Teams are only alerted once a handler triages, so an urgent report sent late in the day waits in the queue. The dashboard only flags it after its response target has passed | Alert the case handlers (and the AI-suggested team, as a heads-up) as soon as an urgent or "could hurt someone" report arrives |
-| **No "new details" flag** | When a reporter adds details or photos to an open case, nobody is told, so they're easily missed | A "New details" tag in the Case queue and on My jobs until a handler or the officer opens the case, plus an alert to the officer |
+| **No "new details" flag** | When a reporter adds details or photos to an open case, or answers a handler's request for more information, the case page shows it but nothing flags it in the Case queue or on My jobs, so it's easily missed | A "New details" tag in the Case queue and on My jobs until a handler or the officer opens the case, plus an alert to the officer |
 | **Unhappy reporters can't be ticked off** | They stay on the list for four weeks whatever is done, so they can't be counted in the Case queue badge | A "Followed up" button that records who followed up and when |
 | **The outcome letter mixes languages** | A Polish letter is drafted in Polish, but "What we did" is the officer's notes in English | Translate the officer's action, or keep a short summary in the reporter's language and attach the full notes in English |
 
@@ -64,7 +71,9 @@ These are explained in more detail in the [responsible-design checklist](respons
 
 ## Suggested order
 
-1. **Private file storage**, if the demo runs on Heroku, because photos and voice notes won't survive otherwise.
-2. **Early warning for urgent reports** and the **"new details" flag**, which most improve the journey for staff.
-3. **Misspelled danger words**, which is a quick improvement to fairness.
+1. **Early warning for urgent reports** and the **"new details" flag**, which most improve the journey for staff.
+2. **Misspelled danger words**, which is a quick improvement to fairness.
+3. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
 4. Everything else as time allows.
+
+If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart.

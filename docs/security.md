@@ -14,8 +14,8 @@ This page sets out what we did, what we checked, and what would still need doing
   being framed by other sites, rate-limited sign-in, and strong-password rules.
 - **People decide; the AI suggests.** Every routing decision, duplicate merge and outgoing letter is approved by
   a named person, and every change is recorded.
-- **Not production-ready yet.** HTTPS settings, private file storage and real email need finishing before real
-  use (see the last section).
+- **Not production-ready yet.** HTTPS settings, private links for uploaded files and real email need finishing
+  before real use (see the last section).
 
 ## Data
 
@@ -24,7 +24,7 @@ This page sets out what we did, what we checked, and what would still need doing
 | Reporter's name and email (from their account) | To reply to them | Visible only to staff and to the reporter themselves |
 | Report text, building and room | To find and fix the problem | Role-based access (below) |
 | **Exact location** (optional) | To find problems outside a building | Only taken when the reporter presses "Use my current location" or drops a pin, and they can remove it before sending. Rounded to about a metre |
-| **Photos** (reports and visits) and **voice notes** (visits) | Evidence for the fix | Only JPG, PNG and WEBP photos (10MB each, 5 at a time) and audio recordings (20MB) are accepted, checked on the server by type and size. See *Known risks* for how they're stored |
+| **Photos** (reports and visits) and **voice notes** (visits) | Evidence for the fix | Only JPG, PNG and WEBP photos (10MB each, 5 at a time) and audio recordings (20MB) are accepted, checked on the server by type and size. Stored in **Cloudinary** when it's set up (see *Uploaded files*), otherwise in the app's `media` folder |
 | Who did what, and when | Accountability | Triage, change history, alerts, messages and letters all record the person and the time |
 
 All demo data is fictional: made-up names, `example.com` email addresses, and addresses such as "10 Example
@@ -32,7 +32,7 @@ Square". The buildings' map points are general spots in Birmingham, not anyone's
 
 ## Secrets and configuration
 
-- The secret key, database address and demo password live in a `.env` file, which `.gitignore` keeps out of the
+- The secret key, database address, demo password and Cloudinary key (`CLOUDINARY_URL`) live in a `.env` file, which `.gitignore` keeps out of the
   repository. The README says never to commit it, and no password appears in code, docs or screenshots.
 - `DEBUG` is **off unless** the environment turns it on, and the allowed host names come from the environment.
 - **One slip, now fixed:** a temporary test page was committed by mistake. It held fictional demo names and
@@ -60,13 +60,13 @@ hiding a link is never the only protection:
 | Case handler | Triage, merge duplicates, change priority or assignment, approve letters | Use the Dashboard or People page |
 | Manager | Everything a handler can, plus the Dashboard and roles | Change their own role |
 
-Automated tests (141 in total) cover these rules, for example that officers and reporters are refused the
+Automated tests (151 in total) cover these rules, for example that officers and reporters are refused the
 Change assignment page, that officers can't see another team's alerts, and that staff opening a report don't
 mark the reporter's messages as read.
 
 ## Web protections
 
-- **Forms:** every form that changes data is a POST with Django's CSRF token (all 9 of them).
+- **Forms:** every form that changes data is a POST with Django's CSRF token (all 13 of them).
 - **Cross-site scripting:** templates escape everything by default. Our JavaScript puts user text on the page
   with `textContent`, never as HTML, and data passed to scripts uses Django's `json_script`.
 - **Clickjacking:** `X-Frame-Options` stops other sites framing the app.
@@ -76,6 +76,23 @@ mark the reporter's messages as read.
 - **Other external services:** the Inter font loads from Google Fonts on every page, which shares visitors' IP
   addresses with Google. Bootstrap and the icons are served from our own site. Hosting the font ourselves would
   remove this.
+
+## Uploaded files
+
+Report photos, visit photos and voice notes are stored in one of two places:
+
+- **Cloudinary**, when `CLOUDINARY_URL` is set (for example on Heroku). Files survive restarts and are served from
+  Cloudinary. Photos are stored as images and voice notes as audio. Each file name gets a random suffix, so links
+  are hard to guess.
+- **The app's `media` folder**, when it isn't (local development). Django serves these only while debugging.
+
+Either way, the server checks every file's type and size before it's saved. **Two things still need care:**
+
+- **Links aren't private.** Anyone who has a file's link can open it without signing in, in Cloudinary and
+  locally. The app only shows the links to people allowed to see the case, but a link can be copied or shared.
+- **Cloudinary is an outside service** that holds personal data (photos and voice recordings). Real use would
+  need a data processing agreement and a check of where it stores data. This doesn't break the brief's "no
+  connection to real systems" rule for the demo, because only fictional data is uploaded.
 
 ## AI and human approval
 
@@ -94,11 +111,11 @@ prototype:
 |---|---|
 | HTTPS isn't enforced; cookies can travel without HTTPS (`SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`) | Turn these on in production behind HTTPS |
 | Email uses the console backend | Use a real mail service with its key in the environment, never in code |
-| **Uploaded photos and voice notes are served from `/media/` without checking who's signed in** (in development), and file names can be guessed | Store uploads in private cloud storage (for example S3 or Azure Blob) and serve them through a view that checks `can_view_case`, using short-lived signed links |
-| In production, uploads aren't served at all, and Heroku's disk is wiped on restart | The same private storage fixes both |
+| **Anyone with an uploaded file's link can open it**, in Cloudinary or the local `media` folder | Use Cloudinary's authenticated delivery (or private S3 / Azure Blob storage) and serve files through a view that checks `can_view_case`, with short-lived signed links |
+| Photos and voice notes are held by an outside service (Cloudinary) | A data processing agreement, and storage in the UK or EU |
 | Voice notes and exact locations are personal data | Set how long they're kept (for example, delete voice notes 90 days after a case closes) and say so in a privacy notice |
 | Old test page in Git history | Rotate anything sensitive it could expose (nothing real was in it) and, if needed, rewrite the history |
-| No security headers beyond Django's defaults | Add a Content Security Policy allowing only our own site, Google Fonts, cdnjs and the OpenStreetMap tiles (or host the font ourselves) |
+| No security headers beyond Django's defaults | Add a Content Security Policy allowing only our own site, Google Fonts, cdnjs, the OpenStreetMap tiles and Cloudinary (or host the font ourselves) |
 
 Other next steps: run a dependency audit (`pip-audit`) in CI, add two-factor sign-in for staff, and log role
 changes as well as case changes.

@@ -36,6 +36,8 @@ It at Work, with the evidence behind it. The [accessibility notes](accessibility
   goes.
 - **Minimal by default.** Location, photos and voice notes are optional, and reporters can remove a location
   before sending.
+- **Where uploads go:** photos and voice notes are stored in Cloudinary, an outside service, when it's set up.
+  Only fictional files are uploaded in the demo; real use would need a data processing agreement.
 
 ## 3. Where does AI help, and where does a human decide?
 
@@ -58,13 +60,13 @@ messages (receipt, progress updates) are fixed templates, not AI.
 | **The AI puts a report in the wrong team** | Low to medium | Confidence scores, written reasons, a person approves, and routing can be changed later with a logged reason | Reports in other languages may get no category and need a person to choose |
 | **Staff over-trust the AI** ("automation bias") | Medium | Low-confidence and short reports are flagged "a person should check"; the dashboard shows the acceptance rate so a suspiciously high rate can be noticed | Needs training and review in real use |
 | **Wrong duplicate merge** | Low | Only merged by a person; the reporter is told which case it was linked to | One known false match in testing (same room and category, different problem) |
-| **Personal data exposed** | Low | Role-based access checked on the server for every page; reporters see only their own reports, and officers only their team's | Uploaded files need private storage before real use (see the security notes) |
+| **Personal data exposed** | Low | Role-based access checked on the server for every page; reporters see only their own reports, and officers only their team's | Uploaded photos and voice notes are kept in Cloudinary but their links are public, so they need private links before real use (see the security notes) |
 | **A deadline is promised that can't be met** | Medium | SLA targets in working days, as in the brief; the reporter is told when the date changes; Needs attention shows what's overdue or due within 24 hours | Targets are the brief's illustrative ones and would need agreeing with each team |
 
 ## 5. How would we know?
 
 **Already built in**
-- **Automated tests (143).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
+- **Automated tests (151).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
   60/63) that fails if accuracy drops, and **fairness tests** that fail if any report in poor English or another
   language is suggested below the reporter's urgency, or if danger is missed in any language.
 - **Dashboard measures:** how often staff accept the AI's suggestion, first-time fix rate, resolved within SLA,
