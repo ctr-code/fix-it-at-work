@@ -4,7 +4,10 @@
         <span class="text-muted small">Reported {{ case.date_reported|date:"j M Y, H:i" }} by {{ case.reporter_name }} &middot; {{ case.get_preferred_language_display }}</span>
     </div>
     <p class="mt-2"><strong>{{ case.title }}</strong><br>{{ case.description|linebreaksbr }}</p>
-    <p class="mb-1"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
+    <p class="mb-1"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}
+        {% if case.address %}<br><span class="ms-4 d-inline-block">{{ case.address }}</span>{% endif %}
+        {% if case.has_map_point %}<br><a class="ms-4 map-link small fw-semibold" href="{{ case.map_url }}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i> Open in map<span class="visually-hidden"> (OpenStreetMap, opens in a new tab)</span></a>
+        <span class="small text-muted">&middot; {% if case.location_source == 'device' %}pinned by the reporter's phone{% else %}building location{% endif %}</span>{% endif %}</p>
     <p class="mb-1">Reporter said urgency: {% include "cases/_pri.html" with p=case.reported_urgency %} &middot; Affects: {{ case.get_impact_display|lower }}</p>
     {% if case.hs_risk %}<p class="mb-1 overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Health and safety risk - make safe first</p>{% endif %}
     {% if case.asset_tag %}<p class="mb-1"><i class="fa-solid fa-tag" aria-hidden="true"></i> Asset tag: <strong>{{ case.asset_tag }}</strong></p>{% endif %}

@@ -47,13 +47,17 @@ class ReportForm(forms.ModelForm):
 
     photo = PhotosField(required=False, label='Photos',
                         help_text='Optional, but it helps us bring the right tools first time.')
+    # Filled in by the "Use my current location" button (static/js/locate.js). Any precision is accepted
+    # and rounded to about a metre in clean().
+    latitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
+    longitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
 
     class Meta:
         model = Case
         labels = {'hs_risk': 'This could hurt someone'}
         fields = [
-            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'impact', 'hs_risk',
-            'asset_tag', 'preferred_language', 'preferred_contact',
+            'title', 'description', 'building', 'location_detail', 'address', 'latitude', 'longitude',
+            'reported_urgency', 'impact', 'hs_risk', 'asset_tag', 'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -62,6 +66,7 @@ class ReportForm(forms.ModelForm):
                                           'You can write in any language.'}),
             'building': forms.TextInput(attrs={'placeholder': 'e.g. Main Office', 'list': 'buildings'}),
             'location_detail': forms.TextInput(attrs={'placeholder': 'e.g. 2nd floor, kitchen'}),
+            'address': forms.TextInput(attrs={'placeholder': 'e.g. 12 Example Road, Birmingham', 'autocomplete': 'off'}),
             'reported_urgency': forms.RadioSelect,
             'impact': forms.RadioSelect,
             'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
@@ -72,10 +77,23 @@ class ReportForm(forms.ModelForm):
                        'or a trip hazard. We will make it safe first.',
             'asset_tag': 'Optional. The ID label on the equipment, if it has one.',
             'preferred_language': 'We will reply in this language.',
+            'address': "Only needed if it isn't in one of our buildings. We fill in our buildings' addresses for you.",
         }
 
     def clean_asset_tag(self):
         return self.cleaned_data['asset_tag'].strip().upper()
+
+    def clean(self):
+        data = super().clean()
+        lat, lng = data.get('latitude'), data.get('longitude')
+        # The map point comes as a pair, inside the real range, rounded to about a metre
+        if (lat is None) != (lng is None):
+            raise forms.ValidationError('We only got half of your location. Please try "Use my current location" again.')
+        if lat is not None:
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                raise forms.ValidationError('That location is not a real place. Please try again or leave it out.')
+            data['latitude'], data['longitude'] = round(lat, 5), round(lng, 5)
+        return data
 
     def clean_photo(self):
         return check_photos(self.cleaned_data.get('photo'))

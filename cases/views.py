@@ -15,7 +15,7 @@ from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
     Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
@@ -67,6 +67,9 @@ def report(request):
         form = ReportForm(request.POST, request.FILES)
         if form.is_valid():
             case = form.save(commit=False)
+            if case.has_map_point:
+                case.location_source = 'device'
+            case.fill_location_from_building()
             case.reporter_user = request.user
             case.reporter_name = display_name(request.user)
             case.reporter_email = request.user.email
@@ -86,7 +89,9 @@ def report(request):
             return redirect('track_case', ref=case.reference)
     else:
         form = ReportForm()
-    buildings = Case.objects.values_list('building', flat=True).distinct()
+    # Suggest the building directory first, then any other place names people have used
+    buildings = sorted(set(Building.objects.values_list('name', flat=True))
+                       | set(Case.objects.values_list('building', flat=True)), key=str.lower)
     return render(request, 'cases/report.html', {'form': form, 'buildings': buildings})
 
 

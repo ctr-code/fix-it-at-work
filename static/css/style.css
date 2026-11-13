@@ -647,3 +647,11 @@ main { margin-bottom: var(--space-10); }
 .stage-bar.is-longest .stage-bar-fill { background: var(--series-1); }
 .stage-bar-value { flex: none; min-width: 5.5rem; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .stage-bar-note { margin: var(--space-1) 0 0; font-size: var(--fs-small); color: var(--muted); }
+
+/* "Use my current location" on the report form */
+.locate { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--border-width) dashed var(--border-control); border-radius: var(--radius-md); background: var(--surface); }
+.locate-status { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-small); }
+.locate-status:empty { display: none; }
+.locate-status.is-ok { color: var(--ink); }
+.locate-status.is-error { color: var(--urgent); }
+.map-link { white-space: nowrap; }

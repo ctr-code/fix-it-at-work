@@ -1538,3 +1538,98 @@ class DashboardTrendTests(TestCase):
         self.assertIn('Show as a table', page)
         self.assertIn('This week (so far)', page)
         self.assertIn('Where the time goes', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseLocationTests(TestCase):
+    """Each case has an address and a map point: from the building directory, or from the reporter's phone."""
+
+    report = ReportPhotoTests.report
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from .models import Building
+        self.user = User.objects.create_user('reporter1', 'reporter1@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        Building.objects.create(name='Main Office', address='10 Example Square, Birmingham',
+                                latitude=Decimal('52.481000'), longitude=Decimal('-1.899000'))
+
+    def latest(self):
+        return Case.objects.latest('pk')
+
+    def test_a_known_building_fills_in_the_address_and_map_point(self):
+        self.report(building='main office')  # any capitals
+        case = self.latest()
+        self.assertEqual(case.address, '10 Example Square, Birmingham')
+        self.assertEqual((str(case.latitude), str(case.longitude)), ('52.481000', '-1.899000'))
+        self.assertEqual(case.location_source, 'building')
+
+    def test_a_shared_location_is_kept_and_rounded(self):
+        self.report(latitude='52.4799991234', longitude='-1.9012345678')
+        case = self.latest()
+        self.assertEqual((str(case.latitude), str(case.longitude)), ('52.480000', '-1.901230'))
+        self.assertEqual(case.location_source, 'device')
+        self.assertEqual(case.address, '10 Example Square, Birmingham')  # the address still comes from the building
+
+    def test_somewhere_else_with_a_typed_address(self):
+        self.report(building='Car park next door', address='Behind 12 Example Road')
+        case = self.latest()
+        self.assertEqual(case.address, 'Behind 12 Example Road')
+        self.assertFalse(case.has_map_point)
+        self.assertEqual(case.map_url, '')
+
+    def test_bad_locations_are_refused(self):
+        for extra, message in [({'latitude': '52.48'}, 'only got half of your location'),
+                               ({'latitude': '95', 'longitude': '1'}, 'not a real place')]:
+            with self.subTest(extra=extra):
+                response = self.report(**extra)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, message)
+        self.assertFalse(Case.objects.exists())
+
+    def test_form_offers_use_my_location(self):
+        page = self.client.get('/report/')
+        self.assertContains(page, 'Use my current location')
+        self.assertContains(page, 'js/locate.js')
+        self.assertContains(page, 'name="latitude"')
+        self.assertContains(page, '<option value="Main Office">')
+
+    def test_staff_and_reporter_see_the_map_link(self):
+        self.report()
+        case = self.latest()
+        url = 'https://www.openstreetmap.org/?mlat=52.481000&amp;mlon=-1.899000#map=18/52.481000/-1.899000'
+        self.assertContains(self.client.get(f'/track/{case.reference}/'), url)
+        handler = User.objects.create_user('handler1', 'h@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        page = self.client.get(f'/cases/{case.reference}/')
+        self.assertContains(page, '10 Example Square, Birmingham')
+        self.assertContains(page, url)
+        self.assertContains(page, 'rel="noopener noreferrer"')
+        self.assertContains(page, 'building location')
+
+    def test_sync_buildings_fills_old_cases_but_keeps_shared_locations(self):
+        from decimal import Decimal
+
+        from django.core.management import call_command
+        old = Case.objects.create(title='Old', description='x', building='Riverside House', reporter_name='Sam',
+                                  reporter_email='sam@example.com')
+        mine = Case.objects.create(title='Mine', description='x', building='Riverside House', reporter_name='Sam',
+                                   reporter_email='sam@example.com', latitude=Decimal('52.1'),
+                                   longitude=Decimal('-1.5'), location_source='device')
+        from io import StringIO
+        call_command('sync_buildings', stdout=StringIO())
+        old.refresh_from_db()
+        mine.refresh_from_db()
+        self.assertEqual(old.address, '5 Demo Wharf, Birmingham')
+        self.assertEqual(old.location_source, 'building')
+        self.assertEqual((mine.latitude, mine.location_source), (Decimal('52.100000'), 'device'))
+        self.assertEqual(mine.address, '5 Demo Wharf, Birmingham')

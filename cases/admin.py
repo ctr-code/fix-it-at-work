@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import Alert, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
+from .models import Alert, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
 
 
 class ProfileInline(admin.StackedInline):
@@ -84,3 +84,9 @@ class AlertAdmin(admin.ModelAdmin):
     list_display = ('case', 'kind', 'recipients', 'sent_at', 'delivered')
     list_filter = ('kind', 'delivered')
     search_fields = ('case__reference', 'recipients')
+
+
+@admin.register(Building)
+class BuildingAdmin(admin.ModelAdmin):
+    list_display = ('name', 'address', 'latitude', 'longitude')
+    search_fields = ('name', 'address')

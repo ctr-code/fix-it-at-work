@@ -24,7 +24,8 @@
     </section>
     <div class="panel">
         <h2 class="h5">Your report</h2>
-        <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
+        <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}{% if case.address %}, {{ case.address }}{% endif %}
+            {% if case.has_map_point %}&middot; <a class="map-link" href="{{ case.map_url }}" target="_blank" rel="noopener noreferrer">Open in map<span class="visually-hidden"> (OpenStreetMap, opens in a new tab)</span></a>{% if case.location_source == 'device' %} <span class="small text-muted">(the location you shared)</span>{% endif %}{% endif %}</p>
         <p class="mb-1"><strong>Reported:</strong> {{ case.date_reported|date:"j M Y, H:i" }}</p>
         <p class="mb-1"><strong>Who is affected:</strong> {{ case.get_impact_display }}{% if case.hs_risk %} &middot; you told us someone could get hurt{% endif %}</p>
         {% if case.asset_tag %}<p class="mb-1"><strong>Asset tag:</strong> {{ case.asset_tag }}</p>{% endif %}

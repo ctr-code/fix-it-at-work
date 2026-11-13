@@ -127,6 +127,21 @@ class Officer(models.Model):
         return f'{self.name} ({self.team})'
 
 
+class Building(models.Model):
+    """One of the organisation's sites. When a report names it, the case gets its address and map point,
+    so reporters don't have to type an address. Managed in the admin; see the sync_buildings command."""
+    name = models.CharField(max_length=80, unique=True)
+    address = models.CharField(max_length=200)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class SLARule(models.Model):
     """
     Response and resolution targets for one priority, in calendar hours (the clock runs 24/7,
@@ -149,6 +164,12 @@ class Case(models.Model):
     description = models.TextField('Tell us more')
     building = models.CharField(max_length=80)
     location_detail = models.CharField('Floor / room / area', max_length=120, blank=True)
+    # Where it is on a map: from the building directory, or from the reporter's phone if they chose to share it
+    address = models.CharField('Street address', max_length=200, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_source = models.CharField(max_length=10, blank=True, choices=[
+        ('device', "Reporter's phone or computer"), ('building', 'Building address')])
     reported_urgency = models.CharField(
         'How urgent is it?', max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     impact = models.CharField('Who is affected?', max_length=15, choices=Impact.choices, default=Impact.SINGLE_USER)
@@ -239,6 +260,30 @@ class Case(models.Model):
         """The person who reported it can add details and photos until the case is closed or merged."""
         return (user.is_authenticated and self.reporter_user_id == user.id
                 and self.status not in (Status.CLOSED, Status.DUPLICATE))
+
+    @property
+    def has_map_point(self):
+        return self.latitude is not None and self.longitude is not None
+
+    @property
+    def map_url(self):
+        """A link to the point on OpenStreetMap. Nothing is sent there unless someone opens the link."""
+        if not self.has_map_point:
+            return ''
+        return (f'https://www.openstreetmap.org/?mlat={self.latitude}&mlon={self.longitude}'
+                f'#map=18/{self.latitude}/{self.longitude}')
+
+    def fill_location_from_building(self):
+        """Use the building directory for anything the reporter didn't give: the address, and the map point
+        unless they shared their own."""
+        site = Building.objects.filter(name__iexact=self.building.strip()).first() if self.building else None
+        if site is None:
+            return
+        if not self.address:
+            self.address = site.address
+        if not self.has_map_point and site.latitude is not None and site.longitude is not None:
+            self.latitude, self.longitude = site.latitude, site.longitude
+            self.location_source = 'building'
 
     @property
     def is_open(self):

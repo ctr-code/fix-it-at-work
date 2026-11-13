@@ -7,6 +7,7 @@
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
     <form method="post" enctype="multipart/form-data" class="panel" novalidate>
         {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<p class="mb-0">{{ e }}</p>{% endfor %}</div>{% endif %}
 
         <section class="form-section" aria-labelledby="section-what">
             <header class="form-section-head">
@@ -22,6 +23,21 @@
             <div class="row">
                 <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
                 <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
+            </div>
+            {{ form.address|as_crispy_field }}
+            {% comment %}
+            Optional map point from the reporter's own device, for problems outside our buildings (a car park,
+            a yard). Shown only when the browser can do it (static/js/locate.js). Nothing is shared until they
+            press the button and allow it, and they can remove it again before sending.
+            {% endcomment %}
+            {{ form.latitude }}{{ form.longitude }}
+            <div class="locate" data-locate hidden>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-primary" data-locate-button><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> Use my current location</button>
+                    <button type="button" class="btn btn-link btn-sm" data-locate-clear hidden>Remove my location</button>
+                </div>
+                <p class="locate-status" data-locate-status aria-live="polite"></p>
+                <p class="form-text mb-0">Only if you're standing by the problem now. We use it to find the problem, and it's only seen by the team fixing it.</p>
             </div>
         </section>
 
@@ -82,6 +98,7 @@
 {% block extra_body %}
 {% load static %}
 <script src="{% static 'js/photo-upload.js' %}"></script>
+<script src="{% static 'js/locate.js' %}"></script>
 <script>
     // Show that the report is sending and stop a second click creating a duplicate.
     // The photo goes with the report in this one request, so this is its upload feedback too.

@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from cases import ai
 from cases.models import (
-    PRIORITY_RANK, Case, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
+    PRIORITY_RANK, Building, Case, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
 )
 
 # Demo logins: (username, first name, last name, role)
@@ -300,6 +300,27 @@ FOLLOW_UP = ('Part needed that is not in the van.', 'Ordered the part and booked
 
 HANDLER = 'Jo Clarke'
 
+# The demo organisation's sites (fictional addresses; the map points are general spots in Birmingham,
+# not anyone's home). Cases at these buildings get the address and map point automatically.
+BUILDINGS = [
+    ('Main Office', '10 Example Square, Birmingham', '52.481000', '-1.899000'),
+    ('Innovation Centre', '2 Sample Street, Birmingham', '52.486500', '-1.888000'),
+    ('Riverside House', '5 Demo Wharf, Birmingham', '52.476000', '-1.908000'),
+    ('Warehouse B', 'Unit 4, Test Trading Estate, Birmingham', '52.494000', '-1.867000'),
+    ('Depot', 'Fleet Yard, Mock Lane, Birmingham', '52.503000', '-1.846000'),
+]
+
+
+def sync_buildings():
+    """Create or update the demo buildings. Returns how many were added."""
+    from decimal import Decimal
+    added = 0
+    for name, address, lat, lng in BUILDINGS:
+        _, created = Building.objects.update_or_create(
+            name=name, defaults={'address': address, 'latitude': Decimal(lat), 'longitude': Decimal(lng)})
+        added += created
+    return added
+
 
 class Command(BaseCommand):
     help = 'Load fictional demo data (deletes existing cases)'
@@ -313,6 +334,7 @@ class Command(BaseCommand):
         Category.objects.all().delete()
         Team.objects.all().delete()
         SLARule.objects.all().delete()
+        sync_buildings()
 
         teams = {n: Team.objects.create(name=n, contact_email=e, manager=m) for n, e, m in TEAMS}
         for name, team, pri, kw in CATEGORIES:
@@ -378,6 +400,7 @@ class Command(BaseCommand):
         case.ai_category, case.ai_priority = s['category'], s['priority']
         case.ai_summary, case.ai_reasoning = s['summary'], s['reasoning']
         case.ai_confidence, case.ai_duplicate_candidate = s['confidence'], s['duplicate']
+        case.fill_location_from_building()
         case.save()
         Communication.objects.create(case=case, kind='receipt', language=lang, draft_text=ai.receipt_text(case),
                                      approved_by='Automatic', date_sent=reported)
