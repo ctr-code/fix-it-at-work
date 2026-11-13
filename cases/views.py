@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.timesince import timesince, timeuntil
 
 from . import ai, alerts, reporter_messages
+from .history import case_history
 from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
@@ -287,7 +288,7 @@ def _by_team():
 @role_required(*HANDLERS)
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
-    return render(request, 'cases/case_detail.html', {'case': case})
+    return render(request, 'cases/case_detail.html', {'case': case, 'history': case_history(case)})
 
 
 # Cases can be re-routed after triage until the work is done
@@ -400,6 +401,9 @@ def officer_case(request, ref):
     if request.method == 'POST' and 'take' in request.POST:
         case.assigned_officer = officer
         case.save()
+        # Kept so the case history shows who took it and when
+        CaseChange.objects.create(case=case, changed_by=officer.name, summary=f'Officer: Unassigned → {officer.name}',
+                                  reason="Took the job from the team's list")
         messages.success(request, f'{case.reference} is now assigned to you.')
         return redirect('officer_case', ref=ref)
 
