@@ -142,17 +142,62 @@ class Building(models.Model):
         return self.name
 
 
+class SLAUnit(models.TextChoices):
+    HOURS = 'hours', 'hours (round the clock)'
+    WORKING_HOURS = 'working_hours', 'working hours'
+    WORKING_DAYS = 'working_days', 'working days'
+
+
 class SLARule(models.Model):
     """
-    Response and resolution targets for one priority, in calendar hours (the clock runs 24/7,
-    including evenings and weekends), as on the mock data's SLA Settings sheet.
+    Response and resolution targets for one priority, as in the brief, e.g. "acknowledge within 1 hour,
+    resolve within 1 working day". Each target is an amount and a unit: round-the-clock hours, working
+    hours or working days (see cases/working_time.py for the working week and holidays).
     """
     priority = models.CharField(max_length=10, choices=Priority.choices, unique=True)
-    acknowledge_hours = models.PositiveIntegerField('Response target (hours)')
-    resolve_hours = models.PositiveIntegerField('Resolution target (hours)')
+    acknowledge_amount = models.PositiveIntegerField('Respond within')
+    acknowledge_unit = models.CharField(max_length=15, choices=SLAUnit.choices, default=SLAUnit.HOURS)
+    resolve_amount = models.PositiveIntegerField('Resolve within')
+    resolve_unit = models.CharField(max_length=15, choices=SLAUnit.choices, default=SLAUnit.WORKING_DAYS)
+
+    class Meta:
+        verbose_name = 'SLA rule'
 
     def __str__(self):
-        return f'{self.get_priority_display()}: respond in {self.acknowledge_hours}h, resolve in {self.resolve_hours}h'
+        return f'{self.get_priority_display()}: respond within {self.acknowledge_text}, resolve within {self.resolve_text}'
+
+    @staticmethod
+    def _text(amount, unit):
+        word = {'hours': 'hour', 'working_hours': 'working hour', 'working_days': 'working day'}[unit]
+        return f'{amount} {word}{"" if amount == 1 else "s"}'
+
+    @property
+    def acknowledge_text(self):
+        return self._text(self.acknowledge_amount, self.acknowledge_unit)
+
+    @property
+    def resolve_text(self):
+        return self._text(self.resolve_amount, self.resolve_unit)
+
+    def acknowledge_due(self, start, holidays=None):
+        from .working_time import add_target
+        return add_target(start, self.acknowledge_amount, self.acknowledge_unit, holidays)
+
+    def resolve_due(self, start, holidays=None):
+        from .working_time import add_target
+        return add_target(start, self.resolve_amount, self.resolve_unit, holidays)
+
+
+class Holiday(models.Model):
+    """A day that doesn't count as a working day for SLA targets, such as a bank holiday."""
+    date = models.DateField(unique=True)
+    name = models.CharField(max_length=80)
+
+    class Meta:
+        ordering = ['date']
+
+    def __str__(self):
+        return f'{self.name} ({self.date:%d %b %Y})'
 
 
 class Case(models.Model):
@@ -238,8 +283,8 @@ class Case(models.Model):
     def apply_sla(self):
         rule = SLARule.objects.filter(priority=self.priority).first()
         if rule:
-            self.sla_acknowledge_due = self.date_reported + timedelta(hours=rule.acknowledge_hours)
-            self.sla_due = self.date_reported + timedelta(hours=rule.resolve_hours)
+            self.sla_acknowledge_due = rule.acknowledge_due(self.date_reported)
+            self.sla_due = rule.resolve_due(self.date_reported)
 
     @property
     def feedback_deadline(self):

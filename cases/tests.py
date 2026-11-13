@@ -829,8 +829,8 @@ class ReassignCaseTests(TestCase):
         self.serena = Officer.objects.create(name='Serena', team=self.facilities, contact_email='s@example.com')
         self.tom = Officer.objects.create(name='Tom', team=self.facilities, contact_email='t@example.com')
         self.priya = Officer.objects.create(name='Priya', team=self.it, contact_email='p@example.com')
-        SLARule.objects.create(priority='medium', acknowledge_hours=8, resolve_hours=72)
-        SLARule.objects.create(priority='high', acknowledge_hours=4, resolve_hours=24)
+        SLARule.objects.create(priority='medium', acknowledge_amount=8, acknowledge_unit='hours', resolve_amount=72, resolve_unit='hours')
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours', resolve_amount=24, resolve_unit='hours')
         self.handler = self.make_user('handler1', 'handler', 'Jo')
         self.manager = self.make_user('manager1', 'manager', 'Ade')
         self.case = Case.objects.create(
@@ -1384,8 +1384,8 @@ class DashboardAttentionTests(TestCase):
         self.hours = lambda h: self.now + timedelta(hours=h)
         self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
         self.officer = Officer.objects.create(name='Serena', team=self.team, contact_email='s@example.com')
-        SLARule.objects.create(priority='high', acknowledge_hours=4, resolve_hours=24)
-        SLARule.objects.create(priority='medium', acknowledge_hours=8, resolve_hours=72)
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours', resolve_amount=24, resolve_unit='hours')
+        SLARule.objects.create(priority='medium', acknowledge_amount=8, acknowledge_unit='hours', resolve_amount=72, resolve_unit='hours')
         self.manager = self.make_user('manager1', 'manager', 'Ade')
 
     def add(self, title, status=Status.ASSIGNED, **extra):
@@ -1760,3 +1760,90 @@ class VisitMediaTests(TestCase):
         from .models import SiteVisit
         old = SiteVisit.objects.create(case=self.case, officer=self.officer, note='Old note', photo='visits/old.png')
         self.assertEqual([f.name for f in old.all_photos()], ['visits/old.png'])
+
+
+@override_settings(TIME_ZONE='Europe/London', SLA_WORKING_WEEKDAYS=(0, 1, 2, 3, 4),
+                   SLA_WORKDAY_START='08:00', SLA_WORKDAY_END='17:00')
+class WorkingTimeTests(TestCase):
+    """SLA targets in working hours and days skip evenings, weekends and holidays (Mon-Fri 08:00-17:00)."""
+
+    def at(self, text):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.fromisoformat(text).replace(tzinfo=ZoneInfo('Europe/London'))
+
+    def local(self, moment):
+        from django.utils import timezone
+        return timezone.localtime(moment).strftime('%a %Y-%m-%d %H:%M')
+
+    def add(self, start, amount, unit, holidays=()):
+        from .working_time import add_target
+        return self.local(add_target(self.at(start), amount, unit, set(holidays)))
+
+    def test_working_hours(self):
+        # Wednesday 11 November 2026
+        self.assertEqual(self.add('2026-11-11 10:00', 4, 'working_hours'), 'Wed 2026-11-11 14:00')
+        self.assertEqual(self.add('2026-11-11 15:00', 4, 'working_hours'), 'Thu 2026-11-12 10:00')  # overnight
+        self.assertEqual(self.add('2026-11-11 06:30', 1, 'working_hours'), 'Wed 2026-11-11 09:00')  # before work
+        self.assertEqual(self.add('2026-11-13 16:00', 4, 'working_hours'), 'Mon 2026-11-16 11:00')  # over a weekend
+        self.assertEqual(self.add('2026-11-14 12:00', 2, 'working_hours'), 'Mon 2026-11-16 10:00')  # from a Saturday
+
+    def test_working_days(self):
+        self.assertEqual(self.add('2026-11-11 10:00', 1, 'working_days'), 'Thu 2026-11-12 10:00')
+        self.assertEqual(self.add('2026-11-13 18:00', 1, 'working_days'), 'Mon 2026-11-16 17:00')  # Friday evening
+        self.assertEqual(self.add('2026-11-11 10:00', 10, 'working_days'), 'Wed 2026-11-25 10:00')  # two weeks
+
+    def test_holidays_are_skipped(self):
+        from datetime import date
+        # Christmas 2026: Friday 25th, and Monday 28th is the Boxing Day substitute
+        holidays = {date(2026, 12, 25), date(2026, 12, 28)}
+        self.assertEqual(self.add('2026-12-24 10:00', 1, 'working_days', holidays), 'Tue 2026-12-29 10:00')
+
+    def test_round_the_clock_hours_ignore_the_working_week(self):
+        self.assertEqual(self.add('2026-11-14 23:30', 1, 'hours'), 'Sun 2026-11-15 00:30')
+
+    def test_clock_change_weekend(self):
+        # Clocks go back on Sunday 25 October 2026; working time is unaffected
+        self.assertEqual(self.add('2026-10-23 16:00', 2, 'working_hours'), 'Mon 2026-10-26 09:00')
+
+    def test_rules_describe_and_apply_their_targets(self):
+        from .models import Holiday, SLARule
+        rule = SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='working_hours',
+                                      resolve_amount=3, resolve_unit='working_days')
+        self.assertEqual(str(rule), 'High: respond within 4 working hours, resolve within 3 working days')
+        Holiday.objects.create(date=__import__('datetime').date(2026, 11, 12), name='Test holiday')
+        case = Case(title='x', description='x', building='x', reporter_name='x', reporter_email='x@example.com',
+                    priority='high', date_reported=self.at('2026-11-11 15:00'))
+        case.apply_sla()
+        self.assertEqual(self.local(case.sla_acknowledge_due), 'Fri 2026-11-13 10:00')  # skips the holiday
+        self.assertEqual(self.local(case.sla_due), 'Tue 2026-11-17 15:00')
+
+    def test_sync_sla_sets_the_briefs_table(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from .models import Holiday, SLARule
+        SLARule.objects.create(priority='urgent', acknowledge_amount=1, acknowledge_unit='hours',
+                               resolve_amount=4, resolve_unit='hours')
+        call_command('sync_sla', stdout=StringIO())
+        texts = {r.priority: (r.acknowledge_text, r.resolve_text) for r in SLARule.objects.all()}
+        self.assertEqual(texts, {
+            'urgent': ('1 hour', '1 working day'), 'high': ('4 working hours', '3 working days'),
+            'medium': ('1 working day', '10 working days'), 'low': ('2 working days', '20 working days'),
+        })
+        self.assertTrue(Holiday.objects.filter(name='Christmas Day').exists())
+
+    def test_sync_sla_can_recalculate_due_dates(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        case = Case.objects.create(title='x', description='x', building='x', reporter_name='x',
+                                   reporter_email='x@example.com', priority='medium', status=Status.ASSIGNED,
+                                   date_reported=self.at('2026-11-11 10:00'), sla_due=self.at('2026-11-14 10:00'))
+        call_command('sync_sla', stdout=StringIO())
+        case.refresh_from_db()
+        self.assertEqual(self.local(case.sla_due), 'Sat 2026-11-14 10:00')  # unchanged without --recalculate
+        call_command('sync_sla', '--recalculate', stdout=StringIO())
+        case.refresh_from_db()
+        self.assertEqual(self.local(case.sla_due), 'Wed 2026-11-25 10:00')  # 10 working days

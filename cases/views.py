@@ -16,7 +16,7 @@ from .forms import (
 )
 from .models import (
     OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status, VisitPhoto,
-    Language, Priority, SLARule, Team, get_role,
+    Holiday, Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -576,13 +576,13 @@ def _needs_attention(now):
 
     # New reports waiting longer than the response target for the priority the AI suggested
     # (or the reporter chose), which is when the reporter should have heard from a person
-    targets = dict(SLARule.objects.values_list('priority', 'acknowledge_hours'))
+    rules = {r.priority: r for r in SLARule.objects.all()}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
     slow_triage = []
     for c in Case.objects.filter(status=Status.NEW).order_by('date_reported'):
-        hours = targets.get(c.ai_priority or c.reported_urgency)
-        if hours is not None and now > c.date_reported + timedelta(hours=hours):
-            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {hours} '
-                                   f'hour{"s" if hours != 1 else ""}'))
+        rule = rules.get(c.ai_priority or c.reported_urgency)
+        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
+            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {rule.acknowledge_text}'))
 
     slow_reply = [(c, f'Fixed {timesince(c.date_resolved, now)} ago · {c.assigned_team or "No team"}')
                   for c in Case.objects.filter(status=Status.RESOLVED, date_resolved__lt=now - REPLY_WAIT)

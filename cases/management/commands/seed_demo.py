@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from cases import ai
 from cases.models import (
-    PRIORITY_RANK, Building, Case, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
+    PRIORITY_RANK, Building, Case, Holiday, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
 )
 
 # Demo logins: (username, first name, last name, role)
@@ -156,9 +156,25 @@ SERENA_JOBS = [
      'Lighting & Electrical', 'urgent'),
 ]
 
-# (priority, response target hours, resolution target hours), from the mock data's SLA Settings sheet.
-# Calendar hours: the clock runs 24/7.
-SLA = [('urgent', 1, 4), ('high', 4, 24), ('medium', 8, 72), ('low', 24, 120)]
+# (priority, respond within, unit, resolve within, unit): the illustrative SLA rules in the challenge brief.
+# Working days and hours skip evenings, weekends and the HOLIDAYS below (see cases/working_time.py).
+SLA = [
+    ('urgent', 1, 'hours', 1, 'working_days'),
+    ('high', 4, 'working_hours', 3, 'working_days'),
+    ('medium', 1, 'working_days', 10, 'working_days'),
+    ('low', 2, 'working_days', 20, 'working_days'),
+]
+
+# Bank holidays in England and Wales, so they don't count as working days
+HOLIDAYS = [
+    ('2026-01-01', "New Year's Day"), ('2026-04-03', 'Good Friday'), ('2026-04-06', 'Easter Monday'),
+    ('2026-05-04', 'Early May bank holiday'), ('2026-05-25', 'Spring bank holiday'),
+    ('2026-08-31', 'Summer bank holiday'), ('2026-12-25', 'Christmas Day'), ('2026-12-28', 'Boxing Day (substitute day)'),
+    ('2027-01-01', "New Year's Day"), ('2027-03-26', 'Good Friday'), ('2027-03-29', 'Easter Monday'),
+    ('2027-05-03', 'Early May bank holiday'), ('2027-05-31', 'Spring bank holiday'),
+    ('2027-08-30', 'Summer bank holiday'), ('2027-12-27', 'Christmas Day (substitute day)'),
+    ('2027-12-28', 'Boxing Day (substitute day)'),
+]
 
 # (title, description, building, room, reporter urgency, language, reporter, days ago, stage)
 REPORTS = [
@@ -311,6 +327,25 @@ BUILDINGS = [
 ]
 
 
+def sync_sla():
+    """Set the SLA rules to SLA and add any missing HOLIDAYS. Returns (rules changed, holidays added)."""
+    from datetime import date
+    changed = 0
+    for p, ack, ack_unit, res, res_unit in SLA:
+        values = {'acknowledge_amount': ack, 'acknowledge_unit': ack_unit, 'resolve_amount': res, 'resolve_unit': res_unit}
+        rule, created = SLARule.objects.get_or_create(priority=p, defaults=values)
+        if created:
+            changed += 1
+        elif any(getattr(rule, k) != v for k, v in values.items()):
+            SLARule.objects.filter(pk=rule.pk).update(**values)
+            changed += 1
+    added = 0
+    for day, name in HOLIDAYS:
+        _, created = Holiday.objects.get_or_create(date=date.fromisoformat(day), defaults={'name': name})
+        added += created
+    return changed, added
+
+
 def sync_buildings():
     """Create or update the demo buildings. Returns how many were added."""
     from decimal import Decimal
@@ -343,8 +378,7 @@ class Command(BaseCommand):
         for name, team in OFFICERS:
             Officer.objects.create(name=name, team=teams[team], user=users.get(name.split()[0].lower()),
                                    contact_email=name.lower().replace(' ', '.') + '@example.com')
-        for p, ack, res in SLA:
-            SLARule.objects.create(priority=p, acknowledge_hours=ack, resolve_hours=res)
+        sync_sla()
 
         # Oldest first, so references follow the order things were reported
         for spec in sorted(REPORTS, key=lambda r: -r[7]):
@@ -421,7 +455,9 @@ class Command(BaseCommand):
         case.triaged_by = HANDLER
         # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
         rule = SLARule.objects.get(priority=case.priority)
-        case.date_acknowledged = reported + timedelta(hours=rule.acknowledge_hours * rng.uniform(0.1, 1.3))
+        ack_span = rule.acknowledge_due(reported) - reported
+        fix_span = rule.resolve_due(reported) - reported
+        case.date_acknowledged = reported + ack_span * rng.uniform(0.1, 1.3)
         case.status = Status.ASSIGNED
         case.apply_sla()
         case.save()
@@ -432,7 +468,7 @@ class Command(BaseCommand):
             return
 
         found, did = VISIT_NOTES[case.assigned_team.name]
-        first_visit = min(case.date_acknowledged + timedelta(hours=rule.resolve_hours * rng.uniform(0.1, 0.7)),
+        first_visit = min(case.date_acknowledged + fix_span * rng.uniform(0.1, 0.7),
                           now - timedelta(hours=2))
         if stage == 'in_progress':
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
@@ -448,7 +484,7 @@ class Command(BaseCommand):
             SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
                                      note=FOLLOW_UP[0], action=FOLLOW_UP[1],
                                      ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
-            visit_time = min(first_visit + timedelta(hours=rule.resolve_hours * rng.uniform(0.2, 0.6)),
+            visit_time = min(first_visit + fix_span * rng.uniform(0.2, 0.6),
                              now - timedelta(hours=1))
         SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=found,
                                  action=did, fixed=True, transcript_used=rng.random() < 0.4,
