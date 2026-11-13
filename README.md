@@ -66,3 +66,5 @@ Responsible AI choices:
 - [Responsible-design checklist](docs/responsible-design.md): the brief's five questions (who could be left out,
   what data, where AI helps and a person decides, what could go wrong, how we'd know), and the fairness tests on
   reports in poor English and other languages.
+- [Functional gaps](docs/functional-gaps.md): what the app still doesn't do, compared with the brief and a real
+  deployment, with suggested fixes and an order to tackle them.
