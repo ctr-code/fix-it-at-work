@@ -7,9 +7,25 @@
     <p><span class="badge-status">{{ case.get_status_display }}</span>
         {% if case.status == 'duplicate' %} - linked to {{ case.duplicate_of.reference }}, which is already being fixed{% endif %}</p>
     {% include "cases/_journey.html" %}
+    {# Newest first, so the latest news is the first thing the reporter sees #}
+    <section class="panel" id="your-messages" aria-labelledby="your-messages-title">
+        <h2 class="h5" id="your-messages-title">Messages to you</h2>
+        {% if sent %}
+        <ol class="report-updates">
+            {% for c in sent %}
+            <li class="report-update reporter-message{% if c.is_new %} is-new{% endif %}">
+                <p class="report-update-when">{% if c.is_new %}<span class="alert-new">New</span> {% endif %}<strong>{{ c.get_kind_display }}</strong> &middot; {{ c.date_sent|date:"j M Y, H:i" }}</p>
+                <p class="letter mb-0" lang="{{ c.language }}"{% if c.language == 'ur' %} dir="rtl"{% endif %}>{{ c.draft_text }}</p>
+                {% if c.ai_drafted %}<p class="small mt-2 mb-0 ai-label"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted with AI help and checked by {{ c.approved_by }}</p>{% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}<p class="mb-0 text-muted">No messages yet.</p>{% endif %}
+    </section>
     <div class="panel">
         <h2 class="h5">Your report</h2>
-        <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}</p>
+        <p class="mb-1"><strong>Where:</strong> {{ case.building }}{% if case.location_detail %}, {{ case.location_detail }}{% endif %}{% if case.address %}, {{ case.address }}{% endif %}
+            {% if case.has_map_point %}&middot; <a class="map-link" href="{{ case.map_url }}" target="_blank" rel="noopener noreferrer">Open in map<span class="visually-hidden"> (OpenStreetMap, opens in a new tab)</span></a>{% if case.location_source == 'device' %} <span class="small text-muted">(the location you shared)</span>{% elif case.location_source == 'map' %} <span class="small text-muted">(the spot you pinned)</span>{% endif %}{% endif %}</p>
         <p class="mb-1"><strong>Reported:</strong> {{ case.date_reported|date:"j M Y, H:i" }}</p>
         <p class="mb-1"><strong>Who is affected:</strong> {{ case.get_impact_display }}{% if case.hs_risk %} &middot; you told us someone could get hurt{% endif %}</p>
         {% if case.asset_tag %}<p class="mb-1"><strong>Asset tag:</strong> {{ case.asset_tag }}</p>{% endif %}
@@ -64,17 +80,6 @@
         {% endif %}
     </div>
     {% endif %}
-    <h2 class="h5 mt-4">Messages to you</h2>
-    {% for c in sent %}
-    <div class="panel">
-        <div class="d-flex justify-content-between flex-wrap">
-            <strong>{{ c.get_kind_display }}</strong>
-            <span class="text-muted small">{{ c.date_sent|date:"j M Y, H:i" }}</span>
-        </div>
-        <p class="letter mt-2 mb-2" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text }}</p>
-        {% if c.ai_drafted %}<p class="small mb-0 ai-label"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted with AI help and checked by {{ c.approved_by }}</p>{% endif %}
-    </div>
-    {% empty %}<p>No messages yet.</p>{% endfor %}
 </section>
 {% endblock %}
 

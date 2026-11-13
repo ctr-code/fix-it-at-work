@@ -18,7 +18,7 @@
         </div>
     </div>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0 table-sortable" id="people-table">
+        <table class="table align-middle mb-0 table-sortable table-cards" id="people-table">
             <caption class="visually-hidden">People and their roles</caption>
             <thead><tr><th scope="col" data-sort="text">{% include "cases/_sort_button.html" with label="Name" %}</th><th scope="col" class="d-none d-md-table-cell" data-sort="text">{% include "cases/_sort_button.html" with label="Email" %}</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
             <tbody>
@@ -27,23 +27,23 @@
                 <td data-sort-value="{{ r.user.get_full_name|default:r.user.username }}">{{ r.user.get_full_name|default:r.user.username }}<br><span class="small text-muted">{{ r.user.username }}</span></td>
                 <td class="d-none d-md-table-cell" data-sort-value="{{ r.user.email }}">{{ r.user.email }}</td>
                 {% if r.user == user %}
-                <td colspan="3">{{ user_role_label }} <span class="small text-muted">(you)</span></td>
+                <td colspan="3" data-label="Role">{{ user_role_label }} <span class="small text-muted">(you)</span></td>
                 {% else %}
-                <td>
+                <td data-label="Role">
                     <form method="post" id="role-{{ r.user.pk }}">{% csrf_token %}<input type="hidden" name="user_id" value="{{ r.user.pk }}"></form>
                     <label class="visually-hidden" for="role-select-{{ r.user.pk }}">Role for {{ r.user.username }}</label>
                     <select id="role-select-{{ r.user.pk }}" name="role" form="role-{{ r.user.pk }}" class="form-select form-select-sm" style="min-width: 8rem">
                         {% for value, label in roles %}<option value="{{ value }}" {% if value == r.role %}selected{% endif %}>{{ label }}</option>{% endfor %}
                     </select>
                 </td>
-                <td>
+                <td data-label="Team">
                     <label class="visually-hidden" for="team-select-{{ r.user.pk }}">Team for {{ r.user.username }}</label>
                     <select id="team-select-{{ r.user.pk }}" name="team" form="role-{{ r.user.pk }}" class="form-select form-select-sm" style="min-width: 8rem">
                         <option value="">-</option>
                         {% for t in teams %}<option value="{{ t.pk }}" {% if t.pk == r.team_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
                     </select>
                 </td>
-                <td><button form="role-{{ r.user.pk }}" class="btn btn-sm btn-primary">Save</button></td>
+                <td class="card-action"><button form="role-{{ r.user.pk }}" class="btn btn-sm btn-primary">Save<span class="visually-hidden"> {{ r.user.username }}</span></button></td>
                 {% endif %}
             </tr>
             {% endfor %}

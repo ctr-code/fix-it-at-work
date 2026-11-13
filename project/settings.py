@@ -171,6 +171,7 @@ LOGIN_URL = 'account_login'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 
+
 # Crispy settings
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
@@ -231,3 +232,12 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+# The working week for SLA targets in working hours or days (cases/working_time.py): Monday (0) to
+# Friday (4), 08:00 to 17:00 in TIME_ZONE. Bank holidays are in the Holiday table (admin, or sync_sla).
+SLA_WORKING_WEEKDAYS = (0, 1, 2, 3, 4)
+SLA_WORKDAY_START = '08:00'
+SLA_WORKDAY_END = '17:00'
+
+# Team alerts (cases/alerts.py) come from this fictional address. With the console backend above they are
+# printed in the server window, not sent, as the brief allows no connection to real systems.
+DEFAULT_FROM_EMAIL = 'Fix It at Work <alerts@fixitatwork.example>'

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -6,12 +8,15 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.timesince import timesince, timeuntil
 
-from . import ai
-from .forms import FeedbackForm, LetterForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm
+from . import ai, alerts, reporter_messages
+from .forms import (
+    FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
+)
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Case, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
-    Language, Priority, Team, get_role,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status, VisitPhoto,
+    Holiday, Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
 
@@ -62,6 +67,9 @@ def report(request):
         form = ReportForm(request.POST, request.FILES)
         if form.is_valid():
             case = form.save(commit=False)
+            if case.has_map_point:
+                case.location_source = form.cleaned_data['location_method'] or 'device'
+            case.fill_location_from_building()
             case.reporter_user = request.user
             case.reporter_name = display_name(request.user)
             case.reporter_email = request.user.email
@@ -76,29 +84,34 @@ def report(request):
             case.ai_confidence = suggestion['confidence']
             case.ai_duplicate_candidate = suggestion['duplicate']
             case.save()
-            Communication.objects.create(
-                case=case, kind=Communication.Kind.RECEIPT, language=case.preferred_language,
-                draft_text=ai.receipt_text(case), approved_by='Automatic', date_sent=timezone.now(),
-            )
+            reporter_messages.received(case)
             messages.success(request, f'Thank you - your report has been received. Your reference is {case.reference}.')
             return redirect('track_case', ref=case.reference)
     else:
         form = ReportForm()
-    buildings = Case.objects.values_list('building', flat=True).distinct()
-    return render(request, 'cases/report.html', {'form': form, 'buildings': buildings})
+    # Suggest the building directory first, then any other place names people have used
+    buildings = sorted(set(Building.objects.values_list('name', flat=True))
+                       | set(Case.objects.values_list('building', flat=True)), key=str.lower)
+    # Where each known building is, so the map opens on the building the reporter chose
+    building_points = {b.name: [float(b.latitude), float(b.longitude)]
+                       for b in Building.objects.exclude(latitude=None).exclude(longitude=None)}
+    return render(request, 'cases/report.html', {'form': form, 'buildings': buildings,
+                                                 'building_points': building_points})
 
 
 @login_required
 def my_reports(request):
     """Every report the signed-in user has made, newest first. Staff can report issues too."""
-    reports = list(Case.objects.filter(reporter_user=request.user).order_by('-date_reported'))
+    reports = list(Case.objects.filter(reporter_user=request.user).order_by('-date_reported').annotate(
+        new_messages=Count('communications', filter=Q(communications__date_sent__isnull=False,
+                                                      communications__read_at__isnull=True))))
     open_count = sum(c.status in OPEN_STATUSES for c in reports)
     to_rate = [c for c in reports if c.can_give_feedback(request.user) and c.satisfaction is None]
     # Only the statuses in the list, in the order a report moves through them, for the "Status" filter
     statuses = [(value, label) for value, label in Status.choices if any(c.status == value for c in reports)]
     return render(request, 'cases/my_reports.html', {
         'reports': reports, 'open_count': open_count, 'to_rate': {c.pk for c in to_rate},
-        'statuses': statuses,
+        'statuses': statuses, 'new_total': sum(c.new_messages for c in reports),
     })
 
 
@@ -152,7 +165,12 @@ def track_case(request, ref):
 
 
 def _render_track(request, case, feedback_form, update_form):
-    sent = case.communications.filter(date_sent__isnull=False)
+    # Newest message first. Ones the reporter hasn't seen are marked "New" this time, then count as read.
+    sent = list(case.communications.filter(date_sent__isnull=False).order_by('-date_sent', '-pk'))
+    for m in sent:
+        m.is_new = m.read_at is None
+    if case.reporter_user_id == request.user.id and any(m.is_new for m in sent):
+        Communication.objects.filter(pk__in=[m.pk for m in sent if m.is_new]).update(read_at=timezone.now())
     updates = case.updates.prefetch_related('photos')
     return render(request, 'cases/track.html', {
         'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
@@ -226,12 +244,7 @@ def triage_case(request, ref):
                 case.date_closed = timezone.now()
                 case.ai_suggestion_accepted = case.ai_duplicate_candidate_id == d['duplicate_of'].id
                 case.save()
-                Communication.objects.create(
-                    case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
-                    draft_text=(f'Thanks for your report. Someone has already reported this issue, so we have '
-                                f'linked your report to {case.duplicate_of.reference}. You can track progress there.'),
-                    approved_by=approver, date_sent=timezone.now(),
-                )
+                reporter_messages.merged(case, approver)
                 messages.success(request, f'{case.reference} merged into {case.duplicate_of.reference}.')
                 return redirect('triage_queue')
 
@@ -244,14 +257,9 @@ def triage_case(request, ref):
                 case.category_id == case.ai_category_id and case.priority == case.ai_priority)
             case.apply_sla()
             case.save()
-            Communication.objects.create(
-                case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
-                draft_text=(f'Your report {case.reference} has been passed to our {case.assigned_team} team '
-                            f'as {case.get_priority_display().lower()} priority. We aim to resolve it by '
-                            f'{timezone.localtime(case.sla_due):%H:%M on %A %d %B}.'),
-                approved_by=approver, date_sent=timezone.now(),
-            )
-            messages.success(request, f'{case.reference} sent to {case.assigned_team}.')
+            reporter_messages.routed(case, approver)
+            alert = alerts.alert_routed(case, request)
+            messages.success(request, f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}')
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
@@ -259,22 +267,94 @@ def triage_case(request, ref):
             'category': case.ai_category,
             'priority': case.ai_priority,
         })
-    # Lets the page narrow the category and officer lists to the chosen team
+    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+
+
+def _by_team():
+    """Category and officer ids for each team, so the page can narrow those lists to the chosen team."""
     by_team = {
         'category': {t: [] for t in Team.objects.values_list('id', flat=True)},
         'officer': {t: [] for t in Team.objects.values_list('id', flat=True)},
     }
     for cat_id, team_id in Category.objects.values_list('id', 'default_team_id'):
-        by_team['category'][team_id].append(cat_id)
+        if team_id:
+            by_team['category'][team_id].append(cat_id)
     for officer_id, team_id in Officer.objects.values_list('id', 'team_id'):
         by_team['officer'][team_id].append(officer_id)
-    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': by_team})
+    return by_team
 
 
 @role_required(*HANDLERS)
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
     return render(request, 'cases/case_detail.html', {'case': case})
+
+
+# Cases can be re-routed after triage until the work is done
+REASSIGNABLE = [Status.ASSIGNED, Status.IN_PROGRESS]
+
+
+@role_required(*HANDLERS)
+def reassign_case(request, ref):
+    case = get_object_or_404(Case, reference=ref)
+    if case.status == Status.NEW:
+        return redirect('triage_case', ref=ref)
+    if case.status not in REASSIGNABLE:
+        messages.info(request, f'{case.reference} is {case.get_status_display().lower()}, so its priority '
+                               f'and assignment can no longer be changed.')
+        return redirect('case_detail', ref=ref)
+
+    if request.method == 'POST':
+        form = ReassignForm(request.POST)
+        if form.is_valid():
+            d = form.cleaned_data
+            before = {'priority': case.get_priority_display() or '-', 'team': str(case.assigned_team or '-'),
+                      'category': str(case.category or '-'),
+                      'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
+            priority_changed = d['priority'] != case.priority
+            old_officer = case.assigned_officer
+            old_team_id, old_due = case.assigned_team_id, case.sla_due
+            case.priority = d['priority']
+            case.assigned_team = d['team']
+            case.category = d['category']
+            case.assigned_officer = d['officer']
+            after = {'priority': case.get_priority_display(), 'team': str(case.assigned_team),
+                     'category': str(case.category),
+                     'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
+            lines = [f'{field.capitalize()}: {before[field]} → {after[field]}'
+                     for field in ('priority', 'team', 'category', 'officer') if before[field] != after[field]]
+            if not lines:
+                messages.info(request, f'Nothing was changed on {case.reference}.')
+                return redirect('case_detail', ref=ref)
+            if priority_changed:
+                case.apply_sla()  # the target date follows the priority, counted from when it was reported
+                if case.sla_due != old_due:
+                    lines.append(f'SLA due: {_when(old_due)} → {_when(case.sla_due)}')
+            case.save()
+            CaseChange.objects.create(case=case, changed_by=display_name(request.user),
+                                      summary='\n'.join(lines), reason=d['reason'])
+            alert = alerts.alert_changed(case, lines, old_officer, request)
+            reporter_messages.changed(case, display_name(request.user), new_due=case.sla_due != old_due,
+                                      new_team=case.assigned_team_id != old_team_id)
+            messages.success(request, f'{case.reference} updated.{_alert_note(alert)}')
+            return redirect('case_detail', ref=ref)
+    else:
+        form = ReassignForm(initial={'priority': case.priority, 'team': case.assigned_team,
+                                     'category': case.category, 'officer': case.assigned_officer})
+    return render(request, 'cases/reassign_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+
+
+def _alert_note(alert):
+    """The end of the confirmation message, saying who was alerted."""
+    if alert is None:
+        return ''
+    if not alert.delivered:
+        return ' The alert email could not be sent - please contact the team directly.'
+    return f' Alert sent to {alert.recipients}.'
+
+
+def _when(moment):
+    return f'{timezone.localtime(moment):%d %b %Y, %H:%M}' if moment else '-'
 
 
 # ---------- 3 & 4. Attend, investigate, record outcome (field officer) ----------
@@ -340,6 +420,8 @@ def officer_case(request, ref):
             visit.officer = officer
             visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed, visit.action)
             visit.save()
+            for photo in form.cleaned_data['photos']:
+                VisitPhoto.objects.create(visit=visit, image=photo)
             if visit.fixed:
                 case.status = Status.RESOLVED
                 case.date_resolved = timezone.now()
@@ -349,10 +431,54 @@ def officer_case(request, ref):
                 case.status = Status.IN_PROGRESS
                 messages.success(request, f'Visit recorded. {case.reference} stays open for a follow-up.')
             case.save()
+            reporter_messages.visited(case, visit)
             return redirect('officer_cases')
     else:
         form = VisitForm()
     return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer})
+
+
+@role_required(Role.OFFICER)
+def alerts_inbox(request):
+    """Alerts sent to this officer by name or to their team's inbox, newest first, with unread ones marked."""
+    officer = _current_officer(request)
+    if not officer:
+        return redirect('index')
+    visible = Alert.for_officer(officer)
+    show_unread = request.GET.get('show') == 'unread'
+    back = reverse('alerts') + ('?show=unread' if show_unread else '')
+
+    if request.method == 'POST':
+        if 'all' in request.POST:
+            chosen = visible.exclude(reads__user=request.user)
+        else:
+            chosen = visible.filter(pk=request.POST.get('open') or request.POST.get('read') or 0)
+        AlertRead.objects.bulk_create([AlertRead(alert=a, user=request.user) for a in chosen],
+                                      ignore_conflicts=True)
+        opened = chosen.select_related('case').first() if 'open' in request.POST else None
+        if opened:
+            return redirect('officer_case', ref=opened.case.reference)
+        if 'all' in request.POST:
+            messages.success(request, 'All alerts marked as read.')
+        return redirect(back)
+
+    items = list(visible.select_related('case', 'team').prefetch_related('officers'))
+    read = set(AlertRead.objects.filter(user=request.user, alert__in=items).values_list('alert_id', flat=True))
+    for a in items:
+        a.unread = a.pk not in read
+        a.to_you = any(o.pk == officer.pk for o in a.officers.all())
+        a.intro = a.body.split('\n\n')[0]
+        c = a.case
+        # The job link only works while the job is open and still this officer's (or unassigned in their team)
+        a.can_open = (c.status in (Status.ASSIGNED, Status.IN_PROGRESS) and c.assigned_team_id == officer.team_id
+                      and c.assigned_officer_id in (None, officer.pk))
+    all_total, unread_total = len(items), sum(a.unread for a in items)
+    if show_unread:
+        items = [a for a in items if a.unread]
+    return render(request, 'cases/alerts.html', {
+        'alerts': items, 'officer': officer, 'show_unread': show_unread,
+        'unread_total': unread_total, 'all_total': all_total,
+    })
 
 
 # ---------- 5. Respond ----------
@@ -376,6 +502,7 @@ def outcome_letter(request, ref):
             letter.approved_by = display_name(request.user)
             letter.date_sent = timezone.now()
             letter.save()
+            reporter_messages.email_reporter(letter)
             case.status = Status.CLOSED
             case.date_closed = timezone.now()
             case.save()
@@ -422,6 +549,145 @@ def _dashboard_stats():
     }
 
 
+DUE_SOON = timedelta(hours=24)
+REPLY_WAIT = timedelta(hours=24)
+ATTENTION_SHOWN = 5  # rows each group shows under "All"; its own tab shows every case
+
+
+def _who(c):
+    team = c.assigned_team.name if c.assigned_team else 'No team'
+    return f'{team} · {c.assigned_officer.name if c.assigned_officer else "no officer"}'
+
+
+def _needs_attention(now):
+    """Cases a manager may need to act on now, grouped by what's wrong. A case can be in more than one
+    group (an urgent job with no officer can also be overdue), because each group needs a different action.
+    Each item is (case, note)."""
+    open_cases = (Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS])
+                  .select_related('assigned_team', 'assigned_officer'))
+    overdue = [(c, f'Due {timesince(c.sla_due, now)} ago · {_who(c)}')
+               for c in open_cases.filter(sla_due__lt=now).order_by('sla_due')]
+    due_soon = [(c, f'Due in {timeuntil(c.sla_due, now)} · {_who(c)}')
+                for c in open_cases.filter(sla_due__gte=now, sla_due__lt=now + DUE_SOON).order_by('sla_due')]
+    no_officer = [(c, f'{c.assigned_team or "No team"} · reported {timesince(c.date_reported, now)} ago'
+                      f'{" · health and safety risk" if c.hs_risk else ""}')
+                  for c in open_cases.filter(assigned_officer__isnull=True)
+                  .filter(Q(priority=Priority.URGENT) | Q(hs_risk=True)).order_by('sla_due')]
+
+    # New reports waiting longer than the response target for the priority the AI suggested
+    # (or the reporter chose), which is when the reporter should have heard from a person
+    rules = {r.priority: r for r in SLARule.objects.all()}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
+    slow_triage = []
+    for c in Case.objects.filter(status=Status.NEW).order_by('date_reported'):
+        rule = rules.get(c.ai_priority or c.reported_urgency)
+        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
+            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {rule.acknowledge_text}'))
+
+    slow_reply = [(c, f'Fixed {timesince(c.date_resolved, now)} ago · {c.assigned_team or "No team"}')
+                  for c in Case.objects.filter(status=Status.RESOLVED, date_resolved__lt=now - REPLY_WAIT)
+                  .select_related('assigned_team').order_by('date_resolved')]
+    unhappy = [(c, f'Rated {c.satisfaction}/5 · closed {timesince(c.date_closed, now)} ago'
+                   f'{" · " + chr(8220) + c.satisfaction_comments[:80] + chr(8221) if c.satisfaction_comments else ""}')
+               for c in _unhappy_reporters()]
+
+    groups = [
+        ('overdue', 'Overdue', 'Overdue', 'Past the date we promised the reporter.', 'fa-clock', overdue),
+        ('due-soon', 'Due soon', 'Due in the next 24 hours', 'Check these are on track.', 'fa-hourglass-half',
+         due_soon),
+        ('no-officer', 'No officer', 'Urgent or unsafe, no officer', 'Nobody has been sent yet.', 'fa-user-slash',
+         no_officer),
+        ('slow-triage', 'Slow triage', 'Waiting too long for triage',
+         "Past the response target, and the reporter hasn't heard from a person.", 'fa-inbox', slow_triage),
+        ('slow-reply', 'No reply yet', 'Fixed, no reply after a day', 'The outcome letter is still waiting for approval.',
+         'fa-envelope', slow_reply),
+        ('unhappy', 'Unhappy reporters', 'Unhappy reporters', 'Rated the fix 2/5 or lower in the last four weeks.',
+         'fa-face-frown', unhappy),
+    ]
+    return [{'key': key, 'tab': tab, 'title': title, 'help': help_text, 'icon': icon, 'total': len(items),
+             'items': items, 'more': max(len(items) - ATTENTION_SHOWN, 0), 'case_ids': {c.pk for c, _ in items}}
+            for key, tab, title, help_text, icon, items in groups if items]
+
+
+TREND_WEEKS = 8
+
+
+def _median(values):
+    values = sorted(values)
+    if not values:
+        return None
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
+def _duration(hours):
+    """Hours as people say them: "45 min", "6.5 hours", "3.2 days"."""
+    if hours is None:
+        return '-'
+    if hours < 1:
+        return f'{round(hours * 60)} min'
+    if hours < 48:
+        return f'{hours:.1f} hours'
+    return f'{hours / 24:.1f} days'
+
+
+def _trends(now):
+    """Weekly reports in and fixes out for the last TREND_WEEKS weeks (Monday to Sunday, this week so far
+    last), and the median time a case spends at each stage, for cases that moved on in the same period."""
+    today = timezone.localtime(now).date()
+    this_monday = today - timedelta(days=today.weekday())
+    mondays = [this_monday - timedelta(weeks=n) for n in range(TREND_WEEKS - 1, -1, -1)]
+    start = timezone.make_aware(timezone.datetime.combine(mondays[0], timezone.datetime.min.time()))
+
+    def week_of(moment):
+        day = timezone.localtime(moment).date()
+        return (day - mondays[0]).days // 7
+
+    reported = [0] * TREND_WEEKS
+    resolved = [0] * TREND_WEEKS
+    for moment in Case.objects.filter(date_reported__gte=start).values_list('date_reported', flat=True):
+        reported[week_of(moment)] += 1
+    for moment in (Case.objects.exclude(status=Status.DUPLICATE).filter(date_resolved__gte=start)
+                   .values_list('date_resolved', flat=True)):
+        resolved[week_of(moment)] += 1
+    weeks = [{'label': 'This week' if i == TREND_WEEKS - 1 else f'{m.day} {m:%b}', 'start': m.isoformat(),
+              'reported': r, 'resolved': f, 'partial': i == TREND_WEEKS - 1}
+             for i, (m, r, f) in enumerate(zip(mondays, reported, resolved))]
+
+    def hours(a, b):
+        return (b - a).total_seconds() / 3600
+
+    triage = [hours(r, a) for r, a in Case.objects.filter(date_acknowledged__gte=start)
+              .values_list('date_reported', 'date_acknowledged')]
+    fix = [hours(a, r) for a, r in Case.objects.filter(date_resolved__gte=start, date_acknowledged__isnull=False)
+           .exclude(status=Status.DUPLICATE).values_list('date_acknowledged', 'date_resolved')]
+    reply = [hours(r, c) for r, c in Case.objects.filter(status=Status.CLOSED, date_closed__gte=start,
+                                                         date_resolved__isnull=False)
+             .values_list('date_resolved', 'date_closed')]
+    # The medians only count cases that have finished a stage, so say how many are still in each one
+    in_stage = dict(Case.objects.order_by().values_list('status').annotate(n=Count('pk')))
+    stages = [
+        {'name': 'Waiting for triage', 'help': 'Reported to sent to a team', 'values': triage,
+         'now': in_stage.get(Status.NEW, 0)},
+        {'name': 'Being fixed', 'help': 'Sent to a team to fixed', 'values': fix,
+         'now': in_stage.get(Status.ASSIGNED, 0) + in_stage.get(Status.IN_PROGRESS, 0)},
+        {'name': 'Waiting for the reply', 'help': 'Fixed to outcome letter sent', 'values': reply,
+         'now': in_stage.get(Status.RESOLVED, 0)},
+    ]
+    for st in stages:
+        st['median'] = _median(st['values'])
+        st['count'] = len(st['values'])
+        st['text'] = _duration(st['median'])
+        st['hours'] = round(st['median'], 1) if st['median'] is not None else None
+        del st['values']
+    longest = max((st for st in stages if st['median'] is not None), key=lambda st: st['median'], default=None)
+    return {
+        'weeks': weeks, 'stages': stages, 'longest_stage': longest,
+        'reported_total': sum(reported), 'resolved_total': sum(resolved),
+        'since': mondays[0],
+    }
+
+
 @role_required(Role.MANAGER)
 def dashboard(request):
     now = timezone.now()
@@ -446,7 +712,12 @@ def dashboard(request):
     max_cat = max([c.n for c in categories] + [1])
 
     ctx = _dashboard_stats()
-    ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat})
+    attention = _needs_attention(now)
+    trends = _trends(now)
+    ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat,
+                'trends': trends,
+                'trend_chart': {'weeks': trends['weeks'], 'stages': trends['stages']},
+                'attention': attention, 'attention_shown': ATTENTION_SHOWN, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
     return render(request, 'cases/dashboard.html', ctx)
 
 

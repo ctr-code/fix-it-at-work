@@ -7,6 +7,7 @@
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
     <form method="post" enctype="multipart/form-data" class="panel" novalidate>
         {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<p class="mb-0">{{ e }}</p>{% endfor %}</div>{% endif %}
 
         <section class="form-section" aria-labelledby="section-what">
             <header class="form-section-head">
@@ -23,6 +24,32 @@
                 <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
                 <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
             </div>
+            {{ form.address|as_crispy_field }}
+            {% comment %}
+            Optional exact spot (static/js/locate.js): the reporter's own position, or a pin they drop on a map.
+            Nothing is shared until they choose one, and they can remove it before sending. The map and its
+            library load from OpenStreetMap and cdnjs only when they press "Pick on a map".
+            {% endcomment %}
+            {{ form.latitude }}{{ form.longitude }}{{ form.location_method }}
+            <div class="locate" data-locate hidden>
+                <p class="locate-title">Show us the exact spot <span class="text-muted fw-normal">(optional)</span></p>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-primary" data-locate-button hidden><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> Use my current location</button>
+                    <button type="button" class="btn btn-outline-primary" data-pin-open aria-expanded="false" aria-controls="pin-map-wrap"><i class="fa-solid fa-map-pin" aria-hidden="true"></i> Pick on a map</button>
+                    <button type="button" class="btn btn-link btn-sm" data-locate-clear hidden>Remove location</button>
+                </div>
+                <p class="locate-status" data-locate-status aria-live="polite"></p>
+                <div class="pin-map-wrap" id="pin-map-wrap" data-pin-wrap hidden>
+                    <p class="small mb-2">Tap or click where the problem is, then drag the pin to adjust it. Using a keyboard? Move the map with the arrow keys and zoom with + and -, then choose "Pin the centre of the map".</p>
+                    <div class="pin-map" data-pin-map></div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-pin-centre><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> Pin the centre of the map</button>
+                        <button type="button" class="btn btn-link btn-sm" data-pin-close>Close the map</button>
+                    </div>
+                </div>
+                <p class="form-text mb-0">Use your current location only if you're standing by the problem. A location is only seen by the team fixing it. The map comes from OpenStreetMap and loads only when you open it.</p>
+            </div>
+            {{ building_points|json_script:"building-points" }}
         </section>
 
         <section class="form-section" aria-labelledby="section-urgency">
@@ -82,6 +109,7 @@
 {% block extra_body %}
 {% load static %}
 <script src="{% static 'js/photo-upload.js' %}"></script>
+<script src="{% static 'js/locate.js' %}"></script>
 <script>
     // Show that the report is sending and stop a second click creating a duplicate.
     // The photo goes with the report in this one request, so this is its upload feedback too.

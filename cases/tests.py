@@ -1,3 +1,4 @@
+import re
 import shutil
 import tempfile
 
@@ -140,8 +141,9 @@ class HeaderTests(TestCase):
 
     def nav_links(self, response):
         html = response.content.decode()
+        # The link text follows its icon, sometimes wrapped with a count badge and a hidden "3 cases waiting"
         return [label for label in ('Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
-                if f'aria-hidden="true"></i> {label}</a>' in html]
+                if re.search(rf'</(?:i|span)> {re.escape(label)}(?:<span class="visually-hidden">[^<]*</span>)?</a>', html)]
 
     def test_each_role_sees_its_links(self):
         expected = {
@@ -459,9 +461,9 @@ class VisitRecordingTests(TestCase):
 
     def test_visit_photo_and_dictation_flag_are_saved(self):
         photo = SimpleUploadedFile('valve.png', PNG_1PX, content_type='image/png')
-        self.visit(photo=photo, transcript_used='True')
+        self.visit(photos=photo, transcript_used='True')
         visit = self.case.visits.get()
-        self.assertTrue(visit.photo.name.startswith('visits/valve'))
+        self.assertTrue(visit.photos.get().image.name.startswith('visits/valve'))
         self.assertTrue(visit.transcript_used)
 
     def test_missing_action_is_refused(self):
@@ -798,3 +800,1050 @@ class MyReportsTests(TestCase):
                 self.assertIn('My reports', marked)
         report_page = self.client.get('/report/').content.decode()
         self.assertIn('Report an issue', report_page.split('aria-current="page"')[1].split('</a>')[0])
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReassignCaseTests(TestCase):
+    """Case handlers and managers can change the priority, team, category or officer of a triaged case."""
+
+    def make_user(self, username, role, first=''):
+        user = User.objects.create_user(username, f'{username}@example.com', 'not-a-real-password-1',
+                                        first_name=first)
+        user.profile.role = role
+        user.profile.save()
+        return user
+
+    def setUp(self):
+        from .models import Category, SLARule
+        self.facilities = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com',
+                                              manager='R Turner')
+        self.it = Team.objects.create(name='IT Service Desk', contact_email='it@example.com', manager='K Osei')
+        self.heating = Category.objects.create(name='Heating', default_team=self.facilities)
+        self.network = Category.objects.create(name='Network', default_team=self.it)
+        self.serena = Officer.objects.create(name='Serena', team=self.facilities, contact_email='s@example.com')
+        self.tom = Officer.objects.create(name='Tom', team=self.facilities, contact_email='t@example.com')
+        self.priya = Officer.objects.create(name='Priya', team=self.it, contact_email='p@example.com')
+        SLARule.objects.create(priority='medium', acknowledge_amount=8, acknowledge_unit='hours', resolve_amount=72, resolve_unit='hours')
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours', resolve_amount=24, resolve_unit='hours')
+        self.handler = self.make_user('handler1', 'handler', 'Jo')
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+        self.case = Case.objects.create(
+            title='Radiator stuck on full', description='Valve will not turn.', building='Innovation Centre',
+            reporter_name='Nina Gallagher', reporter_email='nina@example.com', priority='medium',
+            status=Status.ASSIGNED, category=self.heating, assigned_team=self.facilities,
+            assigned_officer=self.serena)
+        self.case.apply_sla()
+        self.case.save()
+        self.url = f'/cases/{self.case.reference}/change/'
+
+    def post(self, user=None, **changes):
+        data = {'team': self.facilities.pk, 'category': self.heating.pk, 'priority': 'medium',
+                'officer': self.serena.pk, 'reason': ''}
+        data.update(changes)
+        self.client.force_login(user or self.handler)
+        response = self.client.post(self.url, data)
+        self.case.refresh_from_db()
+        return response
+
+    def test_handler_and_manager_can_open_the_page(self):
+        for user in (self.handler, self.manager):
+            self.client.force_login(user)
+            response = self.client.get(self.url)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'Change priority or assignment')
+            self.assertContains(response, 'js/team-filter.js')
+
+    def test_officers_and_reporters_cannot(self):
+        for role in ('officer', 'reporter'):
+            self.client.force_login(self.make_user(f'someone_{role}', role))
+            self.assertNotEqual(self.client.get(self.url).status_code, 200)
+            self.client.post(self.url, {'team': self.it.pk, 'category': self.network.pk, 'priority': 'high'})
+            self.case.refresh_from_db()
+            self.assertEqual(self.case.assigned_team, self.facilities)
+
+    def test_raising_priority_moves_the_sla_and_is_recorded(self):
+        old_due = self.case.sla_due
+        response = self.post(priority='high', reason='Water now reaching the server room')
+        self.assertRedirects(response, f'/cases/{self.case.reference}/')
+        self.assertEqual(self.case.priority, 'high')
+        self.assertLess(self.case.sla_due, old_due)
+        change = self.case.changes.get()
+        self.assertEqual(change.changed_by, 'Jo')
+        self.assertIn('Priority: Medium → High', change.lines())
+        self.assertTrue(any(line.startswith('SLA due:') for line in change.lines()))
+        self.assertEqual(change.reason, 'Water now reaching the server room')
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Change history')
+        self.assertContains(page, 'Water now reaching the server room')
+
+    def test_change_officer_and_unassign(self):
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.case.assigned_officer, self.tom)
+        self.assertEqual(self.case.status, Status.ASSIGNED)
+        self.post(officer='')
+        self.assertIsNone(self.case.assigned_officer)
+        self.assertEqual([c.lines() for c in self.case.changes.order_by('pk')],
+                         [['Officer: Serena → Tom'], ['Officer: Tom → Unassigned']])
+
+    def test_move_to_another_team(self):
+        self.post(user=self.manager, team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertEqual((self.case.assigned_team, self.case.category, self.case.assigned_officer),
+                         (self.it, self.network, self.priya))
+        self.assertEqual(self.case.changes.get().changed_by, 'Ade')
+
+    def test_officer_or_category_from_another_team_is_refused(self):
+        response = self.post(team=self.it.pk, category=self.heating.pk, officer=self.serena.pk)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Heating is not handled by IT Service Desk')
+        self.assertContains(response, 'Serena is not in IT Service Desk')
+        self.assertEqual(self.case.assigned_team, self.facilities)
+        self.assertFalse(self.case.changes.exists())
+
+    def test_saving_without_changes_records_nothing(self):
+        old_due = self.case.sla_due
+        self.post()
+        self.assertEqual(self.case.sla_due, old_due)
+        self.assertFalse(self.case.changes.exists())
+
+    def test_in_progress_case_keeps_its_status(self):
+        self.case.status = Status.IN_PROGRESS
+        self.case.save()
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.case.status, Status.IN_PROGRESS)
+        self.assertEqual(self.case.assigned_officer, self.tom)
+
+    def test_only_triaged_open_cases_can_be_changed(self):
+        for status in (Status.RESOLVED, Status.CLOSED, Status.DUPLICATE):
+            self.case.status = status
+            self.case.save()
+            self.client.force_login(self.handler)
+            self.assertRedirects(self.client.get(self.url), f'/cases/{self.case.reference}/')
+            self.post(priority='high')
+            self.assertEqual(self.case.priority, 'medium')
+            page = self.client.get(f'/cases/{self.case.reference}/')
+            self.assertNotContains(page, 'Change priority or assignment')
+        self.case.status = Status.NEW
+        self.case.save()
+        self.assertRedirects(self.client.get(self.url), f'/triage/{self.case.reference}/',
+                             fetch_redirect_response=False)
+
+    def test_case_page_shows_the_button(self):
+        self.client.force_login(self.handler)
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, f'href="{self.url}"')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class TeamAlertTests(TestCase):
+    """The team (and officer) a case is sent to are emailed automatically, and each alert is kept on the case."""
+
+    # Same teams, officers and case as the reassignment tests
+    make_user = ReassignCaseTests.make_user
+    setUp = ReassignCaseTests.setUp
+    post = ReassignCaseTests.post
+
+    def team_mail(self):
+        """Emails to staff only; the reporter is now emailed too (see ReporterMessageTests)."""
+        from django.core import mail
+        return [m for m in mail.outbox if 'nina@example.com' not in m.to]
+
+    def triage(self, **choices):
+        self.case.status = Status.NEW
+        self.case.assigned_team = self.case.assigned_officer = None
+        self.case.ai_summary = 'Radiator valve seized, room too hot.'
+        self.case.save()
+        data = {'team': self.facilities.pk, 'category': self.heating.pk, 'priority': 'medium',
+                'officer': '', 'duplicate_of': ''}
+        data.update(choices)
+        self.client.force_login(self.handler)
+        response = self.client.post(f'/triage/{self.case.reference}/', data, follow=True)
+        self.case.refresh_from_db()
+        return response
+
+    def test_triage_emails_the_team_and_officer(self):
+        from django.core import mail
+        response = self.triage(officer=self.serena.pk)
+        self.assertEqual(len(self.team_mail()), 1)
+        email = self.team_mail()[0]
+        self.assertEqual(email.to, ['fac@example.com', 's@example.com'])
+        self.assertEqual(email.subject, f'[Medium] {self.case.reference} Radiator stuck on full')
+        self.assertIn('Serena, you have a new medium priority job.', email.body)
+        self.assertIn('Radiator valve seized, room too hot.', email.body)
+        self.assertIn(f'http://testserver/officer/{self.case.reference}/', email.body)
+        alert = self.case.alerts.get()
+        self.assertTrue(alert.delivered)
+        self.assertEqual(alert.recipients, 'fac@example.com, s@example.com')
+        self.assertContains(response, 'Alert sent to fac@example.com, s@example.com.')
+
+    def test_triage_without_officer_alerts_the_team_inbox(self):
+        from django.core import mail
+        self.triage()
+        self.assertEqual(self.team_mail()[0].to, ['fac@example.com'])
+        self.assertIn('Facilities Helpdesk has a new medium priority job.', self.team_mail()[0].body)
+        self.assertIn('anyone in the team can take it', self.team_mail()[0].body)
+
+    def test_urgent_and_safety_cases_are_flagged(self):
+        from django.core import mail
+        self.case.hs_risk = True
+        self.case.save()
+        self.triage(priority='urgent')
+        self.assertTrue(self.team_mail()[0].subject.startswith('[Urgent] '))
+        self.assertTrue(self.team_mail()[0].subject.endswith(' - health and safety risk'))
+        self.assertIn('HEALTH AND SAFETY RISK', self.team_mail()[0].body)
+
+    def test_merging_a_duplicate_alerts_nobody(self):
+        from django.core import mail
+        other = Case.objects.create(title='Radiator on full again', description='Same radiator.',
+                                    building='Innovation Centre', reporter_name='Sam', reporter_email='sam@example.com',
+                                    status=Status.ASSIGNED, assigned_team=self.facilities)
+        self.triage(duplicate_of=other.pk)
+        self.assertEqual(self.case.status, Status.DUPLICATE)
+        self.assertEqual(self.team_mail(), [])
+
+    def test_reassigning_alerts_new_team_and_both_officers(self):
+        from django.core import mail
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertEqual(self.team_mail()[0].to, ['it@example.com', 'p@example.com', 's@example.com'])
+        body = self.team_mail()[0].body
+        self.assertIn('- Team: Facilities Helpdesk → IT Service Desk', body)
+        self.assertIn('Serena no longer needs to attend.', body)
+        self.assertEqual(self.case.alerts.get().kind, 'changed')
+
+    def test_priority_change_alerts_the_current_team(self):
+        from django.core import mail
+        self.post(priority='high')
+        self.assertEqual(self.team_mail()[0].to, ['fac@example.com', 's@example.com'])
+        self.assertIn('- Priority: Medium → High', self.team_mail()[0].body)
+        self.assertNotIn('no longer needs to attend', self.team_mail()[0].body)
+
+    def test_no_change_sends_nothing(self):
+        from django.core import mail
+        self.post()
+        self.assertEqual(self.team_mail(), [])
+
+    def test_a_mail_failure_is_recorded_and_routing_still_happens(self):
+        from unittest import mock
+        with mock.patch('cases.alerts.send_mail', side_effect=OSError('Mail server unreachable')):
+            response = self.triage()
+        self.assertEqual(self.case.status, Status.ASSIGNED)
+        alert = self.case.alerts.get()
+        self.assertFalse(alert.delivered)
+        self.assertEqual(alert.error, 'Mail server unreachable')
+        self.assertContains(response, 'could not be sent')
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Not sent')
+
+    def test_case_page_lists_alerts(self):
+        self.triage(officer=self.serena.pk)
+        page = self.client.get(f'/cases/{self.case.reference}/')
+        self.assertContains(page, 'Team alerts')
+        self.assertContains(page, 'Emailed')
+        self.assertContains(page, 'fac@example.com, s@example.com')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class AlertInboxTests(TestCase):
+    """Officers see alerts sent to them or their team on the Alerts page, with an unread count in the navbar."""
+
+    make_user = ReassignCaseTests.make_user
+    post = ReassignCaseTests.post
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        # Serena and Tom are in Facilities, Priya is in IT; each gets a sign-in
+        for officer in (self.serena, self.tom, self.priya):
+            officer.user = self.make_user(officer.name.lower(), 'officer')
+            officer.save()
+
+    def page(self, officer, url='/alerts/'):
+        self.client.force_login(officer.user)
+        return self.client.get(url)
+
+    def unread(self, officer):
+        from .alerts import unread_count
+        return unread_count(officer.user)
+
+    def test_new_job_reaches_the_officer_and_their_team(self):
+        self.triage(officer=self.serena.pk)
+        self.assertEqual((self.unread(self.serena), self.unread(self.tom), self.unread(self.priya)), (1, 1, 0))
+        page = self.page(self.serena)
+        self.assertContains(page, 'Sent to you')
+        self.assertContains(page, 'Serena, you have a new medium priority job.')
+        self.assertContains(page, 'class="alert-new"')
+        self.assertContains(self.page(self.tom), 'Sent to Facilities Helpdesk')
+        self.assertContains(self.page(self.priya), 'No alerts yet')
+
+    def test_navbar_shows_the_unread_count(self):
+        self.triage(officer=self.serena.pk)
+        self.client.force_login(self.serena.user)
+        home = self.client.get('/')
+        self.assertContains(home, 'href="/alerts/"')
+        self.assertContains(home, '<span class="nav-badge" aria-hidden="true">1</span>', html=False)
+        self.assertContains(home, ', 1 unread</span>')
+        # On phones the menu button carries the count too
+        self.assertContains(home, 'aria-label="Open menu, 1 needs your attention"')
+        self.assertContains(home, 'toggler-badge')
+        # No badge when there's nothing unread
+        self.client.force_login(self.priya.user)
+        home = self.client.get('/')
+        self.assertContains(home, 'href="/alerts/"')
+        self.assertNotContains(home, 'nav-badge')
+
+    def test_mark_as_read_is_per_person(self):
+        self.triage(officer=self.serena.pk)
+        alert = self.case.alerts.get()
+        self.client.force_login(self.serena.user)
+        self.assertRedirects(self.client.post('/alerts/', {'read': alert.pk}), '/alerts/')
+        self.assertEqual((self.unread(self.serena), self.unread(self.tom)), (0, 1))
+        self.assertNotContains(self.page(self.serena), 'class="alert-new"')
+
+    def test_opening_the_job_marks_it_read(self):
+        self.triage(officer=self.serena.pk)
+        self.client.force_login(self.serena.user)
+        response = self.client.post('/alerts/', {'open': self.case.alerts.get().pk})
+        self.assertRedirects(response, f'/officer/{self.case.reference}/')
+        self.assertEqual(self.unread(self.serena), 0)
+
+    def test_mark_all_as_read(self):
+        self.triage(officer=self.serena.pk)
+        self.post(priority='high')
+        self.assertEqual(self.unread(self.serena), 2)
+        self.client.force_login(self.serena.user)
+        self.client.post('/alerts/', {'all': '1'})
+        self.assertEqual(self.unread(self.serena), 0)
+
+    def test_unread_filter(self):
+        self.triage(officer=self.serena.pk)
+        self.post(priority='high')
+        first = self.case.alerts.order_by('pk').first()
+        self.client.force_login(self.serena.user)
+        self.client.post('/alerts/?show=unread', {'read': first.pk})
+        page = self.page(self.serena, '/alerts/?show=unread')
+        self.assertContains(page, 'Priority: Medium → High')
+        self.assertNotContains(page, 'you have a new medium priority job')
+        self.assertContains(self.page(self.serena), 'you have a new medium priority job')
+
+    def test_other_teams_alerts_cannot_be_marked_or_seen(self):
+        self.triage(officer=self.serena.pk)
+        alert = self.case.alerts.get()
+        self.client.force_login(self.priya.user)
+        self.client.post('/alerts/', {'read': alert.pk})
+        self.client.post('/alerts/', {'all': '1'})
+        self.assertFalse(alert.reads.exists())
+        self.assertNotContains(self.page(self.priya), alert.subject)
+
+    def test_officer_taken_off_a_job_is_told_but_cannot_open_it(self):
+        self.triage(officer=self.serena.pk)
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        page = self.page(self.serena)
+        self.assertContains(page, 'Serena no longer needs to attend.')
+        self.assertContains(page, f'{self.case.reference} is no longer with you.')
+        self.assertEqual(page.content.decode().count('name="open"'), 0)
+        # Priya, the new officer, can open it
+        self.assertContains(self.page(self.priya), 'name="open"')
+
+    def test_only_officers_have_an_alerts_page(self):
+        self.client.force_login(self.handler)
+        self.assertEqual(self.client.get('/alerts/').status_code, 403)
+        self.assertNotContains(self.client.get('/'), 'href="/alerts/"')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReporterMessageTests(TestCase):
+    """The reporter hears from us at each stage, in their language, and sees new messages counted on My reports."""
+
+    make_user = ReassignCaseTests.make_user
+    post = ReassignCaseTests.post
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.save()
+        self.serena.user = self.make_user('serena', 'officer')
+        self.serena.save()
+
+    def messages_to_nina(self):
+        return list(self.case.communications.filter(date_sent__isnull=False).order_by('pk'))
+
+    def nina_mail(self):
+        from django.core import mail
+        return [m for m in mail.outbox if m.to == ['nina@example.com']]
+
+    def unread(self):
+        from .reporter_messages import unread_count
+        return unread_count(self.nina)
+
+    def visit(self, fixed):
+        self.client.force_login(self.serena.user)
+        data = {'note': 'Valve seized.', 'action': 'Freed the valve.'}
+        if fixed:
+            data['fixed'] = 'on'
+        self.client.post(f'/officer/{self.case.reference}/', data)
+        self.case.refresh_from_db()
+
+    def test_triage_tells_the_reporter_and_emails_them(self):
+        self.triage()
+        message = self.messages_to_nina()[-1]
+        self.assertEqual(message.kind, 'ack')
+        self.assertIn('passed to our Facilities Helpdesk team as medium priority. We aim to resolve it by',
+                      message.draft_text)
+        self.assertEqual(len(self.nina_mail()), 1)
+        self.assertEqual(self.nina_mail()[0].body, message.draft_text)
+        self.assertEqual(self.unread(), 1)
+
+    def test_messages_use_the_reporters_language(self):
+        from . import reporter_messages
+        self.case.preferred_language = 'es'
+        self.case.save()
+        self.triage()
+        self.assertIn('con prioridad media', self.messages_to_nina()[-1].draft_text)
+        self.case.preferred_language = 'pl'
+        self.assertIn('Otrzymaliśmy Twoje zgłoszenie', reporter_messages.received(self.case).draft_text)
+        self.case.preferred_language = 'ur'
+        receipt = reporter_messages.received(self.case)
+        self.assertIn('موصول', receipt.draft_text)
+        self.assertEqual(receipt.language, 'ur')
+
+    def test_new_target_date_or_team_is_explained(self):
+        self.post(priority='high')
+        update = self.messages_to_nina()[-1]
+        self.assertEqual(update.kind, 'update')
+        self.assertIn('We now aim to fix it by', update.draft_text)
+        self.assertNotIn('now being handled', update.draft_text)
+        self.post(priority='high', team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertIn('It is now being handled by our IT Service Desk team.', self.messages_to_nina()[-1].draft_text)
+
+    def test_team_names_ending_in_team_are_not_doubled(self):
+        self.it.name = 'IT Network Team'
+        self.it.save()
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertIn('handled by our IT Network team.', self.messages_to_nina()[-1].draft_text)
+
+    def test_a_new_officer_alone_does_not_message_the_reporter(self):
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.messages_to_nina(), [])
+
+    def test_visits_are_reported(self):
+        self.visit(fixed=False)
+        self.assertIn('An officer visited on', self.messages_to_nina()[-1].draft_text)
+        self.assertIn('needs another visit', self.messages_to_nina()[-1].draft_text)
+        self.visit(fixed=True)
+        self.assertIn('Good news: an officer has fixed "Radiator stuck on full"', self.messages_to_nina()[-1].draft_text)
+        self.assertEqual(self.unread(), 2)
+
+    def test_approved_outcome_letter_is_emailed_and_draft_is_not_counted(self):
+        self.visit(fixed=True)
+        self.client.force_login(self.handler)
+        self.client.get(f'/cases/{self.case.reference}/letter/')  # makes the AI draft
+        self.assertEqual(self.unread(), 1)  # the "fixed" update only, not the draft letter
+        draft = self.case.communications.get(kind='outcome').draft_text
+        self.client.post(f'/cases/{self.case.reference}/letter/', {'draft_text': draft})
+        self.assertEqual(self.unread(), 2)
+        self.assertEqual(self.nina_mail()[-1].body, draft)
+
+    def test_opening_the_report_marks_messages_read(self):
+        self.triage()
+        self.post(priority='high')
+        # Staff looking at the report don't mark the reporter's messages as read
+        self.client.force_login(self.handler)
+        self.client.get(f'/track/{self.case.reference}/')
+        self.assertEqual(self.unread(), 2)
+        self.client.force_login(self.nina)
+        page = self.client.get(f'/track/{self.case.reference}/')
+        self.assertEqual(page.content.decode().count('<span class="alert-new">New</span>'), 2)
+        self.assertEqual(self.unread(), 0)
+        page = self.client.get(f'/track/{self.case.reference}/')
+        self.assertNotContains(page, '<span class="alert-new">New</span>')
+        # Newest first
+        text = page.content.decode()
+        self.assertLess(text.index('We now aim to fix it by'), text.index('passed to our Facilities Helpdesk'))
+
+    def test_my_reports_and_navbar_show_new_messages(self):
+        self.triage()
+        self.client.force_login(self.nina)
+        page = self.client.get('/my-reports/')
+        self.assertContains(page, '1 new message.')
+        self.assertContains(page, f'href="/track/{self.case.reference}/#your-messages"')
+        self.assertContains(page, ', 1 new message</span>')
+        self.assertContains(page, 'aria-label="Open menu, 1 needs your attention"')
+        self.client.get(f'/track/{self.case.reference}/')
+        page = self.client.get('/my-reports/')
+        self.assertNotContains(page, 'new message')
+        self.assertNotContains(page, 'nav-badge')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseQueueCountTests(TestCase):
+    """Case handlers and managers see how many cases are waiting for them on "Case queue" in the navbar."""
+
+    make_user = ReassignCaseTests.make_user
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)  # one assigned case, which isn't waiting for a handler
+
+    def add_case(self, status, **extra):
+        return Case.objects.create(title=f'{status} case', description='Test.', building='Main Office',
+                                   reporter_name='Sam', reporter_email='sam@example.com', status=status, **extra)
+
+    def nav(self, user):
+        self.client.force_login(user)
+        return self.client.get('/').content.decode()
+
+    def test_counts_cases_to_triage_and_reply_to(self):
+        from django.utils import timezone
+        self.add_case(Status.NEW)
+        self.add_case(Status.NEW)
+        self.add_case(Status.RESOLVED)
+        # Not waiting for a handler: with a team, closed (even with an unhappy reporter), merged
+        self.add_case(Status.IN_PROGRESS)
+        self.add_case(Status.CLOSED, satisfaction=1, date_closed=timezone.now())
+        self.add_case(Status.DUPLICATE)
+        for user in (self.handler, self.manager):
+            page = self.nav(user)
+            self.assertIn('<span class="nav-badge" aria-hidden="true">3</span></span> Case queue', page)
+            self.assertIn('Case queue<span class="visually-hidden">, 3 cases waiting</span>', page)
+            self.assertIn('aria-label="Open menu, 3 need your attention"', page)
+
+    def test_count_goes_down_when_a_case_is_triaged(self):
+        self.add_case(Status.NEW)
+        self.case.status = Status.NEW  # triage() resets this case to new as well
+        self.case.save()
+        self.assertIn(', 2 cases waiting', self.nav(self.handler))
+        self.triage()
+        page = self.nav(self.handler)
+        self.assertIn(', 1 case waiting', page)
+        self.assertIn('aria-label="Open menu, 1 needs your attention"', page)
+
+    def test_no_badge_when_nothing_is_waiting(self):
+        page = self.nav(self.handler)
+        self.assertIn('Case queue', page)
+        self.assertNotIn('nav-badge', page)
+        self.assertNotIn('your attention', page)
+
+    def test_only_handlers_and_managers_get_the_count(self):
+        self.add_case(Status.NEW)
+        for role in ('officer', 'reporter'):
+            page = self.nav(self.make_user(f'someone_{role}', role))
+            self.assertNotIn('cases waiting', page)
+            self.assertNotIn('case waiting', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardAttentionTests(TestCase):
+    """The manager dashboard opens with the cases that need acting on now, grouped by what's wrong."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import SLARule
+        self.now = timezone.now()
+        self.hours = lambda h: self.now + timedelta(hours=h)
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.officer = Officer.objects.create(name='Serena', team=self.team, contact_email='s@example.com')
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours', resolve_amount=24, resolve_unit='hours')
+        SLARule.objects.create(priority='medium', acknowledge_amount=8, acknowledge_unit='hours', resolve_amount=72, resolve_unit='hours')
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+
+    def add(self, title, status=Status.ASSIGNED, **extra):
+        extra.setdefault('assigned_team', self.team if status != Status.NEW else None)
+        extra.setdefault('priority', 'medium')
+        return Case.objects.create(title=title, description='Test.', building='Main Office', reporter_name='Sam',
+                                   reporter_email='sam@example.com', status=status, **extra)
+
+    def dashboard(self):
+        self.client.force_login(self.manager)
+        return self.client.get('/dashboard/').content.decode()
+
+    def group(self, page, key):
+        """The HTML of one group, or '' if it isn't shown."""
+        start = page.find(f'id="attention-{key}"')
+        return '' if start < 0 else page[start:page.find('</section>', start)]
+
+    def test_each_kind_of_problem_has_its_group(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        self.add('Due soon heating', sla_due=self.hours(5), assigned_officer=self.officer)
+        self.add('Plenty of time', sla_due=self.hours(24 * 5), assigned_officer=self.officer)
+        self.add('Urgent with nobody', priority='urgent', sla_due=self.hours(48))
+        self.add('Unsafe with nobody', hs_risk=True, sla_due=self.hours(48))
+        self.add('Medium with nobody', sla_due=self.hours(48))
+        self.add('Slow triage', status=Status.NEW, ai_priority='high', date_reported=self.hours(-6))
+        self.add('Fresh report', status=Status.NEW, ai_priority='high', date_reported=self.hours(-1))
+        self.add('Letter waiting', status=Status.RESOLVED, date_resolved=self.hours(-30))
+        self.add('Just fixed', status=Status.RESOLVED, date_resolved=self.hours(-2))
+        self.add('Grumpy', status=Status.CLOSED, satisfaction=1, satisfaction_comments='Took ages',
+                 date_closed=self.hours(-24))
+        page = self.dashboard()
+        expected = {
+            'overdue': ['Overdue leak'], 'due-soon': ['Due soon heating'],
+            'no-officer': ['Urgent with nobody', 'Unsafe with nobody'], 'slow-triage': ['Slow triage'],
+            'slow-reply': ['Letter waiting'], 'unhappy': ['Grumpy'],
+        }
+        for key, titles in expected.items():
+            with self.subTest(group=key):
+                html = self.group(page, key)
+                for title in titles:
+                    self.assertIn(title, html)
+        for title in ('Plenty of time', 'Medium with nobody', 'Fresh report', 'Just fixed'):
+            self.assertNotIn(title, self.group(page, 'overdue') + self.group(page, 'due-soon')
+                             + self.group(page, 'no-officer') + self.group(page, 'slow-triage')
+                             + self.group(page, 'slow-reply'))
+        self.assertIn('target 4 hours', self.group(page, 'slow-triage'))
+        self.assertIn('Rated 1/5', self.group(page, 'unhappy'))
+        self.assertIn('health and safety risk', self.group(page, 'no-officer'))
+        self.assertIn('Facilities Helpdesk · Serena', self.group(page, 'overdue'))
+        self.assertIn('7 cases across 6 areas', page)
+
+    def test_long_groups_show_five_under_all_and_the_rest_in_their_tab(self):
+        for i in range(7):
+            self.add(f'Late job {i}', sla_due=self.hours(-10 + i), assigned_officer=self.officer)
+        html = self.group(self.dashboard(), 'overdue')
+        # Every case is in the page; the two beyond the first five are only shown in the group's own tab
+        self.assertEqual(html.count('<li>'), 5)
+        self.assertEqual(html.count('<li data-attention-extra>'), 2)
+        self.assertLess(html.index('Late job 0'), html.index('Late job 6'))  # most overdue first
+        self.assertIn('data-attention-show="overdue" hidden>Show all 7', html)
+
+    def test_tabs_for_all_and_each_group(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        self.add('Grumpy', status=Status.CLOSED, satisfaction=1, date_closed=self.hours(-24))
+        page = self.dashboard()
+        self.assertIn('data-attention-tab="all">All <span class="tab-count">2</span>', page)
+        self.assertIn('data-attention-tab="overdue">Overdue <span class="tab-count">1</span>', page)
+        self.assertIn('data-attention-tab="unhappy">Unhappy reporters <span class="tab-count">1</span>', page)
+        self.assertNotIn('data-attention-tab="due-soon"', page)  # empty groups get no tab
+        self.assertIn('js/attention-tabs.js', page)
+
+    def test_empty_groups_are_left_out(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        page = self.dashboard()
+        self.assertIn('id="attention-overdue"', page)
+        self.assertNotIn('id="attention-unhappy"', page)
+        self.assertIn('1 case across 1 area', page)
+
+    def test_all_clear(self):
+        page = self.dashboard()
+        self.assertIn('Nothing needs attention right now', page)
+        self.assertNotIn('Overdue cases - act now', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardTrendTests(TestCase):
+    """The dashboard shows reports in vs fixes out each week, and the median time at each stage."""
+
+    make_user = ReassignCaseTests.make_user
+    add = DashboardAttentionTests.add
+
+    def setUp(self):
+        from datetime import datetime, timedelta
+
+        from django.utils import timezone
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='fac@example.com', manager='R Turner')
+        self.manager = self.make_user('manager1', 'manager', 'Ade')
+        # A fixed "now": Wednesday 11 November 2026, midday, so the weeks are predictable
+        self.now = timezone.make_aware(datetime(2026, 11, 11, 12, 0))
+        self.at = lambda days, hours=0: self.now - timedelta(days=days, hours=hours)
+
+    def trends(self):
+        from .views import _trends
+        return _trends(self.now)
+
+    def test_weeks_run_monday_to_sunday_with_this_week_last(self):
+        weeks = self.trends()['weeks']
+        self.assertEqual(len(weeks), 8)
+        self.assertEqual(weeks[0]['start'], '2026-09-21')
+        self.assertEqual(weeks[-1]['start'], '2026-11-09')
+        self.assertEqual(weeks[-1]['label'], 'This week')
+        self.assertTrue(weeks[-1]['partial'])
+        self.assertEqual(weeks[-2]['label'], '2 Nov')
+
+    def test_reports_and_fixes_are_counted_in_their_week(self):
+        self.add('This week A', status=Status.NEW, date_reported=self.at(1))            # Tue 10 Nov
+        self.add('This week B', status=Status.NEW, date_reported=self.at(2))            # Mon 9 Nov
+        self.add('Last week', status=Status.RESOLVED, date_reported=self.at(4),         # Sat 7 Nov
+                 date_resolved=self.at(1))
+        self.add('Merged', status=Status.DUPLICATE, date_reported=self.at(3), date_resolved=self.at(3))
+        self.add('Too old', status=Status.NEW, date_reported=self.at(70))
+        t = self.trends()
+        self.assertEqual((t['weeks'][-1]['reported'], t['weeks'][-1]['resolved']), (2, 1))
+        self.assertEqual((t['weeks'][-2]['reported'], t['weeks'][-2]['resolved']), (2, 0))  # merged counts as reported only
+        self.assertEqual((t['reported_total'], t['resolved_total']), (4, 1))
+
+    def test_median_time_at_each_stage(self):
+        for triage_h, fix_h, reply_h in [(1, 10, 2), (3, 20, 4), (2, 30, 6)]:
+            reported = self.at(5)
+            from datetime import timedelta
+            acked = reported + timedelta(hours=triage_h)
+            fixed = acked + timedelta(hours=fix_h)
+            self.add('Done', status=Status.CLOSED, date_reported=reported, date_acknowledged=acked,
+                     date_resolved=fixed, date_closed=fixed + timedelta(hours=reply_h))
+        self.add('Waiting', status=Status.NEW, date_reported=self.at(1))
+        stages = {st['name']: st for st in self.trends()['stages']}
+        self.assertEqual(stages['Waiting for triage']['text'], '2.0 hours')
+        self.assertEqual(stages['Being fixed']['text'], '20.0 hours')
+        self.assertEqual(stages['Waiting for the reply']['text'], '4.0 hours')
+        self.assertEqual(stages['Waiting for triage']['now'], 1)
+        self.assertEqual(self.trends()['longest_stage']['name'], 'Being fixed')
+
+    def test_durations_read_naturally(self):
+        from .views import _duration
+        self.assertEqual([_duration(h) for h in (None, 0.5, 6.25, 72)], ['-', '30 min', '6.2 hours', '3.0 days'])
+
+    def test_dashboard_shows_the_charts_and_a_table(self):
+        self.add('Recent', status=Status.NEW)
+        self.client.force_login(self.manager)
+        page = self.client.get('/dashboard/').content.decode()
+        self.assertIn('Reported and resolved each week', page)
+        self.assertIn('id="trend-data"', page)
+        self.assertIn('js/trend-chart.js', page)
+        self.assertIn('Show as a table', page)
+        self.assertIn('This week (so far)', page)
+        self.assertIn('Where the time goes', page)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseLocationTests(TestCase):
+    """Each case has an address and a map point: from the building directory, or from the reporter's phone."""
+
+    report = ReportPhotoTests.report
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from .models import Building
+        self.user = User.objects.create_user('reporter1', 'reporter1@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        Building.objects.create(name='Main Office', address='10 Example Square, Birmingham',
+                                latitude=Decimal('52.481000'), longitude=Decimal('-1.899000'))
+
+    def latest(self):
+        return Case.objects.latest('pk')
+
+    def test_a_known_building_fills_in_the_address_and_map_point(self):
+        self.report(building='main office')  # any capitals
+        case = self.latest()
+        self.assertEqual(case.address, '10 Example Square, Birmingham')
+        self.assertEqual((str(case.latitude), str(case.longitude)), ('52.481000', '-1.899000'))
+        self.assertEqual(case.location_source, 'building')
+
+    def test_a_shared_location_is_kept_and_rounded(self):
+        self.report(latitude='52.4799991234', longitude='-1.9012345678')
+        case = self.latest()
+        self.assertEqual((str(case.latitude), str(case.longitude)), ('52.480000', '-1.901230'))
+        self.assertEqual(case.location_source, 'device')
+        self.assertEqual(case.address, '10 Example Square, Birmingham')  # the address still comes from the building
+
+    def test_somewhere_else_with_a_typed_address(self):
+        self.report(building='Car park next door', address='Behind 12 Example Road')
+        case = self.latest()
+        self.assertEqual(case.address, 'Behind 12 Example Road')
+        self.assertFalse(case.has_map_point)
+        self.assertEqual(case.map_url, '')
+
+    def test_bad_locations_are_refused(self):
+        for extra, message in [({'latitude': '52.48'}, 'only got half of your location'),
+                               ({'latitude': '95', 'longitude': '1'}, 'not a real place')]:
+            with self.subTest(extra=extra):
+                response = self.report(**extra)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, message)
+        self.assertFalse(Case.objects.exists())
+
+    def test_form_offers_use_my_location(self):
+        page = self.client.get('/report/')
+        self.assertContains(page, 'Use my current location')
+        self.assertContains(page, 'js/locate.js')
+        self.assertContains(page, 'name="latitude"')
+        self.assertContains(page, '<option value="Main Office">')
+
+    def test_staff_and_reporter_see_the_map_link(self):
+        self.report()
+        case = self.latest()
+        url = 'https://www.openstreetmap.org/?mlat=52.481000&amp;mlon=-1.899000#map=18/52.481000/-1.899000'
+        self.assertContains(self.client.get(f'/track/{case.reference}/'), url)
+        handler = User.objects.create_user('handler1', 'h@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        page = self.client.get(f'/cases/{case.reference}/')
+        self.assertContains(page, '10 Example Square, Birmingham')
+        self.assertContains(page, url)
+        self.assertContains(page, 'rel="noopener noreferrer"')
+        self.assertContains(page, 'building location')
+
+    def test_sync_buildings_fills_old_cases_but_keeps_shared_locations(self):
+        from decimal import Decimal
+
+        from django.core.management import call_command
+        old = Case.objects.create(title='Old', description='x', building='Riverside House', reporter_name='Sam',
+                                  reporter_email='sam@example.com')
+        mine = Case.objects.create(title='Mine', description='x', building='Riverside House', reporter_name='Sam',
+                                   reporter_email='sam@example.com', latitude=Decimal('52.1'),
+                                   longitude=Decimal('-1.5'), location_source='device')
+        from io import StringIO
+        call_command('sync_buildings', stdout=StringIO())
+        old.refresh_from_db()
+        mine.refresh_from_db()
+        self.assertEqual(old.address, '5 Demo Wharf, Birmingham')
+        self.assertEqual(old.location_source, 'building')
+        self.assertEqual((mine.latitude, mine.location_source), (Decimal('52.100000'), 'device'))
+        self.assertEqual(mine.address, '5 Demo Wharf, Birmingham')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class MapPinTests(TestCase):
+    """Reporters can drop a pin on a map; the case records that the spot was pinned on a map."""
+
+    report = ReportPhotoTests.report
+    setUp = CaseLocationTests.setUp
+    latest = CaseLocationTests.latest
+
+    def test_a_pinned_spot_is_recorded_as_a_map_pin(self):
+        self.report(latitude='52.47911', longitude='-1.90202', location_method='map')
+        case = self.latest()
+        self.assertEqual(case.location_source, 'map')
+        self.assertEqual(str(case.latitude), '52.479110')
+        self.assertContains(self.client.get(f'/track/{case.reference}/'), 'the spot you pinned')
+        handler = User.objects.create_user('handler1', 'h@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        self.assertContains(self.client.get(f'/cases/{case.reference}/'), 'pinned on a map by the reporter')
+
+    def test_unknown_methods_count_as_the_device(self):
+        self.report(latitude='52.47911', longitude='-1.90202', location_method='<script>')
+        self.assertEqual(self.latest().location_source, 'device')
+        self.report(latitude='52.47911', longitude='-1.90202')
+        self.assertEqual(self.latest().location_source, 'device')
+
+    def test_form_offers_the_map_with_the_buildings(self):
+        page = self.client.get('/report/').content.decode()
+        self.assertIn('Pick on a map', page)
+        self.assertIn('Pin the centre of the map', page)
+        self.assertIn('id="building-points"', page)
+        self.assertIn('"Main Office": [52.481, -1.899]', page)
+        # The map library loads from the page script only when the map is opened, so the page itself has none
+        self.assertNotIn('leaflet', page.lower())
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class VisitMediaTests(TestCase):
+    """A visit keeps several photos, a voice note and the dictation transcript, and shows them on case pages."""
+
+    make_user = VisitRecordingTests.make_user
+    setUp = VisitRecordingTests.setUp
+    visit = VisitRecordingTests.visit
+
+    def png(self, name):
+        return SimpleUploadedFile(name, PNG_1PX, content_type='image/png')
+
+    def audio(self, name='voice-note.webm', content_type='audio/webm;codecs=opus', size=2048):
+        return SimpleUploadedFile(name, b'\x1aE\xdf\xa3' + b'\0' * size, content_type=content_type)
+
+    def test_several_photos_a_voice_note_and_the_transcript_are_saved(self):
+        self.visit(photos=[self.png('before.png'), self.png('after.png')], audio=self.audio(),
+                   transcript='The valve was seized. I replaced the valve head.', transcript_used='True', fixed='on')
+        visit = self.case.visits.get()
+        self.assertEqual([p.image.name.split('/')[-1][:5] for p in visit.photos.all()], ['befor', 'after'])
+        self.assertTrue(visit.audio.name.startswith('visits/audio/voice-note'))
+        self.assertEqual(visit.transcript, 'The valve was seized. I replaced the valve head.')
+        self.assertEqual(len(visit.all_photos()), 2)
+
+    def test_a_safari_recording_is_accepted(self):
+        self.visit(audio=self.audio('voice-note.m4a', 'audio/mp4'))
+        self.assertTrue(self.case.visits.get().audio)
+
+    def test_bad_audio_is_refused(self):
+        for f, message in [(self.audio('notes.exe', 'application/octet-stream'), 'not an audio recording'),
+                           (self.audio('song.txt', 'audio/mpeg'), 'not an audio recording'),
+                           (self.audio('long.webm', size=21 * 1024 * 1024), 'must be 20MB or less')]:
+            with self.subTest(name=f.name):
+                response = self.visit(audio=f)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, message)
+        self.assertFalse(self.case.visits.exists())
+
+    def test_too_many_photos_are_refused(self):
+        response = self.visit(photos=[self.png(f'p{i}.png') for i in range(6)])
+        self.assertContains(response, 'Please choose up to 5 photos')
+        self.assertFalse(self.case.visits.exists())
+
+    def test_form_has_the_recorder_and_the_photo_area(self):
+        page = self.client.get(self.url).content.decode()
+        self.assertIn('Record a voice note', page)
+        self.assertIn('name="audio"', page)
+        self.assertIn('accept="audio/*"', page)
+        self.assertIn('js/voice-note.js', page)
+        self.assertIn('name="photos"', page)
+        self.assertIn('js/photo-upload.js', page)
+        self.assertIn('name="transcript"', page)
+
+    def test_case_page_shows_photos_voice_note_and_transcript(self):
+        self.visit(photos=[self.png('before.png')], audio=self.audio(), transcript='Valve seized.', fixed='on')
+        handler = self.make_user('handler1', 'handler')
+        self.client.force_login(handler)
+        page = self.client.get(f'/cases/{self.case.reference}/').content.decode()
+        visit = self.case.visits.get()
+        self.assertIn(f'src="{visit.audio.url}"', page)
+        self.assertIn('Dictation, as heard', page)
+        self.assertIn('Valve seized.', page)
+        self.assertIn(visit.photos.get().image.url, page)
+
+    def test_older_visits_with_one_photo_still_show_it(self):
+        from .models import SiteVisit
+        old = SiteVisit.objects.create(case=self.case, officer=self.officer, note='Old note', photo='visits/old.png')
+        self.assertEqual([f.name for f in old.all_photos()], ['visits/old.png'])
+
+
+@override_settings(TIME_ZONE='Europe/London', SLA_WORKING_WEEKDAYS=(0, 1, 2, 3, 4),
+                   SLA_WORKDAY_START='08:00', SLA_WORKDAY_END='17:00')
+class WorkingTimeTests(TestCase):
+    """SLA targets in working hours and days skip evenings, weekends and holidays (Mon-Fri 08:00-17:00)."""
+
+    def at(self, text):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.fromisoformat(text).replace(tzinfo=ZoneInfo('Europe/London'))
+
+    def local(self, moment):
+        from django.utils import timezone
+        return timezone.localtime(moment).strftime('%a %Y-%m-%d %H:%M')
+
+    def add(self, start, amount, unit, holidays=()):
+        from .working_time import add_target
+        return self.local(add_target(self.at(start), amount, unit, set(holidays)))
+
+    def test_working_hours(self):
+        # Wednesday 11 November 2026
+        self.assertEqual(self.add('2026-11-11 10:00', 4, 'working_hours'), 'Wed 2026-11-11 14:00')
+        self.assertEqual(self.add('2026-11-11 15:00', 4, 'working_hours'), 'Thu 2026-11-12 10:00')  # overnight
+        self.assertEqual(self.add('2026-11-11 06:30', 1, 'working_hours'), 'Wed 2026-11-11 09:00')  # before work
+        self.assertEqual(self.add('2026-11-13 16:00', 4, 'working_hours'), 'Mon 2026-11-16 11:00')  # over a weekend
+        self.assertEqual(self.add('2026-11-14 12:00', 2, 'working_hours'), 'Mon 2026-11-16 10:00')  # from a Saturday
+
+    def test_working_days(self):
+        self.assertEqual(self.add('2026-11-11 10:00', 1, 'working_days'), 'Thu 2026-11-12 10:00')
+        self.assertEqual(self.add('2026-11-13 18:00', 1, 'working_days'), 'Mon 2026-11-16 17:00')  # Friday evening
+        self.assertEqual(self.add('2026-11-11 10:00', 10, 'working_days'), 'Wed 2026-11-25 10:00')  # two weeks
+
+    def test_holidays_are_skipped(self):
+        from datetime import date
+        # Christmas 2026: Friday 25th, and Monday 28th is the Boxing Day substitute
+        holidays = {date(2026, 12, 25), date(2026, 12, 28)}
+        self.assertEqual(self.add('2026-12-24 10:00', 1, 'working_days', holidays), 'Tue 2026-12-29 10:00')
+
+    def test_round_the_clock_hours_ignore_the_working_week(self):
+        self.assertEqual(self.add('2026-11-14 23:30', 1, 'hours'), 'Sun 2026-11-15 00:30')
+
+    def test_clock_change_weekend(self):
+        # Clocks go back on Sunday 25 October 2026; working time is unaffected
+        self.assertEqual(self.add('2026-10-23 16:00', 2, 'working_hours'), 'Mon 2026-10-26 09:00')
+
+    def test_rules_describe_and_apply_their_targets(self):
+        from .models import Holiday, SLARule
+        rule = SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='working_hours',
+                                      resolve_amount=3, resolve_unit='working_days')
+        self.assertEqual(str(rule), 'High: respond within 4 working hours, resolve within 3 working days')
+        Holiday.objects.create(date=__import__('datetime').date(2026, 11, 12), name='Test holiday')
+        case = Case(title='x', description='x', building='x', reporter_name='x', reporter_email='x@example.com',
+                    priority='high', date_reported=self.at('2026-11-11 15:00'))
+        case.apply_sla()
+        self.assertEqual(self.local(case.sla_acknowledge_due), 'Fri 2026-11-13 10:00')  # skips the holiday
+        self.assertEqual(self.local(case.sla_due), 'Tue 2026-11-17 15:00')
+
+    def test_sync_sla_sets_the_briefs_table(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from .models import Holiday, SLARule
+        SLARule.objects.create(priority='urgent', acknowledge_amount=1, acknowledge_unit='hours',
+                               resolve_amount=4, resolve_unit='hours')
+        call_command('sync_sla', stdout=StringIO())
+        texts = {r.priority: (r.acknowledge_text, r.resolve_text) for r in SLARule.objects.all()}
+        self.assertEqual(texts, {
+            'urgent': ('1 hour', '1 working day'), 'high': ('4 working hours', '3 working days'),
+            'medium': ('1 working day', '10 working days'), 'low': ('2 working days', '20 working days'),
+        })
+        self.assertTrue(Holiday.objects.filter(name='Christmas Day').exists())
+
+    def test_sync_sla_can_recalculate_due_dates(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        case = Case.objects.create(title='x', description='x', building='x', reporter_name='x',
+                                   reporter_email='x@example.com', priority='medium', status=Status.ASSIGNED,
+                                   date_reported=self.at('2026-11-11 10:00'), sla_due=self.at('2026-11-14 10:00'))
+        call_command('sync_sla', stdout=StringIO())
+        case.refresh_from_db()
+        self.assertEqual(self.local(case.sla_due), 'Sat 2026-11-14 10:00')  # unchanged without --recalculate
+        call_command('sync_sla', '--recalculate', stdout=StringIO())
+        case.refresh_from_db()
+        self.assertEqual(self.local(case.sla_due), 'Wed 2026-11-25 10:00')  # 10 working days

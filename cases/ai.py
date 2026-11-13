@@ -289,7 +289,6 @@ def draft_outcome_letter(case):
 
 
 def receipt_text(case):
-    return (
-        f'Thanks {case.reporter_name.split()[0]}, we have received your report "{case.title}". '
-        f'Your reference is {case.reference}. You can track it at any time using this reference.'
-    )
+    """The "we've got it" message, in the reporter's language (kept here for seed_demo)."""
+    from .reporter_messages import _text
+    return _text(case, 'receipt')

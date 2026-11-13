@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static crispy_forms_tags %}
+{% block head_title %}Change {{ case.reference }} - Fix It at Work{% endblock %}
+{% block main %}
+<section class="container">
+    <p class="mt-3 mb-0"><a href="{% url 'case_detail' case.reference %}">&larr; Back to {{ case.reference }}</a></p>
+    <h1>Change priority or assignment</h1>
+    <p class="text-muted">{{ case.reference }}: {{ case.title }}</p>
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="panel">
+                <h2 class="h5">Now</h2>
+                <dl class="row mb-0">
+                    <dt class="col-5">Priority</dt><dd class="col-7">{% include "cases/_pri.html" with p=case.priority %}</dd>
+                    <dt class="col-5">Team</dt><dd class="col-7">{{ case.assigned_team|default:"-" }}</dd>
+                    <dt class="col-5">Category</dt><dd class="col-7">{{ case.category|default:"-" }}</dd>
+                    <dt class="col-5">Officer</dt><dd class="col-7">{{ case.assigned_officer.name|default:"Unassigned" }}</dd>
+                    <dt class="col-5">Status</dt><dd class="col-7">{{ case.get_status_display }}</dd>
+                    <dt class="col-5">SLA due</dt><dd class="col-7">{{ case.sla_due|date:"j M Y, H:i"|default:"-" }}</dd>
+                </dl>
+            </div>
+            {% include "cases/_case_facts.html" %}
+        </div>
+        <div class="col-lg-6">
+            <form method="post" class="panel">
+                {% csrf_token %}
+                <h2 class="h5">Your changes</h2>
+                <ul class="small text-muted ps-3">
+                    <li>Changing the priority moves the SLA due date. It's counted from when the issue was reported.</li>
+                    <li>A new officer sees the job in their list straight away. Leave the officer blank to hand it back to the team.</li>
+                    <li>Every change is recorded in the case history with your name.</li>
+                </ul>
+                {{ form|crispy }}
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save changes</button>
+                    <a href="{% url 'case_detail' case.reference %}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+{% block extra_body %}
+{{ by_team|json_script:"by-team" }}
+<script src="{% static 'js/team-filter.js' %}"></script>
+{% endblock %}

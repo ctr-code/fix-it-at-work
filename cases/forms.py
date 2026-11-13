@@ -1,7 +1,7 @@
 from django import forms
 
 from .models import (
-    MAX_PHOTO_MB, MAX_REPORT_PHOTOS, OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team,
+    MAX_AUDIO_MB, MAX_PHOTO_MB, MAX_REPORT_PHOTOS, OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team,
 )
 
 
@@ -19,6 +19,11 @@ class SignupNameForm(forms.Form):
 
 PHOTO_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 PHOTO_TYPES = ('image/jpeg', 'image/png', 'image/webp')
+# Voice notes: what phones and browsers record (WebM/Ogg from Chrome, Edge and Firefox; MP4/M4A from Safari)
+# and the usual audio files
+AUDIO_EXTENSIONS = ('.webm', '.ogg', '.oga', '.opus', '.m4a', '.mp4', '.mp3', '.wav', '.aac')
+AUDIO_TYPES = ('audio/webm', 'audio/ogg', 'audio/opus', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/mpeg',
+               'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/aac', 'video/webm', 'video/mp4')
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -47,13 +52,24 @@ class ReportForm(forms.ModelForm):
 
     photo = PhotosField(required=False, label='Photos',
                         help_text='Optional, but it helps us bring the right tools first time.')
+    # Filled in by the "Use my current location" button (static/js/locate.js). Any precision is accepted
+    # and rounded to about a metre in clean().
+    latitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
+    longitude = forms.DecimalField(required=False, widget=forms.HiddenInput)
+    # How the point was chosen: their device's position, or a pin they dropped on the map
+    location_method = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    def clean_location_method(self):
+        # A hidden field the reporter never sees, so an unexpected value is ignored rather than shown as an error
+        value = self.cleaned_data.get('location_method', '')
+        return value if value in ('device', 'map') else ''
 
     class Meta:
         model = Case
         labels = {'hs_risk': 'This could hurt someone'}
         fields = [
-            'title', 'description', 'building', 'location_detail', 'reported_urgency', 'impact', 'hs_risk',
-            'asset_tag', 'preferred_language', 'preferred_contact',
+            'title', 'description', 'building', 'location_detail', 'address', 'latitude', 'longitude',
+            'reported_urgency', 'impact', 'hs_risk', 'asset_tag', 'preferred_language', 'preferred_contact',
         ]
         widgets = {
             'title': forms.TextInput(attrs={'placeholder': 'e.g. Water leaking from ceiling'}),
@@ -62,6 +78,7 @@ class ReportForm(forms.ModelForm):
                                           'You can write in any language.'}),
             'building': forms.TextInput(attrs={'placeholder': 'e.g. Main Office', 'list': 'buildings'}),
             'location_detail': forms.TextInput(attrs={'placeholder': 'e.g. 2nd floor, kitchen'}),
+            'address': forms.TextInput(attrs={'placeholder': 'e.g. 12 Example Road, Birmingham', 'autocomplete': 'off'}),
             'reported_urgency': forms.RadioSelect,
             'impact': forms.RadioSelect,
             'asset_tag': forms.TextInput(attrs={'placeholder': 'e.g. PRN-B2-01', 'autocapitalize': 'characters'}),
@@ -72,10 +89,23 @@ class ReportForm(forms.ModelForm):
                        'or a trip hazard. We will make it safe first.',
             'asset_tag': 'Optional. The ID label on the equipment, if it has one.',
             'preferred_language': 'We will reply in this language.',
+            'address': "Only needed if it isn't in one of our buildings. We fill in our buildings' addresses for you.",
         }
 
     def clean_asset_tag(self):
         return self.cleaned_data['asset_tag'].strip().upper()
+
+    def clean(self):
+        data = super().clean()
+        lat, lng = data.get('latitude'), data.get('longitude')
+        # The map point comes as a pair, inside the real range, rounded to about a metre
+        if (lat is None) != (lng is None):
+            raise forms.ValidationError('We only got half of your location. Please try "Use my current location" again.')
+        if lat is not None:
+            if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                raise forms.ValidationError('That location is not a real place. Please try again or leave it out.')
+            data['latitude'], data['longitude'] = round(lat, 5), round(lng, 5)
+        return data
 
     def clean_photo(self):
         return check_photos(self.cleaned_data.get('photo'))
@@ -141,14 +171,26 @@ class FeedbackForm(forms.ModelForm):
         self.fields['satisfaction'].choices = [c for c in self.fields['satisfaction'].choices if c[0] != '']
 
 
-class TriageForm(forms.Form):
-    """Choose the team first. The category and officer lists only show options for that team."""
+class RoutingForm(forms.Form):
+    """Where a case goes: choose the team first. The category and officer lists only show options for that team."""
     team = forms.ModelChoiceField(Team.objects.order_by('name'))
     category = forms.ModelChoiceField(Category.objects.select_related('default_team'),
                                       help_text='Only categories handled by the chosen team are listed.')
     priority = forms.ChoiceField(choices=Priority.choices)
     officer = forms.ModelChoiceField(Officer.objects.select_related('team'), required=False,
                                      help_text='Leave blank to let the team pick it up.')
+
+    def clean(self):
+        data = super().clean()
+        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
+        if team and category and category.default_team_id != team.id:
+            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
+        if team and officer and officer.team_id != team.id:
+            self.add_error('officer', f'{officer.name} is not in {team}.')
+        return data
+
+
+class TriageForm(RoutingForm):
     duplicate_of = forms.ModelChoiceField(
         Case.objects.none(), required=False,
         help_text='If this is the same issue as an open case, merge it.')
@@ -161,29 +203,41 @@ class TriageForm(forms.Form):
         self.fields['duplicate_of'].queryset = qs
 
     def clean(self):
-        data = super().clean()
-        team, category, officer = data.get('team'), data.get('category'), data.get('officer')
-        if data.get('duplicate_of'):
-            return data  # merging a duplicate doesn't route the case anywhere
-        if team and category and category.default_team_id != team.id:
-            self.add_error('category', f'{category} is not handled by {team}. Choose one of its categories.')
-        if team and officer and officer.team_id != team.id:
-            self.add_error('officer', f'{officer.name} is not in {team}.')
-        return data
+        if self.cleaned_data.get('duplicate_of'):
+            return self.cleaned_data  # merging a duplicate doesn't route the case anywhere
+        return super().clean()
+
+
+class ReassignForm(RoutingForm):
+    """Change the priority, team, category or officer of a case that has already been triaged."""
+    reason = forms.CharField(
+        max_length=200, required=False, label='Reason for the change (optional)',
+        help_text='Shown in the case history, e.g. "Water now reaching the server room".')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['officer'].empty_label = 'Unassigned - the team picks it up'
 
 
 class VisitForm(forms.ModelForm):
+    """What the officer found and did, with optional photos (saved as VisitPhoto rows by the view), a voice
+    note, and the words their dictation produced."""
     transcript_used = forms.BooleanField(required=False, widget=forms.HiddenInput)
+    photos = PhotosField(required=False, label='Photos',
+                         help_text='Before and after photos help the case handler and the reporter.')
+    audio = forms.FileField(required=False, label='Voice note',
+                            widget=forms.ClearableFileInput(attrs={'accept': 'audio/*'}))
 
     class Meta:
         model = SiteVisit
-        fields = ['note', 'action', 'photo', 'fixed', 'transcript_used']
+        fields = ['note', 'action', 'fixed', 'transcript_used', 'transcript', 'audio']
         widgets = {
             'note': forms.Textarea(attrs={
                 'rows': 3, 'placeholder': 'What was wrong when you got there? Type, or tap "Dictate" and speak.'}),
             'action': forms.Textarea(attrs={
                 'rows': 3, 'placeholder': 'What did you repair, replace, test or arrange?'}),
-            'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
+            # Filled in by dictation on the page
+            'transcript': forms.HiddenInput,
         }
         help_texts = {'action': 'This goes into the letter that tells the reporter what was done.'}
 
@@ -191,6 +245,23 @@ class VisitForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Older visits may have no action, but every new visit must say what was done
         self.fields['action'].required = True
+
+    def clean_photos(self):
+        return check_photos(self.cleaned_data.get('photos'))
+
+    def clean_audio(self):
+        f = self.cleaned_data.get('audio')
+        if not f:
+            return f
+        name = f.name or 'The file'
+        kind = (f.content_type or '').split(';')[0].strip().lower()
+        if not name.lower().endswith(AUDIO_EXTENSIONS) or (kind and kind not in AUDIO_TYPES):
+            raise forms.ValidationError(f'{name} is not an audio recording we can play. '
+                                        'Use the recorder on this page, or an MP3, M4A, WebM, Ogg or WAV file.')
+        if f.size > MAX_AUDIO_MB * 1024 * 1024:
+            raise forms.ValidationError(f'{name} is {f.size / (1024 * 1024):.1f}MB. '
+                                        f'A voice note must be {MAX_AUDIO_MB}MB or less.')
+        return f
 
 
 class LetterForm(forms.Form):

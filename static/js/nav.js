@@ -28,7 +28,8 @@
     });
 
     menu.addEventListener("show.bs.collapse", () => toggler.setAttribute("aria-label", "Close menu"));
-    menu.addEventListener("hide.bs.collapse", () => toggler.setAttribute("aria-label", "Open menu"));
+    // e.g. "Open menu, 2 unread alerts" while the badge shows on the button
+    menu.addEventListener("hide.bs.collapse", () => toggler.setAttribute("aria-label", "Open menu" + (toggler.dataset.labelExtra || "")));
 
     // Coming back with the browser's Back button shows the menu closed
     window.addEventListener("pageshow", (e) => { if (e.persisted && isOpen()) { collapse().hide(); } });

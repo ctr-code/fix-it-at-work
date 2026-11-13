@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import Case, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
+from .models import Alert, Building, Case, CaseChange, Holiday, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, SiteVisit, SLARule, Team, get_role
 
 
 class ProfileInline(admin.StackedInline):
@@ -70,4 +70,35 @@ class CaseAdmin(admin.ModelAdmin):
     inlines = [ReportUpdateInline, ReportPhotoInline, VisitInline, CommunicationInline]
 
 
-admin.site.register([Team, Category, Officer, SLARule])
+admin.site.register([Team, Category, Officer])
+
+
+@admin.register(SLARule)
+class SLARuleAdmin(admin.ModelAdmin):
+    list_display = ('priority', 'acknowledge_text', 'resolve_text')
+    fields = (('priority',), ('acknowledge_amount', 'acknowledge_unit'), ('resolve_amount', 'resolve_unit'))
+
+
+@admin.register(Holiday)
+class HolidayAdmin(admin.ModelAdmin):
+    list_display = ('date', 'name')
+    date_hierarchy = 'date'
+
+
+@admin.register(CaseChange)
+class CaseChangeAdmin(admin.ModelAdmin):
+    list_display = ('case', 'changed_by', 'changed_at')
+    search_fields = ('case__reference', 'changed_by')
+
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):
+    list_display = ('case', 'kind', 'recipients', 'sent_at', 'delivered')
+    list_filter = ('kind', 'delivered')
+    search_fields = ('case__reference', 'recipients')
+
+
+@admin.register(Building)
+class BuildingAdmin(admin.ModelAdmin):
+    list_display = ('name', 'address', 'latitude', 'longitude')
+    search_fields = ('name', 'address')

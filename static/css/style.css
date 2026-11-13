@@ -55,6 +55,13 @@
     --warning-ink: #8a5300;        /* 5.3:1 on the warning background */
 
     /* Colours: AI content (purple is only used for AI) */
+    /* Chart series, checked with the dataviz palette validator against the white panel (both pass
+       lightness, chroma, colour-blind separation and 3:1 contrast). The brand teal is too dark for a series. */
+    --series-1: #2a78d6;           /* blue: reported */
+    --series-2: #eb6834;           /* orange: resolved */
+    --series-muted: #b4bec8;       /* the bars that aren't the story */
+    --chart-grid: #e7ecf0;
+    --chart-baseline: #c4ccd4;
     --ai: #5b2a86;
     --ai-bg: #f4eefa;
     --ai-border: #d9c8ea;
@@ -231,6 +238,14 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 #navbar .nav-link:hover { background: var(--on-brand-hover); color: var(--on-brand); }
 #navbar .nav-link.active { background: var(--on-brand-active); color: var(--on-brand); font-weight: var(--fw-semibold); }
 .main-nav { gap: var(--space-1); }
+/* Unread count on a nav icon (Alerts): a red pill on the icon's top right corner */
+.nav-icon { position: relative; display: inline-flex; }
+.nav-icon.has-badge { margin-right: .6em; }   /* room for the badge before the word */
+.nav-badge {
+    position: absolute; top: -.8em; left: .55em; min-width: 1.5em; height: 1.5em; padding: 0 .35em;
+    border-radius: var(--radius-pill); background: var(--urgent); color: var(--white); box-shadow: 0 0 0 2px var(--brand);
+    font-size: .6875rem; font-weight: var(--fw-bold); line-height: 1.5em; text-align: center;
+}
 
 /* Profile: avatar, name and role, then a list with the account actions */
 .profile-nav { padding-left: var(--space-4); border-left: var(--border-width) solid var(--on-brand-line); }
@@ -260,6 +275,10 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 @media (min-width: 992px) and (max-width: 1199.98px) {
     #navbar .main-nav .nav-link { padding-left: var(--space-2); padding-right: var(--space-2); }
     #navbar .main-nav .nav-link i { display: none; }
+    /* No icon to sit on here, so the count follows the word instead */
+    .nav-icon { order: 2; }
+    .nav-icon.has-badge { margin-right: 0; }
+    .nav-badge { position: static; box-shadow: none; }
     .main-nav { gap: 0; }
     .profile-nav { padding-left: var(--space-3); }
 }
@@ -269,6 +288,8 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 .navbar-toggler:hover { background: var(--on-brand-hover); }
 .navbar-toggler:focus { box-shadow: none; }
 .navbar-toggler-icon { width: 22px; height: 22px; }
+.navbar-toggler { position: relative; }
+.toggler-badge { top: -.55em; left: auto; right: -.55em; }
 
 /* Small screens (below 992px): compact header and a full-width menu under it */
 @media (max-width: 991.98px) {
@@ -545,4 +566,133 @@ main { margin-bottom: var(--space-10); }
     .photo-remove-text { display: none; }   /* icon only on phones; the button keeps its spoken label */
     .form-section { padding: var(--space-6) 0; }
     .form-section-head { margin-bottom: var(--space-4); }
+}
+
+/* Alerts page: one card per alert, unread ones with a teal edge and a "New" tag */
+.alert-filter { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.alert-filter .btn { display: inline-flex; align-items: center; gap: var(--space-2); }
+.alert-filter .btn-primary .tab-count { background: var(--white); color: var(--brand); }
+.alert-list { list-style: none; margin: 0; padding: 0; }
+.alert-item { margin-bottom: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--white); border: var(--border-width) solid var(--border); border-left: 4px solid var(--border); border-radius: var(--radius-md); }
+.alert-item.is-unread { border-left-color: var(--brand); background: var(--brand-tint); }
+.alert-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.alert-new { padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--brand); color: var(--on-brand); font-size: var(--fs-caption); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .04em; }
+.alert-kind { font-size: var(--fs-caption); font-weight: var(--fw-semibold); color: var(--brand-dark); text-transform: uppercase; letter-spacing: .04em; }
+.alert-meta { font-size: var(--fs-small); color: var(--muted); }
+.alert-subject { margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
+.alert-item:not(.is-unread) .alert-subject { font-weight: var(--fw-medium); }
+.alert-intro { margin-bottom: var(--space-2); }
+.alert-full { margin-bottom: var(--space-3); font-size: var(--fs-small); }
+.alert-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+/* Messages to the reporter: new ones get a teal background until they've been seen */
+.reporter-message.is-new { background: var(--brand-tint); }
+.new-message-link { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
+
+/* Dashboard "Needs attention": a group per kind of problem, red for overdue or unsafe, amber for delays */
+.attention { border-top: 4px solid var(--brand); }
+.attention-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.attention-head h2 i { color: var(--brand); }
+.attention-group { height: 100%; padding: var(--space-4); border: var(--border-width) solid var(--border); border-left: 4px solid var(--warning-border); border-radius: var(--radius-md); background: var(--white); scroll-margin-top: calc(var(--nav-offset) + var(--space-4)); }
+.attention-group.tone-overdue, .attention-group.tone-no-officer { border-left-color: var(--urgent); }
+.attention-group-title { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
+.attention-group-title .tab-count { margin-left: auto; }
+.tone-overdue .attention-group-title i, .tone-no-officer .attention-group-title i { color: var(--urgent); }
+.attention-group-title i { color: var(--warning-ink); }
+.attention-help { margin-bottom: var(--space-3); font-size: var(--fs-small); color: var(--muted); }
+.attention-list { margin: 0 0 var(--space-2); padding: 0; list-style: none; }
+.attention-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); padding: var(--space-2) 0; border-top: var(--border-width) solid var(--border); }
+.attention-list li:first-child { border-top: 0; padding-top: 0; }
+.attention-title { flex: 1 1 12rem; min-width: 0; }
+.attention-note { flex-basis: 100%; font-size: var(--fs-small); color: var(--muted); }
+
+/* Dashboard trend charts (static/js/trend-chart.js draws the weekly columns) */
+.chart-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-2); padding: 0; list-style: none; font-size: var(--fs-small); color: var(--ink); }
+.chart-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.chart-key { width: 12px; height: 12px; border-radius: 3px; background: var(--series-1); }
+.chart-key.series-resolved, .chart-key-line.series-resolved { background: var(--series-2); }
+.chart-key-line { display: inline-block; width: 14px; height: 2px; margin-right: var(--space-2); vertical-align: middle; border-radius: 1px; background: var(--series-1); }
+.trend-chart { position: relative; min-height: 240px; }
+.trend-svg { display: block; overflow: visible; }
+.chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart-baseline { stroke: var(--chart-baseline); stroke-width: 1; }
+.chart-tick { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-value { fill: var(--ink); font-size: 12px; font-weight: var(--fw-semibold); }
+.chart-col.series-reported { fill: var(--series-1); }
+.chart-col.series-resolved { fill: var(--series-2); }
+.chart-week.is-partial .chart-col { opacity: .55; }   /* this week isn't over yet */
+.chart-week.is-hover .chart-col { filter: brightness(1.12); }
+.chart-hit { fill: transparent; cursor: default; }
+.chart-hit:focus { outline: none; }
+.chart-hit:focus-visible { fill: rgba(11, 79, 108, .06); stroke: var(--brand); stroke-width: 2; }
+.chart-tip { position: absolute; z-index: 2; min-width: 9rem; padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--white); box-shadow: var(--shadow-menu); pointer-events: none; font-size: var(--fs-small); }
+.chart-tip-head { margin: 0 0 var(--space-1); color: var(--muted); }
+.chart-tip-row { margin: 0; color: var(--ink); }
+.chart-tip-row strong { font-variant-numeric: tabular-nums; }
+.chart-table { margin-top: var(--space-2); font-size: var(--fs-small); }
+.chart-table summary { color: var(--brand); font-weight: var(--fw-medium); cursor: pointer; }
+.chart-table table { margin-top: var(--space-2); }
+
+.stage-bars { margin: 0; padding: 0; list-style: none; }
+.stage-bar { padding: var(--space-3) 0; border-top: var(--border-width) solid var(--border); }
+.stage-bar:first-child { border-top: 0; padding-top: 0; }
+.stage-bar-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.stage-bar-row { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-1); }
+.stage-bar-track { flex: 1; height: 12px; }
+.stage-bar-fill { height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--series-muted); }
+.stage-bar.is-longest .stage-bar-fill { background: var(--series-1); }
+.stage-bar-value { flex: none; min-width: 5.5rem; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.stage-bar-note { margin: var(--space-1) 0 0; font-size: var(--fs-small); color: var(--muted); }
+
+/* "Use my current location" on the report form */
+.locate { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--border-width) dashed var(--border-control); border-radius: var(--radius-md); background: var(--surface); }
+.locate-status { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-small); }
+.locate-status:empty { display: none; }
+.locate-status.is-ok { color: var(--ink); }
+.locate-status.is-error { color: var(--urgent); }
+.map-link { white-space: nowrap; }
+
+/* Needs attention tabs (static/js/attention-tabs.js). Reuses the Case queue tab look; there are seven,
+   so on phones and tablets they become a grid of buttons. */
+.attention-tabs { margin-top: var(--space-3); }
+@media (min-width: 1200px) { .attention-tabs.queue-tabs .nav-link { padding-left: var(--space-3); padding-right: var(--space-3); } }
+/* Below 1200px the seven tabs don't fit in a row, so use the button grid the Case queue uses on phones */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    .attention-tabs.queue-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); overflow: visible; border-bottom: 0; }
+    .attention-tabs.queue-tabs .nav-link { width: 100%; justify-content: space-between; padding: var(--space-2) var(--space-3); white-space: normal; line-height: 1.25; text-align: left; border: var(--border-width) solid var(--border-control); border-radius: var(--radius-md); background: var(--white); }
+    .attention-tabs.queue-tabs .nav-link:hover { border-color: var(--brand); }
+    .attention-tabs.queue-tabs .nav-link.active { border-color: var(--brand); background: var(--brand-tint); box-shadow: inset 0 0 0 1px var(--brand); }
+}
+@media (max-width: 991.98px) { .attention-tabs.queue-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 575.98px) { .attention-tabs.queue-tabs { grid-template-columns: 1fr 1fr; } }
+
+/* "Pick on a map" on the report form (Leaflet, loaded on demand by static/js/locate.js) */
+.locate-title { margin-bottom: var(--space-2); font-weight: var(--fw-semibold); }
+.pin-map-wrap { margin-top: var(--space-3); }
+.pin-map { height: 320px; border: var(--border-width) solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.pin-map:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.map-pin-icon { display: flex; align-items: flex-end; justify-content: center; color: var(--urgent); font-size: 34px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35)); }
+@media (max-width: 575.98px) { .pin-map { height: 260px; } }
+
+/* Visit voice note: the recorder on the officer's page, and the player on case pages */
+.voice-recorder { margin-bottom: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--border-width) dashed var(--border-control); border-radius: var(--radius-md); background: var(--surface); }
+.voice-recorder .is-recording { border-color: var(--urgent); color: var(--urgent); }
+.voice-timer { font-variant-numeric: tabular-nums; color: var(--muted); }
+.voice-preview, .visit-audio audio { display: block; width: 100%; max-width: 420px; height: 40px; margin-top: var(--space-2); }
+.visit-audio audio { display: inline-block; vertical-align: middle; margin-top: 0; }
+
+/* Accessibility check fixes (see docs/accessibility.md). Bootstrap's link blue (#0d6efd) is 4.2:1 on the grey
+   page background and its grey outline buttons 4.4:1, both just under the 4.5:1 minimum for text. A darker
+   blue (6:1) and the muted ink (7:1) pass on both the page and white panels. */
+:root {
+    --bs-link-color: #0a58ca;
+    --bs-link-color-rgb: 10, 88, 202;
+    --bs-link-hover-color: var(--brand-dark);
+    --bs-link-hover-color-rgb: 7, 52, 71;
+}
+.btn-outline-secondary { --bs-btn-color: var(--muted); }
+
+/* People who ask their device for less motion get no animated transitions or smooth scrolling */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }

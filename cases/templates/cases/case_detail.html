@@ -23,7 +23,39 @@
                     {% if case.satisfaction %}<dt class="col-5">Reporter feedback</dt><dd class="col-7">{{ case.satisfaction }}/5{% if case.satisfaction_comments %}<br><span class="small">"{{ case.satisfaction_comments }}"</span>{% endif %}</dd>{% endif %}
                     {% if case.duplicate_of %}<dt class="col-5">Duplicate of</dt><dd class="col-7"><a href="{% url 'case_detail' case.duplicate_of.reference %}">{{ case.duplicate_of.reference }}</a></dd>{% endif %}
                 </dl>
+                {% if case.status == 'assigned' or case.status == 'in_progress' %}
+                <a class="btn btn-outline-primary mt-3" href="{% url 'reassign_case' case.reference %}"><i class="fa-solid fa-pen" aria-hidden="true"></i> Change priority or assignment</a>
+                {% endif %}
             </div>
+            {% with changes=case.changes.all %}{% if changes %}
+            <div class="panel" id="history">
+                <h2 class="h5">Change history</h2>
+                <ol class="report-updates">
+                    {% for ch in changes %}
+                    <li class="report-update">
+                        <p class="report-update-when">{{ ch.changed_at|date:"j M Y, H:i" }} by {{ ch.changed_by }}</p>
+                        <ul class="list-unstyled mb-0">{% for line in ch.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+                        {% if ch.reason %}<p class="mt-1 mb-0 small"><strong>Reason:</strong> {{ ch.reason }}</p>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}{% endwith %}
+            {% with sent=case.alerts.all %}{% if sent %}
+            <div class="panel" id="alerts">
+                <h2 class="h5">Team alerts</h2>
+                <ol class="report-updates">
+                    {% for a in sent %}
+                    <li class="report-update">
+                        <p class="report-update-when">{{ a.sent_at|date:"j M Y, H:i" }} &middot; {{ a.get_kind_display }} &middot;
+                            {% if a.delivered %}<i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i> Emailed{% else %}<span class="overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Not sent</span>{% endif %}</p>
+                        <p class="mb-1"><strong>To:</strong> {{ a.recipients }}</p>
+                        <details><summary>{{ a.subject }}</summary><p class="mt-2 mb-0 small">{{ a.body|linebreaksbr }}</p></details>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}{% endwith %}
         </div>
         <div class="col-lg-6">
             <h2 class="h5">Site visits</h2>
@@ -32,7 +64,7 @@
                 <p class="small text-muted mb-1">{{ v.visited_at|date:"j M Y, H:i" }} &middot; {{ v.officer.name }} &middot; {% if v.fixed %}Fixed{% else %}Follow-up needed{% endif %}{% if v.transcript_used %} &middot; dictated{% endif %}</p>
                 <div class="ai-box mb-2"><span class="ai-label">AI summary</span><br>{{ v.ai_summary }}</div>
                 <details><summary>Officer's full note</summary>{% if v.action %}<p class="mt-2 mb-1"><strong>Found:</strong> {{ v.note|linebreaksbr }}</p><p class="mb-0"><strong>Did:</strong> {{ v.action|linebreaksbr }}</p>{% else %}<p class="mt-2 mb-0">{{ v.note|linebreaksbr }}</p>{% endif %}</details>
-                {% if v.photo %}<img src="{{ v.photo.url }}" alt="Photo from site visit" class="photo-thumb mt-2">{% endif %}
+                {% include "cases/_visit_media.html" %}
             </div>
             {% empty %}<p>No visits yet.</p>{% endfor %}
             <h2 class="h5 mt-3">Communications</h2>

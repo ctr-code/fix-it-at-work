@@ -41,10 +41,13 @@
                 <span class="logo" aria-hidden="true"><i class="fa-solid fa-wrench"></i></span>
                 <span class="brand-name">Fix It at Work</span>
             </a>
+            {# On phones the links are inside the menu, so the total of every count (alerts, cases waiting, messages) also shows on the button #}
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
-                aria-label="Open menu">
+                aria-label="Open menu{% if unread_total %}, {{ unread_total }} need{{ unread_total|pluralize:"s," }} your attention{% endif %}"
+                {% if unread_total %}data-label-extra=", {{ unread_total }} need{{ unread_total|pluralize:"s," }} your attention"{% endif %}>
                 <span class="navbar-toggler-icon" aria-hidden="true"></span>
+                {% if unread_total %}<span class="nav-badge toggler-badge" aria-hidden="true">{{ unread_total_label }}</span>{% endif %}
             </button>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
                 {% with p=request.path %}
@@ -52,12 +55,14 @@
                 <ul class="navbar-nav main-nav mx-lg-auto">
                     <li class="nav-item"><a class="nav-link{% if p == report_url %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
                     {# A report's tracking page belongs under "My reports" #}
-                    <li class="nav-item"><a class="nav-link{% if '/my-reports' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'my_reports' %}"><i class="fa-solid fa-folder-open" aria-hidden="true"></i> My reports</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/my-reports' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'my_reports' %}"><span class="nav-icon{% if unread_messages %} has-badge{% endif %}"><i class="fa-solid fa-folder-open" aria-hidden="true"></i>{% if unread_messages %}<span class="nav-badge" aria-hidden="true">{{ unread_messages_label }}</span>{% endif %}</span> My reports{% if unread_messages %}<span class="visually-hidden">, {{ unread_messages }} new message{{ unread_messages|pluralize }}</span>{% endif %}</a></li>
                     {% if user_role == 'handler' or user_role == 'manager' %}
-                    <li class="nav-item"><a class="nav-link{% if '/triage' in p or '/cases' in p %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i> Case queue</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/triage' in p or '/cases' in p %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><span class="nav-icon{% if queue_waiting %} has-badge{% endif %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i>{% if queue_waiting %}<span class="nav-badge" aria-hidden="true">{{ queue_waiting_label }}</span>{% endif %}</span> Case queue{% if queue_waiting %}<span class="visually-hidden">, {{ queue_waiting }} case{{ queue_waiting|pluralize }} waiting</span>{% endif %}</a></li>
                     {% endif %}
                     {% if user_role == 'officer' %}
                     <li class="nav-item"><a class="nav-link{% if '/officer' in p %} active" aria-current="page{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> My jobs</a></li>
+                    {# The badge shows unread alerts; screen readers hear "Alerts, 3 unread" #}
+                    <li class="nav-item"><a class="nav-link{% if '/alerts' in p %} active" aria-current="page{% endif %}" href="{% url 'alerts' %}"><span class="nav-icon{% if unread_alerts %} has-badge{% endif %}"><i class="fa-solid fa-bell" aria-hidden="true"></i>{% if unread_alerts %}<span class="nav-badge" aria-hidden="true">{{ unread_alerts_label }}</span>{% endif %}</span> Alerts{% if unread_alerts %}<span class="visually-hidden">, {{ unread_alerts }} unread</span>{% endif %}</a></li>
                     {% endif %}
                     {% if user_role == 'manager' %}
                     <li class="nav-item"><a class="nav-link{% if '/dashboard' in p %} active" aria-current="page{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>

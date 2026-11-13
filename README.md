@@ -56,3 +56,13 @@ Responsible AI choices:
 - AI never sets a lower priority than the reporter chose. Safety words are checked in several languages, and
   vague reports get low confidence and a "check carefully" flag instead of a low priority.
 - The dashboard tracks how often staff accept the AI's suggestion.
+
+## Accessibility, security and responsible design
+
+- [Accessibility notes](docs/accessibility.md): what's built in, the check we ran on 14 pages at three screen
+  widths, what it found and fixed, and what still needs testing (screen readers).
+- [Security notes](docs/security.md): data held, roles and permissions, web protections, human approval of AI
+  suggestions, and what to change before real use.
+- [Responsible-design checklist](docs/responsible-design.md): the brief's five questions (who could be left out,
+  what data, where AI helps and a person decides, what could go wrong, how we'd know), and the fairness tests on
+  reports in poor English and other languages.

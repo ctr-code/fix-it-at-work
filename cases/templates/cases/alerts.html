@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block head_title %}Alerts - Fix It at Work{% endblock %}
+{% block main %}
+{% comment %}
+Alerts sent to this officer by name or to their team's inbox (cases/alerts.py). Unread ones are marked
+"New" and counted in the navbar. Opening a job, "Mark as read" or "Mark all as read" records the read.
+{% endcomment %}
+<section class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3">
+        <div>
+            <h1>Alerts</h1>
+            <p class="text-muted mb-0">Jobs sent to you or to {{ officer.team }}, and changes to them.
+                {% if unread_total %}You have {{ unread_total }} unread.{% else %}You're all caught up.{% endif %}</p>
+        </div>
+        {% if unread_total %}
+        <form method="post" class="mb-1">
+            {% csrf_token %}
+            <button type="submit" name="all" value="1" class="btn btn-outline-primary"><i class="fa-solid fa-check-double" aria-hidden="true"></i> Mark all as read</button>
+        </form>
+        {% endif %}
+    </div>
+
+    <nav class="alert-filter mt-4" aria-label="Which alerts to show">
+        <a href="{% url 'alerts' %}" class="btn btn-sm {% if show_unread %}btn-outline-secondary{% else %}btn-primary{% endif %}"{% if not show_unread %} aria-current="page"{% endif %}>All <span class="tab-count">{{ all_total }}</span></a>
+        <a href="{% url 'alerts' %}?show=unread" class="btn btn-sm {% if show_unread %}btn-primary{% else %}btn-outline-secondary{% endif %}"{% if show_unread %} aria-current="page"{% endif %}>Unread <span class="tab-count">{{ unread_total }}</span></a>
+    </nav>
+
+    {% if alerts %}
+    <ol class="alert-list" aria-label="{% if show_unread %}Unread alerts{% else %}All alerts{% endif %}, newest first">
+        {% for a in alerts %}
+        <li class="alert-item{% if a.unread %} is-unread{% endif %}">
+            <div class="alert-item-head">
+                {% if a.unread %}<span class="alert-new">New</span>{% endif %}
+                <span class="alert-kind alert-kind-{{ a.kind }}">{% if a.kind == 'routed' %}<i class="fa-solid fa-briefcase" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-pen" aria-hidden="true"></i>{% endif %} {{ a.get_kind_display }}</span>
+                <span class="alert-meta">{% if a.to_you %}Sent to you{% else %}Sent to {{ a.team|default:"your team" }}{% endif %} &middot; <time datetime="{{ a.sent_at|date:'c' }}">{{ a.sent_at|date:"j M Y, H:i" }}</time></span>
+            </div>
+            <h2 class="alert-subject">{{ a.subject }}</h2>
+            <p class="alert-intro">{{ a.intro|linebreaksbr }}</p>
+            <details class="alert-full"><summary>Full alert</summary><p class="mt-2 mb-0 small">{{ a.body|linebreaksbr }}</p></details>
+            <form method="post" class="alert-actions"{% if show_unread %} action="?show=unread"{% endif %}>
+                {% csrf_token %}
+                {% if a.can_open %}
+                <button type="submit" name="open" value="{{ a.pk }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Open job<span class="visually-hidden"> {{ a.case.reference }}</span></button>
+                {% else %}
+                <span class="small text-muted">{{ a.case.reference }} is {% if a.case.status == 'assigned' or a.case.status == 'in_progress' %}no longer with you{% else %}{{ a.case.get_status_display|lower }}{% endif %}.</span>
+                {% endif %}
+                {% if a.unread %}
+                <button type="submit" name="read" value="{{ a.pk }}" class="btn btn-outline-secondary btn-sm">Mark as read<span class="visually-hidden">: {{ a.subject }}</span></button>
+                {% endif %}
+            </form>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <div class="panel mt-3">
+        <h2 class="h5">{% if show_unread %}No unread alerts{% else %}No alerts yet{% endif %}</h2>
+        <p class="mb-0 text-muted">{% if show_unread %}You've read everything. <a href="{% url 'alerts' %}">See all alerts</a>.{% else %}When a job is sent to you or your team, or changed, it will appear here.{% endif %}</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

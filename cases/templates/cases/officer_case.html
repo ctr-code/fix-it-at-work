@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load static crispy_forms_tags %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container page-sm">
@@ -14,7 +14,8 @@
     {% include "cases/_case_facts.html" %}
 
     {% for v in case.visits.all %}
-    <div class="panel"><p class="small text-muted mb-1">Earlier visit {{ v.visited_at|date:"j M H:i" }} by {{ v.officer.name }}</p>{{ v.ai_summary }}</div>
+    <div class="panel"><p class="small text-muted mb-1">Earlier visit {{ v.visited_at|date:"j M H:i" }} by {{ v.officer.name }}</p>{{ v.ai_summary }}
+        {% include "cases/_visit_media.html" %}</div>
     {% endfor %}
 
     {% if not case.assigned_officer %}
@@ -29,14 +30,43 @@
             <button type="button" id="dictate" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-microphone" aria-hidden="true"></i> <span>Dictate</span></button>
             <span id="dictate-status" class="small text-muted ms-2" aria-live="polite"></span>
         </div>
-        {{ form|crispy }}
-        <p class="small text-muted">AI will turn your answers into a short case summary. Your full answers are kept too.</p>
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<p class="mb-0">{{ e }}</p>{% endfor %}</div>{% endif %}
+        {{ form.note|as_crispy_field }}
+        {{ form.action|as_crispy_field }}
+        {% include "cases/_photo_upload.html" with field=form.photos %}
+        {% comment %}
+        Voice note: recorded here (static/js/voice-note.js) or chosen as a file. Either way it goes in the
+        "audio" file input, which is what's sent. Without the recorder, the file picker still works.
+        {% endcomment %}
+        <div class="mb-3 voice-note">
+            <div class="form-label" id="voice-label">Voice note <span class="optional-tag">Optional</span></div>
+            <div class="voice-recorder" data-voice hidden>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary" data-voice-record aria-describedby="voice-help"><i class="fa-solid fa-microphone-lines" aria-hidden="true"></i> <span>Record a voice note</span></button>
+                    <span class="voice-timer" data-voice-timer></span>
+                    <button type="button" class="btn btn-link btn-sm" data-voice-remove hidden>Remove recording</button>
+                </div>
+                <audio class="voice-preview" controls preload="metadata" data-voice-preview hidden></audio>
+                <p class="locate-status" data-voice-status aria-live="polite"></p>
+            </div>
+            <div class="voice-file" data-voice-file>
+                <label class="small text-muted" for="{{ form.audio.auto_id }}" data-voice-file-label>Choose a recording from your device</label>
+                <input type="file" name="{{ form.audio.html_name }}" id="{{ form.audio.auto_id }}" accept="audio/*" class="form-control form-control-sm{% if form.audio.errors %} is-invalid{% endif %}" aria-describedby="voice-help{% if form.audio.errors %} voice-error{% endif %}">
+            </div>
+            {% if form.audio.errors %}<div class="invalid-feedback d-block" id="voice-error">{% for e in form.audio.errors %}<strong>{{ e }}</strong>{% endfor %}</div>{% endif %}
+            <p class="form-text" id="voice-help">Talk through what you found and did, if that's quicker than typing. It's kept with the visit so the case notes can be checked against it. Up to 10 minutes.</p>
+        </div>
+        {{ form.fixed|as_crispy_field }}
+        {{ form.transcript }}{{ form.transcript_used }}
+        <p class="small text-muted">AI will turn your answers into a short case summary. Your full answers, photos and voice note are kept too.</p>
         <button type="submit" class="btn btn-primary btn-lg w-100">Save visit</button>
     </form>
     {% endif %}
 </section>
 {% endblock %}
 {% block extra_body %}
+<script src="{% static 'js/photo-upload.js' %}"></script>
+<script src="{% static 'js/voice-note.js' %}"></script>
 <script>
 // Voice notes using the browser's built-in speech recognition (Chrome / Edge)
 (function () {
@@ -50,6 +80,8 @@
         if (box) { box.addEventListener('focus', () => { note = box; }); }
     });
     const used = document.getElementById('id_transcript_used');
+    // The words as heard, kept with the visit even if the officer then edits the boxes
+    const heard = document.getElementById('id_transcript');
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { btn.disabled = true; status.textContent = 'Dictation needs Chrome or Edge.'; return; }
     const rec = new SR();
@@ -61,6 +93,7 @@
                 let t = e.results[i][0].transcript.trim();
                 t = t.charAt(0).toUpperCase() + t.slice(1);
                 note.value = (note.value ? note.value.trimEnd() + ' ' : '') + t + '.';
+                heard.value = (heard.value ? heard.value + ' ' : '') + t + '.';
                 used.value = 'True';
             }
         }
