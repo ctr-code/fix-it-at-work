@@ -8,9 +8,11 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince, timeuntil
 
 from . import ai, alerts, reporter_messages
+from .history import case_history
 from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
@@ -139,12 +141,17 @@ def track_case(request, ref):
             raise PermissionDenied  # not the reporter, or the case is closed or merged
         update_form = ReportUpdateForm(request.POST, request.FILES)
         if update_form.is_valid():
+            answering = case.info_request_pending() is not None
             update = ReportUpdate.objects.create(case=case, author=request.user,
                                                  text=update_form.cleaned_data['text'].strip())
             for photo in update_form.cleaned_data['photo']:
                 ReportPhoto.objects.create(case=case, update=update, image=photo)
-            messages.success(request, 'Thank you - your extra details have been added to '
-                                      f'{case.reference}. The team working on it can see them now.')
+            if answering:
+                messages.success(request, f'Thank you - the information you sent has been added to {case.reference}. '
+                                          'The team working on it can see it now.')
+            else:
+                messages.success(request, 'Thank you - your extra details have been added to '
+                                          f'{case.reference}. The team working on it can see them now.')
             return redirect(f"{reverse('track_case', args=[case.reference])}#updates")
         return _render_track(request, case, None, update_form)
 
@@ -172,9 +179,11 @@ def _render_track(request, case, feedback_form, update_form):
     if case.reporter_user_id == request.user.id and any(m.is_new for m in sent):
         Communication.objects.filter(pk__in=[m.pk for m in sent if m.is_new]).update(read_at=timezone.now())
     updates = case.updates.prefetch_related('photos')
+    # A request for more information the reporter hasn't answered yet changes the "add details" form
+    info_request = case.info_request_pending() if update_form is not None else None
     return render(request, 'cases/track.html', {
         'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
-        'updates': updates,
+        'updates': updates, 'info_request': info_request,
     })
 
 
@@ -267,7 +276,8 @@ def triage_case(request, ref):
             'category': case.ai_category,
             'priority': case.ai_priority,
         })
-    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+    return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team(),
+                                                      'info_draft': _info_draft(case)})
 
 
 def _by_team():
@@ -287,7 +297,34 @@ def _by_team():
 @role_required(*HANDLERS)
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
-    return render(request, 'cases/case_detail.html', {'case': case})
+    return render(request, 'cases/case_detail.html', {'case': case, 'history': case_history(case),
+                                                      'info_draft': _info_draft(case)})
+
+
+def _info_draft(case):
+    """The draft for the "Request more information" popup, while the case is still open (else None)."""
+    return reporter_messages.more_info_draft(case) if case.status in OPEN_STATUSES else None
+
+
+@role_required(*HANDLERS)
+def request_info(request, ref):
+    """Send the reporter the handler's (edited) request for more information, then go back to the page it
+    was sent from. The reporter answers by adding to their report on the track page."""
+    case = get_object_or_404(Case, reference=ref)
+    back = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
+        back = reverse('case_detail', args=[ref])
+    if request.method != 'POST':
+        return redirect(back)
+    text = request.POST.get('text', '').strip()
+    if case.status not in OPEN_STATUSES:
+        messages.info(request, f'{case.reference} is {case.get_status_display().lower()}, so no request was sent.')
+    elif not text:
+        messages.error(request, 'The message was empty, so nothing was sent.')
+    else:
+        reporter_messages.ask_for_more_info(case, text, display_name(request.user))
+        messages.success(request, f'Request for more information sent to {case.reporter_name}.')
+    return redirect(back)
 
 
 # Cases can be re-routed after triage until the work is done
@@ -341,7 +378,8 @@ def reassign_case(request, ref):
     else:
         form = ReassignForm(initial={'priority': case.priority, 'team': case.assigned_team,
                                      'category': case.category, 'officer': case.assigned_officer})
-    return render(request, 'cases/reassign_case.html', {'case': case, 'form': form, 'by_team': _by_team()})
+    return render(request, 'cases/reassign_case.html', {'case': case, 'form': form, 'by_team': _by_team(),
+                                                        'info_draft': _info_draft(case)})
 
 
 def _alert_note(alert):
@@ -400,6 +438,9 @@ def officer_case(request, ref):
     if request.method == 'POST' and 'take' in request.POST:
         case.assigned_officer = officer
         case.save()
+        # Kept so the case history shows who took it and when
+        CaseChange.objects.create(case=case, changed_by=officer.name, summary=f'Officer: Unassigned → {officer.name}',
+                                  reason="Took the job from the team's list")
         messages.success(request, f'{case.reference} is now assigned to you.')
         return redirect('officer_case', ref=ref)
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ticket_links %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container">
@@ -27,20 +28,6 @@
                 <a class="btn btn-outline-primary mt-3" href="{% url 'reassign_case' case.reference %}"><i class="fa-solid fa-pen" aria-hidden="true"></i> Change priority or assignment</a>
                 {% endif %}
             </div>
-            {% with changes=case.changes.all %}{% if changes %}
-            <div class="panel" id="history">
-                <h2 class="h5">Change history</h2>
-                <ol class="report-updates">
-                    {% for ch in changes %}
-                    <li class="report-update">
-                        <p class="report-update-when">{{ ch.changed_at|date:"j M Y, H:i" }} by {{ ch.changed_by }}</p>
-                        <ul class="list-unstyled mb-0">{% for line in ch.lines %}<li>{{ line }}</li>{% endfor %}</ul>
-                        {% if ch.reason %}<p class="mt-1 mb-0 small"><strong>Reason:</strong> {{ ch.reason }}</p>{% endif %}
-                    </li>
-                    {% endfor %}
-                </ol>
-            </div>
-            {% endif %}{% endwith %}
             {% with sent=case.alerts.all %}{% if sent %}
             <div class="panel" id="alerts">
                 <h2 class="h5">Team alerts</h2>
@@ -58,22 +45,37 @@
             {% endif %}{% endwith %}
         </div>
         <div class="col-lg-6">
-            <h2 class="h5">Site visits</h2>
-            {% for v in case.visits.all %}
-            <div class="panel">
-                <p class="small text-muted mb-1">{{ v.visited_at|date:"j M Y, H:i" }} &middot; {{ v.officer.name }} &middot; {% if v.fixed %}Fixed{% else %}Follow-up needed{% endif %}{% if v.transcript_used %} &middot; dictated{% endif %}</p>
-                <div class="ai-box mb-2"><span class="ai-label">AI summary</span><br>{{ v.ai_summary }}</div>
-                <details><summary>Officer's full note</summary>{% if v.action %}<p class="mt-2 mb-1"><strong>Found:</strong> {{ v.note|linebreaksbr }}</p><p class="mb-0"><strong>Did:</strong> {{ v.action|linebreaksbr }}</p>{% else %}<p class="mt-2 mb-0">{{ v.note|linebreaksbr }}</p>{% endif %}</details>
-                {% include "cases/_visit_media.html" %}
+            <div class="panel" id="case-history">
+                <h2 class="h5">Case history</h2>
+                <ol class="report-updates" aria-label="Events, oldest first">
+                    {% for e in history %}
+                    <li class="report-update">
+                        <p class="report-update-when">{% if e.day is not None %}Day <span class="day-badge">{{ e.day }}</span> {% endif %}{% if e.when %}<time datetime="{{ e.when|date:'c' }}">{{ e.when|date:"j M Y, H:i" }}</time>{% else %}Not sent yet{% endif %}{% if e.by %} &middot; {{ e.by }}{% endif %}</p>
+                        <p class="mb-1"><strong>{{ e.title }}</strong></p>
+                        {% if e.lines %}<ul class="list-unstyled mb-1 small">{% for line in e.lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+                        {% if e.note %}<p class="mb-1 small{% if e.note_failed %} overdue{% endif %}"><i class="fa-solid {% if e.note_failed %}fa-triangle-exclamation{% else %}fa-envelope-circle-check{% endif %}" aria-hidden="true"></i> {{ e.note }}</p>{% endif %}
+                        {% if e.kind == 'details' %}{% with u=e.item %}
+                        {% if u.text %}<p class="mb-0 small">{{ u.text|linebreaksbr }}</p>{% endif %}
+                        {% with photos=u.photos.all %}{% if photos %}
+                        <ul class="photo-grid mt-2" aria-label="Photos the reporter added {{ u.created_at|date:'j M Y, H:i' }}">
+                            {% for p in photos %}<li><a href="{{ p.image.url }}" target="_blank" rel="noopener"><img src="{{ p.image.url }}" alt="Added photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>{% endfor %}
+                        </ul>
+                        {% endif %}{% endwith %}
+                        {% endwith %}{% endif %}
+                        {% if e.kind == 'visit' %}{% with v=e.item %}
+                        {% if v.transcript_used %}<p class="small text-muted mb-1">Dictated</p>{% endif %}
+                        <div class="ai-box mb-2"><span class="ai-label">AI summary</span><br>{{ v.ai_summary }}</div>
+                        <details><summary>Officer's full note</summary>{% if v.action %}<p class="mt-2 mb-1"><strong>Found:</strong> {{ v.note|linebreaksbr }}</p><p class="mb-0"><strong>Did:</strong> {{ v.action|linebreaksbr }}</p>{% else %}<p class="mt-2 mb-0">{{ v.note|linebreaksbr }}</p>{% endif %}</details>
+                        {% include "cases/_visit_media.html" %}
+                        {% endwith %}{% endif %}
+                        {% if e.kind == 'message' or e.kind == 'draft' %}{% with c=e.item %}
+                        <p class="small text-muted mb-1">{{ c.get_language_display }}{% if c.ai_drafted %} &middot; <span class="ai-label">AI drafted</span>{% endif %}</p>
+                        <p class="letter mb-0" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text|ticket_links }}</p>
+                        {% endwith %}{% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
             </div>
-            {% empty %}<p>No visits yet.</p>{% endfor %}
-            <h2 class="h5 mt-3">Communications</h2>
-            {% for c in case.communications.all %}
-            <div class="panel">
-                <p class="small text-muted mb-1">{{ c.get_kind_display }} &middot; {{ c.get_language_display }} &middot; {% if c.date_sent %}sent {{ c.date_sent|date:"j M H:i" }} by {{ c.approved_by }}{% else %}draft{% endif %}{% if c.ai_drafted %} &middot; <span class="ai-label">AI drafted</span>{% endif %}</p>
-                <p class="letter mb-0" {% if c.language == 'ur' %}dir="rtl" lang="ur"{% endif %}>{{ c.draft_text }}</p>
-            </div>
-            {% endfor %}
             {% if case.status == 'resolved' %}<a class="btn btn-primary" href="{% url 'outcome_letter' case.reference %}">Review outcome letter</a>{% endif %}
             {% if case.status == 'new' %}<a class="btn btn-primary" href="{% url 'triage_case' case.reference %}">Triage this case</a>{% endif %}
         </div>

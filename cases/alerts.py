@@ -46,6 +46,24 @@ def _body(case, intro, link):
     return '\n'.join(lines)
 
 
+def subject_for(case):
+    """Priority first, so urgent jobs stand out in an inbox list."""
+    return (f'[{case.get_priority_display()}] {case.reference} {case.title}'
+            f'{" - health and safety risk" if case.hs_risk else ""}')
+
+
+def routed_intro(case):
+    who = f'{case.assigned_officer.name}, you have' if case.assigned_officer else f'{case.assigned_team} has'
+    return f'{who} a new {case.get_priority_display().lower()} priority job.'
+
+
+def changed_intro(case, changes, old_officer=None):
+    intro = 'This job has been changed:\n' + '\n'.join(f'- {line}' for line in changes)
+    if old_officer and old_officer != case.assigned_officer:
+        intro += f'\n{old_officer.name} no longer needs to attend.'
+    return intro
+
+
 def send_case_alert(case, kind, intro, request=None, also=None, also_officers=()):
     """Email the case's team and officer (plus `also`) and record the alert. Never raises: a failed email
     must not stop a case being routed, so the failure is recorded on the alert instead."""
@@ -53,9 +71,7 @@ def send_case_alert(case, kind, intro, request=None, also=None, also_officers=()
     if not to:
         return None
     link = request.build_absolute_uri(reverse('officer_case', args=[case.reference])) if request else ''
-    # Priority first, so urgent jobs stand out in an inbox list
-    subject = (f'[{case.get_priority_display()}] {case.reference} {case.title}'
-               f'{" - health and safety risk" if case.hs_risk else ""}')
+    subject = subject_for(case)
     body = _body(case, intro, link)
     alert = Alert(case=case, kind=kind, recipients=', '.join(to), subject=subject, body=body)
     try:
@@ -71,9 +87,7 @@ def send_case_alert(case, kind, intro, request=None, also=None, also_officers=()
 
 def alert_routed(case, request=None):
     """After triage: tell the team (and officer, if one was chosen) they have a new job."""
-    who = f'{case.assigned_officer.name}, you have' if case.assigned_officer else f'{case.assigned_team} has'
-    return send_case_alert(case, Alert.Kind.ROUTED, f'{who} a new {case.get_priority_display().lower()} '
-                                                    f'priority job.', request)
+    return send_case_alert(case, Alert.Kind.ROUTED, routed_intro(case), request)
 
 
 def alert_changed(case, changes, old_officer=None, request=None):
@@ -84,10 +98,8 @@ def alert_changed(case, changes, old_officer=None, request=None):
         also_officers.append(old_officer)
         if old_officer.contact_email:
             also.append(old_officer.contact_email)
-    intro = 'This job has been changed:\n' + '\n'.join(f'- {line}' for line in changes)
-    if old_officer and old_officer != case.assigned_officer:
-        intro += f'\n{old_officer.name} no longer needs to attend.'
-    return send_case_alert(case, Alert.Kind.CHANGED, intro, request, also, also_officers)
+    return send_case_alert(case, Alert.Kind.CHANGED, changed_intro(case, changes, old_officer), request, also,
+                           also_officers)
 
 
 def unread_count(user):
