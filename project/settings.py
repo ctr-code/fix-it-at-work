@@ -218,6 +218,11 @@ STORAGES = {
     },
 }
 
+# Keep uploads in Cloudinary when CLOUDINARY_URL is set (tests always use the local media folder)
+if os.getenv('CLOUDINARY_URL', '').strip() and 'test' not in sys.argv:
+    INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+    STORAGES["default"] = {"BACKEND": "project.storage.CloudinaryMediaStorage"}
+
 # The location of the W3C validator used for testing
 VALIDATOR_DIR = BASE_DIR / "fixtures"
 
