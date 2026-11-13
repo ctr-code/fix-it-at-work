@@ -574,8 +574,8 @@ class VisitOutcomeFlowTests(TestCase):
     def test_handler_sees_outcome_summary_and_both_answers(self):
         self.record(self.FOUND, self.DID, fixed=True)
         self.client.force_login(self.handler)
-        visits = self.client.get(f'/cases/{self.ref}/').content.decode().split('Site visits')[1]
-        self.assertIn('Serena &middot; Fixed', visits)
+        visits = self.client.get(f'/cases/{self.ref}/').content.decode().split('Case history')[1]
+        self.assertIn('<strong>Site visit: fixed</strong>', visits)
         self.assertIn('Outcome: Fixed on this visit.', visits)
         self.assertIn(f'<strong>Found:</strong> {self.FOUND}', visits)
         self.assertIn(f'<strong>Did:</strong> {self.DID}', visits)
@@ -626,7 +626,7 @@ class VisitOutcomeFlowTests(TestCase):
         self.assertEqual(self.case.status, Status.IN_PROGRESS)
         self.client.force_login(self.handler)
         html = self.client.get(f'/cases/{self.ref}/').content.decode()
-        self.assertIn('Serena &middot; Follow-up needed', html)
+        self.assertIn('<strong>Site visit: follow-up needed</strong>', html)
         self.assertIn('Done: Ordered a new valve. Return visit booked for Thursday. '
                       'Outcome: Not fixed yet - follow-up visit needed.', html)
         response = self.client.get(f'/cases/{self.ref}/letter/')
@@ -879,7 +879,7 @@ class ReassignCaseTests(TestCase):
         self.assertTrue(any(line.startswith('SLA due:') for line in change.lines()))
         self.assertEqual(change.reason, 'Water now reaching the server room')
         page = self.client.get(f'/cases/{self.case.reference}/')
-        self.assertContains(page, 'Change history')
+        self.assertContains(page, 'Case history')
         self.assertContains(page, 'Water now reaching the server room')
 
     def test_change_officer_and_unassign(self):
@@ -1847,3 +1847,202 @@ class WorkingTimeTests(TestCase):
         call_command('sync_sla', '--recalculate', stdout=StringIO())
         case.refresh_from_db()
         self.assertEqual(self.local(case.sla_due), 'Wed 2026-11-25 10:00')  # 10 working days
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class TicketLinkTests(TestCase):
+    """Ticket numbers in messages to reporters link to the track page, the same for everyone who sees them."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        from django.utils import timezone
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.save()
+        ref = self.case.reference
+        Communication.objects.create(case=self.case, kind='update', date_sent=timezone.now(), approved_by='Jo',
+                                     draft_text=f'Your report {ref} is linked to TKT-2026-9999 <b>now</b>.')
+        self.expected = (f'Your report <a href="/track/{ref}/">{ref}</a> is linked to '
+                         '<a href="/track/TKT-2026-9999/">TKT-2026-9999</a> &lt;b&gt;now&lt;/b&gt;.')
+
+    def test_reporter_and_handler_see_the_same_links(self):
+        for user, url in ((self.nina, f'/track/{self.case.reference}/'), (self.handler, f'/cases/{self.case.reference}/')):
+            self.client.force_login(user)
+            self.assertContains(self.client.get(url), self.expected, html=False)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseHistoryTests(TestCase):
+    """The case page shows everything that happened to a case in one list, oldest first."""
+
+    make_user = ReassignCaseTests.make_user
+    post = ReassignCaseTests.post
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        self.tom.user = self.make_user('tom', 'officer')
+        self.tom.save()
+        self.ref = self.case.reference
+
+    def history(self):
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/').content.decode()
+        return html.split('id="case-history"')[1]
+
+    def assertInOrder(self, html, *parts):
+        positions = [html.index(p) for p in parts]
+        self.assertEqual(positions, sorted(positions), parts)
+
+    def test_events_are_listed_oldest_first_with_who_was_notified(self):
+        self.triage(officer=self.serena.pk)
+        self.post(priority='high', officer=self.serena.pk, reason='Room is unusable')
+        self.post(priority='high', officer='')  # back to the team, so Tom can take it
+        self.client.force_login(self.tom.user)
+        self.client.post(f'/officer/{self.ref}/', {'take': '1'})
+        self.client.post(f'/officer/{self.ref}/', {'note': 'Valve seized.', 'action': 'Freed it.', 'fixed': 'on'})
+        html = self.history()
+        self.assertInOrder(
+            html,
+            'Reported by Nina Gallagher',
+            '<strong>Triaged</strong>', 'Medium priority',
+            '<strong>Message to reporter: Acknowledgement</strong>',
+            '<strong>Assigned to Serena</strong>',
+            'Serena and the Facilities Helpdesk team were notified by email.',
+            '<strong>Reprioritised</strong>', 'Priority: Medium → High', 'Reason: Room is unusable',
+            '<strong>Message to reporter: Progress update</strong>',
+            '<strong>Officer removed</strong>',
+            '<strong>Assigned to Tom</strong>', "Reason: Took the job from the team&#x27;s list",
+            '<strong>Site visit: fixed</strong>', 'Freed it.',
+        )
+        self.assertIn('Message to reporter: Progress update', html.split('Site visit: fixed')[1])
+        # Serena was told she no longer needs to attend
+        self.assertIn('Serena and the Facilities Helpdesk team were notified by email.',
+                      html.split('Officer removed')[1])
+        self.assertNotIn('Site visits', html)
+
+    def test_duplicate_and_drafts(self):
+        from django.utils import timezone
+        other = Case.objects.create(title='Hot room', description='Too hot.', building='Innovation Centre',
+                                    reporter_name='Sam', reporter_email='sam@example.com')
+        self.case.status, self.case.duplicate_of = Status.DUPLICATE, other
+        self.case.date_acknowledged, self.case.triaged_by = timezone.now(), 'Jo'
+        self.case.save()
+        Communication.objects.create(case=self.case, kind='outcome', draft_text='Dear Nina')
+        html = self.history()
+        self.assertInOrder(html, 'Reported by Nina Gallagher', f'Merged as a duplicate of {other.reference}',
+                           'Not sent yet', 'Outcome letter drafted, not yet sent')
+
+    def test_each_entry_shows_days_since_reported(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        reported = timezone.localtime().replace(hour=16, minute=0, second=0, microsecond=0) - timedelta(days=5)
+        self.case.date_reported = reported
+        self.case.save()
+        SiteVisit.objects.create(case=self.case, officer=self.serena, note='Looked.', visited_at=reported + timedelta(hours=10))
+        SiteVisit.objects.create(case=self.case, officer=self.serena, note='Fixed.', fixed=True,
+                                 visited_at=reported + timedelta(days=3))
+        html = self.history()
+        badge = 'Day <span class="day-badge">{}</span>'
+        self.assertInOrder(html, badge.format(0), 'Reported by Nina', badge.format(1), badge.format(3))
+        self.assertNotIn('Change history', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class InfoRequestTests(TestCase):
+    """A handler can ask the reporter for more information; the reporter answers by adding to their report."""
+
+    make_user = ReassignCaseTests.make_user
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.status = Status.NEW
+        self.case.save()
+        self.ref = self.case.reference
+
+    def ask(self, text='Which room is it in?', next_url=None):
+        self.client.force_login(self.handler)
+        return self.client.post(f'/cases/{self.ref}/request-info/',
+                                {'text': text, 'next': next_url or f'/triage/{self.ref}/'})
+
+    def track(self):
+        self.client.force_login(self.nina)
+        return self.client.get(f'/track/{self.ref}/')
+
+    def test_handler_pages_offer_the_popup_with_a_draft(self):
+        self.client.force_login(self.handler)
+        page = self.client.get(f'/triage/{self.ref}/')
+        self.assertContains(page, 'data-bs-target="#request-info"')
+        self.assertContains(page, f'To deal with your report {self.ref} (&quot;Radiator stuck on full&quot;)')
+        self.assertContains(page, f'action="/cases/{self.ref}/request-info/"')
+        self.assertContains(self.client.get(f'/cases/{self.ref}/'), 'Request more information')
+
+    def test_not_offered_to_officers_or_on_closed_cases(self):
+        self.serena.user = self.make_user('serena', 'officer')
+        self.serena.save()
+        self.case.status = Status.ASSIGNED
+        self.case.save()
+        self.client.force_login(self.serena.user)
+        self.assertNotContains(self.client.get(f'/officer/{self.ref}/'), 'Request more information')
+        self.case.status = Status.CLOSED
+        self.case.save()
+        self.client.force_login(self.handler)
+        self.assertNotContains(self.client.get(f'/cases/{self.ref}/'), 'Request more information')
+        self.ask()
+        self.assertFalse(self.case.communications.filter(kind='info').exists())
+
+    def test_request_reaches_the_reporter_and_changes_their_form(self):
+        from django.core import mail
+        response = self.ask()
+        self.assertRedirects(response, f'/triage/{self.ref}/', fetch_redirect_response=False)
+        message = self.case.communications.get(kind='info')
+        self.assertEqual((message.draft_text, message.approved_by), ('Which room is it in?', 'Jo'))
+        self.assertIn('Which room is it in?', mail.outbox[-1].body)
+        page = self.track()
+        self.assertContains(page, 'We need more information about this report.')
+        self.assertContains(page, 'Send the information we asked for')
+        self.assertContains(page, '>Send the information requested</button>')
+        self.client.force_login(self.handler)
+        self.assertContains(self.client.get(f'/cases/{self.ref}/'), 'Waiting for Nina Gallagher to send the information')
+
+        self.client.force_login(self.nina)
+        response = self.client.post(f'/track/{self.ref}/', {'add_details': '1', 'text': 'Room 2.14.'}, follow=True)
+        self.assertContains(response, 'the information you sent has been added')
+        self.assertNotContains(response, 'We need more information about this report.')
+        self.assertContains(response, '>Add to my report</button>')
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/').content.decode().split('Case history')[1]
+        self.assertNotIn('Waiting for Nina', html)
+        reported, asked, answered = (html.index('Reported by Nina'),
+                                     html.index('More information requested from the reporter'),
+                                     html.index('Reporter sent the information requested'))
+        self.assertLess(reported, asked)
+        self.assertLess(asked, answered)
+        self.assertIn('Room 2.14.', html[answered:])
+
+    def test_empty_message_and_outside_links_are_refused(self):
+        response = self.ask(text='  ', next_url='https://example.org/')
+        self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
+        self.assertFalse(self.case.communications.filter(kind='info').exists())

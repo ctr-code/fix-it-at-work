@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags static %}
+{% load crispy_forms_tags static ticket_links %}
 {% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
 {% block main %}
 <section class="container page-lg">
@@ -7,6 +7,11 @@
     <p><span class="badge-status">{{ case.get_status_display }}</span>
         {% if case.status == 'duplicate' %} - linked to {{ case.duplicate_of.reference }}, which is already being fixed{% endif %}</p>
     {% include "cases/_journey.html" %}
+    {% if info_request %}
+    <div class="panel info-needed" role="status">
+        <p class="mb-0"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> <strong>We need more information about this report.</strong> Please read our message below, then <a href="#updates">send the information requested</a>.</p>
+    </div>
+    {% endif %}
     {# Newest first, so the latest news is the first thing the reporter sees #}
     <section class="panel" id="your-messages" aria-labelledby="your-messages-title">
         <h2 class="h5" id="your-messages-title">Messages to you</h2>
@@ -15,7 +20,7 @@
             {% for c in sent %}
             <li class="report-update reporter-message{% if c.is_new %} is-new{% endif %}">
                 <p class="report-update-when">{% if c.is_new %}<span class="alert-new">New</span> {% endif %}<strong>{{ c.get_kind_display }}</strong> &middot; {{ c.date_sent|date:"j M Y, H:i" }}</p>
-                <p class="letter mb-0" lang="{{ c.language }}"{% if c.language == 'ur' %} dir="rtl"{% endif %}>{{ c.draft_text }}</p>
+                <p class="letter mb-0" lang="{{ c.language }}"{% if c.language == 'ur' %} dir="rtl"{% endif %}>{{ c.draft_text|ticket_links }}</p>
                 {% if c.ai_drafted %}<p class="small mt-2 mb-0 ai-label"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Drafted with AI help and checked by {{ c.approved_by }}</p>{% endif %}
             </li>
             {% endfor %}
@@ -47,12 +52,17 @@
         {% if update_form %}
         <form method="post" enctype="multipart/form-data" class="add-details" novalidate>
             {% csrf_token %}
+            {% if info_request %}
+            <h3 class="h6">Send the information we asked for</h3>
+            <p class="small text-muted">Answer our message of {{ info_request.date_sent|date:"j M Y" }} here, and add photos if they help. The team working on your report will see it straight away.</p>
+            {% else %}
             <h3 class="h6">Add more details</h3>
             <p class="small text-muted">Has something changed, or is there anything else we should know? Add it here and the team working on your report will see it.</p>
+            {% endif %}
             {% if update_form.non_field_errors %}<div class="invalid-feedback d-block mb-2">{% for e in update_form.non_field_errors %}<p><strong>{{ e }}</strong></p>{% endfor %}</div>{% endif %}
             {{ update_form.text|as_crispy_field }}
             {% include "cases/_photo_upload.html" with field=update_form.photo form=update_form %}
-            <button type="submit" name="add_details" class="btn btn-primary">Add to my report</button>
+            <button type="submit" name="add_details" class="btn btn-primary">{% if info_request %}Send the information requested{% else %}Add to my report{% endif %}</button>
         </form>
         {% else %}
         <p class="small text-muted mb-0">This report is {% if case.status == 'duplicate' %}merged with another one{% else %}closed{% endif %}, so it can't be added to. If the problem comes back, please make a new report.</p>

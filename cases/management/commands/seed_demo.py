@@ -15,9 +15,10 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from cases import ai
+from cases import ai, alerts, reporter_messages
 from cases.models import (
-    PRIORITY_RANK, Building, Case, Holiday, Category, Communication, Officer, Profile, Role, SiteVisit, SLARule, Status, Team,
+    PRIORITY_RANK, Alert, AlertRead, Building, Case, CaseChange, Holiday, Category, Communication, Officer, Profile,
+    ReportUpdate, Role, SiteVisit, SLARule, Status, Team,
 )
 
 # Demo logins: (username, first name, last name, role)
@@ -316,6 +317,36 @@ FOLLOW_UP = ('Part needed that is not in the van.', 'Ordered the part and booked
 
 HANDLER = 'Jo Clarke'
 
+# Requests for more information on particular reports: (the handler's question, the reporter's answer or None
+# if they haven't answered yet). Other English reports get the standard request now and then.
+INFO_REQUESTS = {
+    'Water dripping from ceiling': ('Is the water coming through a ceiling tile or a light fitting, and roughly '
+                                    'how fast is the bucket filling?', None),
+    'Car park barrier stuck': ('Is the barrier arm damaged, or is it just not lifting? A photo would help.',
+                               'The arm is not damaged, it just will not lift. The keypad screen is blank.'),
+    'Lift making grinding noise': ('Does it happen on every trip, and which lift is it?',
+                                   'Every trip going up. It is the left-hand lift by reception.'),
+}
+INFO_ANSWERS = [
+    'It is the one nearest the window. It started on Monday morning.',
+    'It affects the whole room, not just one spot, and it has got a bit worse since I reported it.',
+    'It is next to the fire door at the end of the corridor. I have added a photo.',
+]
+# Things reporters add to a report without being asked
+EXTRA_DETAILS = [
+    'It has got worse since this morning.',
+    'A colleague says the same thing happened last month.',
+    'It is now affecting the next room as well.',
+]
+REASSIGN_REASONS = ['{old} is on leave this week.', '{new} is already working in that building today.']
+REPRIORITISE_REASONS = ['The reporter called to say it is now affecting the whole team.',
+                        'Second report of the same problem from that floor.']
+# Reports that always get a change after triage, so the demo shows both kinds (others get them at random)
+REASSIGNED = {'No heating in warehouse office'}
+REPRIORITISED = {'Monitor screen flickering'}
+# A second report of an open problem, merged into the first at triage: (original title, reporter, hours later)
+DUPLICATE = ('Carpet ripped by lift', 'Jamie Fox', 20)
+
 # The demo organisation's sites (fictional addresses; the map points are general spots in Birmingham,
 # not anyone's home). Cases at these buildings get the address and map point automatically.
 BUILDINGS = [
@@ -388,6 +419,8 @@ class Command(BaseCommand):
         Case.objects.filter(reporter_name='Alex Morgan').update(reporter_user=users['alex'])
 
         self.make_serena(teams[SERENA_TEAM], users['serena'], rng, now)
+        self.make_duplicate(now)
+        self.mark_old_alerts_read(now)
 
         self.stdout.write(self.style.SUCCESS(f'Loaded {Case.objects.count()} fictional cases.'))
         self.stdout.write('Demo logins: ' + ', '.join(f'{u} ({r.label})' for u, _, _, r in DEMO_USERS[:4]) +
@@ -436,9 +469,9 @@ class Command(BaseCommand):
         case.ai_confidence, case.ai_duplicate_candidate = s['confidence'], s['duplicate']
         case.fill_location_from_building()
         case.save()
-        Communication.objects.create(case=case, kind='receipt', language=lang, draft_text=ai.receipt_text(case),
-                                     approved_by='Automatic', date_sent=reported)
+        self.message(case, 'receipt', ai.receipt_text(case), reported)
         if stage == 'new':
+            self.ask_for_info(case, rng, reported, now)
             return
 
         # Triage: the handler accepts most AI suggestions, sometimes raises priority
@@ -451,29 +484,48 @@ class Command(BaseCommand):
                 case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
         case.ai_suggestion_accepted = case.priority == s['priority'] and case.category == s['category']
         case.assigned_team = case.category.default_team
-        case.assigned_officer = officer or rng.choice(list(case.assigned_team.officers.all()))
+        team_officers = list(case.assigned_team.officers.all())
+        worker = officer or rng.choice(team_officers)
+        # Now and then nobody is chosen at triage and an officer takes the job from the team's list
+        takes = officer is None and rng.random() < 0.15
+        case.assigned_officer = None if takes else worker
         case.triaged_by = HANDLER
         # Response and fix times scale with the priority's SLA targets, so most meet them and a few don't
         rule = SLARule.objects.get(priority=case.priority)
         ack_span = rule.acknowledge_due(reported) - reported
         fix_span = rule.resolve_due(reported) - reported
-        case.date_acknowledged = reported + ack_span * rng.uniform(0.1, 1.3)
+        case.date_acknowledged = min(reported + ack_span * rng.uniform(0.1, 1.3), now - timedelta(minutes=30))
+        self.ask_for_info(case, rng, reported, case.date_acknowledged)
         case.status = Status.ASSIGNED
         case.apply_sla()
         case.save()
-        Communication.objects.create(
-            case=case, kind='ack', language=lang, approved_by=HANDLER, date_sent=case.date_acknowledged,
-            draft_text=f'Your report {case.reference} has been passed to our {case.assigned_team} team.')
-        if stage == 'assigned':
-            return
+        self.message(case, 'ack', reporter_messages._text(case, 'routed'), case.date_acknowledged, HANDLER)
+        self.alert(case, Alert.Kind.ROUTED, alerts.routed_intro(case), case.date_acknowledged + timedelta(seconds=2))
 
         found, did = VISIT_NOTES[case.assigned_team.name]
         first_visit = min(case.date_acknowledged + fix_span * rng.uniform(0.1, 0.7),
                           now - timedelta(hours=2))
+        # Anything that happens between triage and the first visit (or now, for jobs not visited yet)
+        until = now if stage == 'assigned' else first_visit
+        moment = case.date_acknowledged + (until - case.date_acknowledged) * rng.uniform(0.15, 0.35)
+        if takes:
+            case.assigned_officer = worker
+            case.save()
+            CaseChange.objects.create(case=case, changed_by=worker.name, changed_at=moment,
+                                      summary=f'Officer: Unassigned → {worker.name}',
+                                      reason="Took the job from the team's list")
+        elif officer is None and len(team_officers) > 1 and (title in REASSIGNED or rng.random() < 0.1):
+            self.reassign(case, rng, rng.choice([o for o in team_officers if o != worker]), moment)
+        if officer is None and case.priority in ('low', 'medium') and (title in REPRIORITISED or rng.random() < 0.12):
+            self.reprioritise(case, rng, case.date_acknowledged + (moment - case.date_acknowledged) * 0.5)
+        if rng.random() < 0.1:
+            ReportUpdate.objects.create(case=case, text=rng.choice(EXTRA_DETAILS),
+                                        created_at=moment + (until - moment) * 0.7)
+        if stage == 'assigned':
+            return
+
         if stage == 'in_progress':
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
-                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
+            self.visit(case, first_visit, *FOLLOW_UP, fixed=False)
             case.status = Status.IN_PROGRESS
             case.save()
             return
@@ -481,14 +533,10 @@ class Command(BaseCommand):
         two_visits = rng.random() < 0.3
         visit_time = first_visit
         if two_visits:
-            SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=first_visit,
-                                     note=FOLLOW_UP[0], action=FOLLOW_UP[1],
-                                     ai_summary=ai.summarise_visit(FOLLOW_UP[0], False, FOLLOW_UP[1]))
+            self.visit(case, first_visit, *FOLLOW_UP, fixed=False)
             visit_time = min(first_visit + fix_span * rng.uniform(0.2, 0.6),
                              now - timedelta(hours=1))
-        SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=visit_time, note=found,
-                                 action=did, fixed=True, transcript_used=rng.random() < 0.4,
-                                 ai_summary=ai.summarise_visit(found, True, did))
+        self.visit(case, visit_time, found, did, fixed=True, transcript_used=rng.random() < 0.4)
         case.status = Status.RESOLVED
         case.date_resolved = visit_time
         case.first_time_fix = not two_visits
@@ -509,3 +557,108 @@ class Command(BaseCommand):
             if rng.random() < 0.6:
                 case.satisfaction_comments = rng.choice(SATISFACTION_COMMENTS[case.satisfaction])
         case.save()
+
+    # ---------- Helpers that record events the way the app does, at a given time ----------
+
+    def message(self, case, kind, text, when, by='Automatic'):
+        return Communication.objects.create(case=case, kind=kind, language=case.preferred_language,
+                                            draft_text=text, approved_by=by, date_sent=when)
+
+    def alert(self, case, kind, intro, when, also_officers=()):
+        """A team alert, as alerts.send_case_alert records it (without sending an email)."""
+        to = alerts._recipients(case, [o.contact_email for o in also_officers])
+        alert = Alert.objects.create(case=case, kind=kind, recipients=', '.join(to), subject=alerts.subject_for(case),
+                                     body=alerts._body(case, intro, ''), sent_at=when, delivered=True,
+                                     team=case.assigned_team)
+        alert.officers.set([o for o in (case.assigned_officer, *also_officers) if o])
+        return alert
+
+    def visit(self, case, when, found, did, fixed, transcript_used=False):
+        visit = SiteVisit.objects.create(case=case, officer=case.assigned_officer, visited_at=when, note=found,
+                                         action=did, fixed=fixed, transcript_used=transcript_used,
+                                         ai_summary=ai.summarise_visit(found, fixed, did))
+        # The reporter hears about every visit (as reporter_messages.visited)
+        if fixed:
+            text = reporter_messages._text(case, 'fixed')
+        else:
+            text = (reporter_messages._text(case, 'update') + ' ' +
+                    reporter_messages._text(case, 'follow_up', date=reporter_messages._when(when)))
+        self.message(case, 'update', text, when + timedelta(minutes=1))
+        return visit
+
+    def ask_for_info(self, case, rng, start, end):
+        """Some reports need more information before triage: the handler asks, and the reporter answers."""
+        if case.title in INFO_REQUESTS:
+            question, answer = INFO_REQUESTS[case.title]
+        elif case.preferred_language == 'en' and case.status == Status.NEW and rng.random() < 0.1:
+            question, answer = None, rng.choice(INFO_ANSWERS)
+        else:
+            return
+        draft = reporter_messages.more_info_draft(case)
+        if question:  # the handler replaced the general request with a specific question
+            first, *_, last = draft.split('. ')
+            draft = f'{first}. {draft.split(". ")[1]}. {question} {last}'
+        self.message(case, 'info', draft, start + (end - start) * 0.3, HANDLER)
+        if answer:
+            ReportUpdate.objects.create(case=case, text=answer, created_at=start + (end - start) * 0.6)
+
+    def reassign(self, case, rng, new, when):
+        old = case.assigned_officer
+        case.assigned_officer = new
+        case.save()
+        lines = [f'Officer: {old.name} → {new.name}']
+        CaseChange.objects.create(case=case, changed_by=HANDLER, changed_at=when, summary='\n'.join(lines),
+                                  reason=rng.choice(REASSIGN_REASONS).format(old=old.name, new=new.name))
+        self.alert(case, Alert.Kind.CHANGED, alerts.changed_intro(case, lines, old), when + timedelta(seconds=2),
+                   also_officers=[old])
+
+    def reprioritise(self, case, rng, when):
+        old_priority, old_label, old_due = case.priority, case.get_priority_display(), case.sla_due
+        case.priority = {1: 'medium', 2: 'high', 3: 'urgent'}[PRIORITY_RANK[case.priority]]
+        case.apply_sla()
+        if case.sla_due and case.sla_due < when:  # the new target would already have passed: leave it be
+            case.priority, case.sla_due = old_priority, old_due
+            return
+        case.save()
+        when_text = lambda d: f'{timezone.localtime(d):%d %b %Y, %H:%M}' if d else '-'  # noqa: E731 - as views._when
+        lines = [f'Priority: {old_label} → {case.get_priority_display()}']
+        if case.sla_due != old_due:
+            lines.append(f'SLA due: {when_text(old_due)} → {when_text(case.sla_due)}')
+        CaseChange.objects.create(case=case, changed_by=HANDLER, changed_at=when, summary='\n'.join(lines),
+                                  reason=rng.choice(REPRIORITISE_REASONS))
+        self.alert(case, Alert.Kind.CHANGED, alerts.changed_intro(case, lines), when + timedelta(seconds=2))
+        if case.sla_due != old_due:
+            text = reporter_messages._text(case, 'update') + ' ' + reporter_messages._text(case, 'new_due')
+            self.message(case, 'update', text, when + timedelta(seconds=3), HANDLER)
+
+    def make_duplicate(self, now):
+        """A second report of an open problem, merged into the first at triage."""
+        title, name, hours = DUPLICATE
+        original = Case.objects.get(title=title)
+        reported = original.date_reported + timedelta(hours=hours)
+        case = Case.objects.create(
+            title=f'{title} - still not fixed', description=original.description, building=original.building,
+            location_detail=original.location_detail, reported_urgency=original.reported_urgency,
+            impact=original.impact, reporter_name=name, reporter_email=name.split()[0].lower() + '@example.com',
+            date_reported=reported, ai_summary=original.ai_summary, ai_duplicate_candidate=original,
+            ai_category=original.category, ai_priority=original.priority, ai_confidence=80,
+        )
+        case.fill_location_from_building()
+        self.message(case, 'receipt', ai.receipt_text(case), reported)
+        case.date_acknowledged = case.date_closed = min(reported + timedelta(hours=1), now)
+        case.triaged_by, case.duplicate_of, case.status = HANDLER, original, Status.DUPLICATE
+        case.ai_suggestion_accepted = True
+        case.save()
+        self.message(case, 'ack', reporter_messages._text(case, 'duplicate', other=original.reference),
+                     case.date_acknowledged, HANDLER)
+
+    def mark_old_alerts_read(self, now):
+        """Officers have read alerts more than half a day old, so only recent ones show as new."""
+        reads = []
+        for alert in Alert.objects.filter(sent_at__lt=now - timedelta(hours=12)).prefetch_related('officers'):
+            people = {o.user_id for o in alert.officers.all() if o.user_id}
+            if alert.team_id:
+                people |= set(Officer.objects.filter(team_id=alert.team_id, user__isnull=False)
+                              .values_list('user_id', flat=True))
+            reads += [AlertRead(alert=alert, user_id=u, read_at=alert.sent_at + timedelta(hours=1)) for u in people]
+        AlertRead.objects.bulk_create(reads, ignore_conflicts=True)
