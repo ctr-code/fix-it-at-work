@@ -680,3 +680,19 @@ main { margin-bottom: var(--space-10); }
 .voice-timer { font-variant-numeric: tabular-nums; color: var(--muted); }
 .voice-preview, .visit-audio audio { display: block; width: 100%; max-width: 420px; height: 40px; margin-top: var(--space-2); }
 .visit-audio audio { display: inline-block; vertical-align: middle; margin-top: 0; }
+
+/* Accessibility check fixes (see docs/accessibility.md). Bootstrap's link blue (#0d6efd) is 4.2:1 on the grey
+   page background and its grey outline buttons 4.4:1, both just under the 4.5:1 minimum for text. A darker
+   blue (6:1) and the muted ink (7:1) pass on both the page and white panels. */
+:root {
+    --bs-link-color: #0a58ca;
+    --bs-link-color-rgb: 10, 88, 202;
+    --bs-link-hover-color: var(--brand-dark);
+    --bs-link-hover-color-rgb: 7, 52, 71;
+}
+.btn-outline-secondary { --bs-btn-color: var(--muted); }
+
+/* People who ask their device for less motion get no animated transitions or smooth scrolling */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}

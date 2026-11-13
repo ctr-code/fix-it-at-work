@@ -116,14 +116,15 @@
         <div class="col-lg-6">
             <div class="panel h-100">
                 <h2>Workload by team</h2>
-                <table class="table align-middle mb-0">
+                <table class="table align-middle mb-0 table-cards">
+                    <caption class="visually-hidden">Open and overdue cases and first-time fix rate for each team</caption>
                     <thead><tr><th scope="col">Team</th><th scope="col" style="width: 40%">Open</th><th scope="col">Overdue</th><th scope="col">First-time fix</th></tr></thead>
                     <tbody>
                     {% for t in teams %}
                     <tr><td>{{ t.name }}</td>
-                        <td><div class="d-flex align-items-center gap-2"><div class="bar-track flex-grow-1"><div class="bar" style="width: {{ t.bar }}%"></div></div><span>{{ t.open }}</span></div></td>
-                        <td class="{% if t.overdue %}overdue{% endif %}">{{ t.overdue }}</td>
-                        <td>{{ t.ftf|default_if_none:"-" }}{% if t.ftf is not None %}%{% endif %}</td></tr>
+                        <td data-label="Open"><div class="d-flex align-items-center gap-2"><div class="bar-track flex-grow-1"><div class="bar" style="width: {{ t.bar }}%"></div></div><span>{{ t.open }}</span></div></td>
+                        <td data-label="Overdue" class="{% if t.overdue %}overdue{% endif %}">{{ t.overdue }}</td>
+                        <td data-label="First-time fix">{{ t.ftf|default_if_none:"-" }}{% if t.ftf is not None %}%{% endif %}</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
