@@ -1,0 +1,21 @@
+{% comment %}
+A visit's photos, voice note and dictation transcript, for the case page and the officer's job page.
+Usage: {% include "cases/_visit_media.html" with v=visit %}
+{% endcomment %}
+{% with photos=v.all_photos %}{% if photos %}
+<ul class="photo-grid mt-2" aria-label="Photos from the visit on {{ v.visited_at|date:'j M' }}">
+    {% for p in photos %}
+    <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Visit photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
+    {% endfor %}
+</ul>
+{% endif %}{% endwith %}
+{% if v.audio %}
+<div class="visit-audio mt-2">
+    <p class="small fw-semibold mb-1"><i class="fa-solid fa-microphone-lines" aria-hidden="true"></i> Voice note</p>
+    <audio controls preload="none" src="{{ v.audio.url }}" aria-label="Voice note from the visit on {{ v.visited_at|date:'j M' }}"></audio>
+    <a class="small ms-1" href="{{ v.audio.url }}" download>Download</a>
+</div>
+{% endif %}
+{% if v.transcript %}
+<details class="mt-2"><summary class="small">Dictation, as heard</summary><p class="small mt-2 mb-0">{{ v.transcript }}</p></details>
+{% endif %}

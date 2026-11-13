@@ -461,9 +461,9 @@ class VisitRecordingTests(TestCase):
 
     def test_visit_photo_and_dictation_flag_are_saved(self):
         photo = SimpleUploadedFile('valve.png', PNG_1PX, content_type='image/png')
-        self.visit(photo=photo, transcript_used='True')
+        self.visit(photos=photo, transcript_used='True')
         visit = self.case.visits.get()
-        self.assertTrue(visit.photo.name.startswith('visits/valve'))
+        self.assertTrue(visit.photos.get().image.name.startswith('visits/valve'))
         self.assertTrue(visit.transcript_used)
 
     def test_missing_action_is_refused(self):
@@ -1685,3 +1685,78 @@ class MapPinTests(TestCase):
         self.assertIn('"Main Office": [52.481, -1.899]', page)
         # The map library loads from the page script only when the map is opened, so the page itself has none
         self.assertNotIn('leaflet', page.lower())
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class VisitMediaTests(TestCase):
+    """A visit keeps several photos, a voice note and the dictation transcript, and shows them on case pages."""
+
+    make_user = VisitRecordingTests.make_user
+    setUp = VisitRecordingTests.setUp
+    visit = VisitRecordingTests.visit
+
+    def png(self, name):
+        return SimpleUploadedFile(name, PNG_1PX, content_type='image/png')
+
+    def audio(self, name='voice-note.webm', content_type='audio/webm;codecs=opus', size=2048):
+        return SimpleUploadedFile(name, b'\x1aE\xdf\xa3' + b'\0' * size, content_type=content_type)
+
+    def test_several_photos_a_voice_note_and_the_transcript_are_saved(self):
+        self.visit(photos=[self.png('before.png'), self.png('after.png')], audio=self.audio(),
+                   transcript='The valve was seized. I replaced the valve head.', transcript_used='True', fixed='on')
+        visit = self.case.visits.get()
+        self.assertEqual([p.image.name.split('/')[-1][:5] for p in visit.photos.all()], ['befor', 'after'])
+        self.assertTrue(visit.audio.name.startswith('visits/audio/voice-note'))
+        self.assertEqual(visit.transcript, 'The valve was seized. I replaced the valve head.')
+        self.assertEqual(len(visit.all_photos()), 2)
+
+    def test_a_safari_recording_is_accepted(self):
+        self.visit(audio=self.audio('voice-note.m4a', 'audio/mp4'))
+        self.assertTrue(self.case.visits.get().audio)
+
+    def test_bad_audio_is_refused(self):
+        for f, message in [(self.audio('notes.exe', 'application/octet-stream'), 'not an audio recording'),
+                           (self.audio('song.txt', 'audio/mpeg'), 'not an audio recording'),
+                           (self.audio('long.webm', size=21 * 1024 * 1024), 'must be 20MB or less')]:
+            with self.subTest(name=f.name):
+                response = self.visit(audio=f)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, message)
+        self.assertFalse(self.case.visits.exists())
+
+    def test_too_many_photos_are_refused(self):
+        response = self.visit(photos=[self.png(f'p{i}.png') for i in range(6)])
+        self.assertContains(response, 'Please choose up to 5 photos')
+        self.assertFalse(self.case.visits.exists())
+
+    def test_form_has_the_recorder_and_the_photo_area(self):
+        page = self.client.get(self.url).content.decode()
+        self.assertIn('Record a voice note', page)
+        self.assertIn('name="audio"', page)
+        self.assertIn('accept="audio/*"', page)
+        self.assertIn('js/voice-note.js', page)
+        self.assertIn('name="photos"', page)
+        self.assertIn('js/photo-upload.js', page)
+        self.assertIn('name="transcript"', page)
+
+    def test_case_page_shows_photos_voice_note_and_transcript(self):
+        self.visit(photos=[self.png('before.png')], audio=self.audio(), transcript='Valve seized.', fixed='on')
+        handler = self.make_user('handler1', 'handler')
+        self.client.force_login(handler)
+        page = self.client.get(f'/cases/{self.case.reference}/').content.decode()
+        visit = self.case.visits.get()
+        self.assertIn(f'src="{visit.audio.url}"', page)
+        self.assertIn('Dictation, as heard', page)
+        self.assertIn('Valve seized.', page)
+        self.assertIn(visit.photos.get().image.url, page)
+
+    def test_older_visits_with_one_photo_still_show_it(self):
+        from .models import SiteVisit
+        old = SiteVisit.objects.create(case=self.case, officer=self.officer, note='Old note', photo='visits/old.png')
+        self.assertEqual([f.name for f in old.all_photos()], ['visits/old.png'])

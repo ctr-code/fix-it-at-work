@@ -315,6 +315,8 @@ class Case(models.Model):
 # Limits for photos attached to a report, shared by the form and the upload area
 MAX_REPORT_PHOTOS = 5
 MAX_PHOTO_MB = 10
+# Limits for a visit's voice note (about 20 minutes of compressed speech)
+MAX_AUDIO_MB = 20
 
 
 class ReportUpdate(models.Model):
@@ -418,12 +420,35 @@ class SiteVisit(models.Model):
     note = models.TextField('What did you find?')
     action = models.TextField('What did you do?', blank=True)
     transcript_used = models.BooleanField(default=False)
+    # The words the browser heard when the officer dictated, exactly as heard (before any typing fixes)
+    transcript = models.TextField(blank=True)
+    # A voice note the officer recorded or uploaded, kept so the case notes can be checked against it
+    audio = models.FileField('Voice note', upload_to='visits/audio/', blank=True)
     ai_summary = models.TextField(blank=True)
+    # Older visits kept their single photo here. New visits store theirs as VisitPhoto (see all_photos).
     photo = models.FileField(upload_to='visits/', blank=True)
     fixed = models.BooleanField('Issue fixed on this visit', default=False)
 
     class Meta:
         ordering = ['visited_at']
+
+    def all_photos(self):
+        """An older visit's single photo, then any newer ones."""
+        files = [self.photo] if self.photo else []
+        return files + [p.image for p in self.photos.all()]
+
+
+class VisitPhoto(models.Model):
+    """A photo the officer took on a visit (up to MAX_REPORT_PHOTOS per visit)."""
+    visit = models.ForeignKey(SiteVisit, on_delete=models.CASCADE, related_name='photos')
+    image = models.FileField(upload_to='visits/')
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['uploaded_at', 'pk']
+
+    def __str__(self):
+        return f'Visit photo for {self.visit.case.reference}'
 
 
 class Communication(models.Model):

@@ -1,7 +1,7 @@
 from django import forms
 
 from .models import (
-    MAX_PHOTO_MB, MAX_REPORT_PHOTOS, OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team,
+    MAX_AUDIO_MB, MAX_PHOTO_MB, MAX_REPORT_PHOTOS, OPEN_STATUSES, Case, Category, Officer, Priority, Role, SiteVisit, Team,
 )
 
 
@@ -19,6 +19,11 @@ class SignupNameForm(forms.Form):
 
 PHOTO_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 PHOTO_TYPES = ('image/jpeg', 'image/png', 'image/webp')
+# Voice notes: what phones and browsers record (WebM/Ogg from Chrome, Edge and Firefox; MP4/M4A from Safari)
+# and the usual audio files
+AUDIO_EXTENSIONS = ('.webm', '.ogg', '.oga', '.opus', '.m4a', '.mp4', '.mp3', '.wav', '.aac')
+AUDIO_TYPES = ('audio/webm', 'audio/ogg', 'audio/opus', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/mpeg',
+               'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/aac', 'video/webm', 'video/mp4')
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -215,17 +220,24 @@ class ReassignForm(RoutingForm):
 
 
 class VisitForm(forms.ModelForm):
+    """What the officer found and did, with optional photos (saved as VisitPhoto rows by the view), a voice
+    note, and the words their dictation produced."""
     transcript_used = forms.BooleanField(required=False, widget=forms.HiddenInput)
+    photos = PhotosField(required=False, label='Photos',
+                         help_text='Before and after photos help the case handler and the reporter.')
+    audio = forms.FileField(required=False, label='Voice note',
+                            widget=forms.ClearableFileInput(attrs={'accept': 'audio/*'}))
 
     class Meta:
         model = SiteVisit
-        fields = ['note', 'action', 'photo', 'fixed', 'transcript_used']
+        fields = ['note', 'action', 'fixed', 'transcript_used', 'transcript', 'audio']
         widgets = {
             'note': forms.Textarea(attrs={
                 'rows': 3, 'placeholder': 'What was wrong when you got there? Type, or tap "Dictate" and speak.'}),
             'action': forms.Textarea(attrs={
                 'rows': 3, 'placeholder': 'What did you repair, replace, test or arrange?'}),
-            'photo': forms.ClearableFileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
+            # Filled in by dictation on the page
+            'transcript': forms.HiddenInput,
         }
         help_texts = {'action': 'This goes into the letter that tells the reporter what was done.'}
 
@@ -233,6 +245,23 @@ class VisitForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Older visits may have no action, but every new visit must say what was done
         self.fields['action'].required = True
+
+    def clean_photos(self):
+        return check_photos(self.cleaned_data.get('photos'))
+
+    def clean_audio(self):
+        f = self.cleaned_data.get('audio')
+        if not f:
+            return f
+        name = f.name or 'The file'
+        kind = (f.content_type or '').split(';')[0].strip().lower()
+        if not name.lower().endswith(AUDIO_EXTENSIONS) or (kind and kind not in AUDIO_TYPES):
+            raise forms.ValidationError(f'{name} is not an audio recording we can play. '
+                                        'Use the recorder on this page, or an MP3, M4A, WebM, Ogg or WAV file.')
+        if f.size > MAX_AUDIO_MB * 1024 * 1024:
+            raise forms.ValidationError(f'{name} is {f.size / (1024 * 1024):.1f}MB. '
+                                        f'A voice note must be {MAX_AUDIO_MB}MB or less.')
+        return f
 
 
 class LetterForm(forms.Form):

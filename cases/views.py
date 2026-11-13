@@ -15,7 +15,7 @@ from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
 from .models import (
-    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status,
+    OPEN_STATUSES, PRIORITY_RANK, UNHAPPY_FOLLOW_UP, UNHAPPY_SCORE, Alert, AlertRead, Building, Case, CaseChange, Category, Communication, Officer, Profile, ReportPhoto, ReportUpdate, Role, Status, VisitPhoto,
     Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
@@ -420,6 +420,8 @@ def officer_case(request, ref):
             visit.officer = officer
             visit.ai_summary = ai.summarise_visit(visit.note, visit.fixed, visit.action)
             visit.save()
+            for photo in form.cleaned_data['photos']:
+                VisitPhoto.objects.create(visit=visit, image=photo)
             if visit.fixed:
                 case.status = Status.RESOLVED
                 case.date_resolved = timezone.now()
