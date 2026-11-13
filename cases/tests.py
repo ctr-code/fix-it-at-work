@@ -1,3 +1,4 @@
+import re
 import shutil
 import tempfile
 
@@ -140,8 +141,9 @@ class HeaderTests(TestCase):
 
     def nav_links(self, response):
         html = response.content.decode()
+        # The link text follows its icon, sometimes wrapped with a count badge and a hidden "3 cases waiting"
         return [label for label in ('Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
-                if f'aria-hidden="true"></i> {label}</a>' in html]
+                if re.search(rf'</(?:i|span)> {re.escape(label)}(?:<span class="visually-hidden">[^<]*</span>)?</a>', html)]
 
     def test_each_role_sees_its_links(self):
         expected = {
@@ -1098,7 +1100,7 @@ class AlertInboxTests(TestCase):
         self.assertContains(home, '<span class="nav-badge" aria-hidden="true">1</span>', html=False)
         self.assertContains(home, ', 1 unread</span>')
         # On phones the menu button carries the count too
-        self.assertContains(home, 'aria-label="Open menu, 1 unread"')
+        self.assertContains(home, 'aria-label="Open menu, 1 needs your attention"')
         self.assertContains(home, 'toggler-badge')
         # No badge when there's nothing unread
         self.client.force_login(self.priya.user)
@@ -1290,8 +1292,71 @@ class ReporterMessageTests(TestCase):
         self.assertContains(page, '1 new message.')
         self.assertContains(page, f'href="/track/{self.case.reference}/#your-messages"')
         self.assertContains(page, ', 1 new message</span>')
-        self.assertContains(page, 'aria-label="Open menu, 1 unread"')
+        self.assertContains(page, 'aria-label="Open menu, 1 needs your attention"')
         self.client.get(f'/track/{self.case.reference}/')
         page = self.client.get('/my-reports/')
         self.assertNotContains(page, 'new message')
         self.assertNotContains(page, 'nav-badge')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class CaseQueueCountTests(TestCase):
+    """Case handlers and managers see how many cases are waiting for them on "Case queue" in the navbar."""
+
+    make_user = ReassignCaseTests.make_user
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)  # one assigned case, which isn't waiting for a handler
+
+    def add_case(self, status, **extra):
+        return Case.objects.create(title=f'{status} case', description='Test.', building='Main Office',
+                                   reporter_name='Sam', reporter_email='sam@example.com', status=status, **extra)
+
+    def nav(self, user):
+        self.client.force_login(user)
+        return self.client.get('/').content.decode()
+
+    def test_counts_cases_to_triage_and_reply_to(self):
+        from django.utils import timezone
+        self.add_case(Status.NEW)
+        self.add_case(Status.NEW)
+        self.add_case(Status.RESOLVED)
+        # Not waiting for a handler: with a team, closed (even with an unhappy reporter), merged
+        self.add_case(Status.IN_PROGRESS)
+        self.add_case(Status.CLOSED, satisfaction=1, date_closed=timezone.now())
+        self.add_case(Status.DUPLICATE)
+        for user in (self.handler, self.manager):
+            page = self.nav(user)
+            self.assertIn('<span class="nav-badge" aria-hidden="true">3</span></span> Case queue', page)
+            self.assertIn('Case queue<span class="visually-hidden">, 3 cases waiting</span>', page)
+            self.assertIn('aria-label="Open menu, 3 need your attention"', page)
+
+    def test_count_goes_down_when_a_case_is_triaged(self):
+        self.add_case(Status.NEW)
+        self.case.status = Status.NEW  # triage() resets this case to new as well
+        self.case.save()
+        self.assertIn(', 2 cases waiting', self.nav(self.handler))
+        self.triage()
+        page = self.nav(self.handler)
+        self.assertIn(', 1 case waiting', page)
+        self.assertIn('aria-label="Open menu, 1 needs your attention"', page)
+
+    def test_no_badge_when_nothing_is_waiting(self):
+        page = self.nav(self.handler)
+        self.assertIn('Case queue', page)
+        self.assertNotIn('nav-badge', page)
+        self.assertNotIn('your attention', page)
+
+    def test_only_handlers_and_managers_get_the_count(self):
+        self.add_case(Status.NEW)
+        for role in ('officer', 'reporter'):
+            page = self.nav(self.make_user(f'someone_{role}', role))
+            self.assertNotIn('cases waiting', page)
+            self.assertNotIn('case waiting', page)
