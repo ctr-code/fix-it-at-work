@@ -16,18 +16,31 @@
             {% if attention %}<p class="mb-0 text-muted">{{ attention_total }} case{{ attention_total|pluralize }} across {{ attention|length }} area{{ attention|length|pluralize }}</p>{% endif %}
         </div>
         {% if attention %}
-        <ul class="attention-jump" aria-label="Jump to an area">
-            {% for g in attention %}<li><a href="#attention-{{ g.key }}" class="attention-chip tone-{{ g.key }}">{{ g.title }} <span class="tab-count">{{ g.total }}</span></a></li>{% endfor %}
-        </ul>
-        <div class="row g-3">
+        {% comment %}
+        Tabs: "All" shows every group with its five worst cases; a group's own tab shows only that group, with
+        every case in it (static/js/attention-tabs.js). Without the script, all groups and all cases show.
+        {% endcomment %}
+        <ul class="nav nav-tabs queue-tabs attention-tabs" role="tablist" aria-label="Show" data-attention-tabs hidden>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link active" role="tab" id="attention-tab-all" aria-selected="true"
+                        aria-controls="attention-groups" data-attention-tab="all">All <span class="tab-count">{{ attention_total }}</span></button>
+            </li>
             {% for g in attention %}
-            <div class="col-lg-6">
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link" role="tab" id="attention-tab-{{ g.key }}" aria-selected="false" tabindex="-1"
+                        aria-controls="attention-groups" data-attention-tab="{{ g.key }}">{{ g.tab }} <span class="tab-count">{{ g.total }}</span></button>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="row g-3" id="attention-groups" role="tabpanel" aria-labelledby="attention-tab-all" data-attention-groups>
+            {% for g in attention %}
+            <div class="col-lg-6 attention-col" data-attention-group="{{ g.key }}">
                 <section class="attention-group tone-{{ g.key }}" id="attention-{{ g.key }}" aria-labelledby="attention-{{ g.key }}-title">
                     <h3 class="attention-group-title" id="attention-{{ g.key }}-title"><i class="fa-solid {{ g.icon }}" aria-hidden="true"></i> {{ g.title }} <span class="tab-count">{{ g.total }}</span></h3>
                     <p class="attention-help">{{ g.help }}</p>
                     <ul class="attention-list">
                         {% for c, note in g.items %}
-                        <li>
+                        <li{% if forloop.counter > attention_shown %} data-attention-extra{% endif %}>
                             <a href="{% url 'case_detail' c.reference %}" class="fw-semibold">{{ c.reference }}</a>
                             {% if c.priority %}{% include "cases/_pri.html" with p=c.priority %}{% endif %}
                             <span class="attention-title">{{ c.title }}</span>
@@ -36,7 +49,7 @@
                         {% endfor %}
                     </ul>
                     {% if g.more %}
-                    <a class="small fw-semibold" href="{% url 'triage_queue' %}{% if g.key == 'slow-triage' %}#triage{% elif g.key == 'slow-reply' %}#reply{% elif g.key == 'unhappy' %}#unhappy{% else %}#teams{% endif %}">and {{ g.more }} more in the Case queue <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+                    <button type="button" class="btn btn-link btn-sm p-0 fw-semibold" data-attention-show="{{ g.key }}" hidden>Show all {{ g.total }} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
                     {% endif %}
                 </section>
             </div>
@@ -137,4 +150,5 @@
 {% block extra_body %}
 {{ trend_chart|json_script:"trend-data" }}
 <script src="{% static 'js/trend-chart.js' %}"></script>
+<script src="{% static 'js/attention-tabs.js' %}"></script>
 {% endblock extra_body %}

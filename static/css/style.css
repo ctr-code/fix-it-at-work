@@ -593,9 +593,6 @@ main { margin-bottom: var(--space-10); }
 .attention { border-top: 4px solid var(--brand); }
 .attention-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .attention-head h2 i { color: var(--brand); }
-.attention-jump { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); padding: 0; list-style: none; }
-.attention-chip { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-height); padding: var(--space-1) var(--space-3); border: var(--border-width) solid var(--border-control); border-radius: var(--radius-pill); background: var(--white); color: var(--ink); font-size: var(--fs-small); font-weight: var(--fw-medium); text-decoration: none; }
-.attention-chip:hover { border-color: var(--brand); color: var(--brand-dark); }
 .attention-group { height: 100%; padding: var(--space-4); border: var(--border-width) solid var(--border); border-left: 4px solid var(--warning-border); border-radius: var(--radius-md); background: var(--white); scroll-margin-top: calc(var(--nav-offset) + var(--space-4)); }
 .attention-group.tone-overdue, .attention-group.tone-no-officer { border-left-color: var(--urgent); }
 .attention-group-title { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
@@ -608,7 +605,6 @@ main { margin-bottom: var(--space-10); }
 .attention-list li:first-child { border-top: 0; padding-top: 0; }
 .attention-title { flex: 1 1 12rem; min-width: 0; }
 .attention-note { flex-basis: 100%; font-size: var(--fs-small); color: var(--muted); }
-.attention-chip.tone-overdue, .attention-chip.tone-no-officer { border-color: var(--urgent-border); }
 
 /* Dashboard trend charts (static/js/trend-chart.js draws the weekly columns) */
 .chart-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-2); padding: 0; list-style: none; font-size: var(--fs-small); color: var(--ink); }
@@ -655,3 +651,17 @@ main { margin-bottom: var(--space-10); }
 .locate-status.is-ok { color: var(--ink); }
 .locate-status.is-error { color: var(--urgent); }
 .map-link { white-space: nowrap; }
+
+/* Needs attention tabs (static/js/attention-tabs.js). Reuses the Case queue tab look; there are seven,
+   so on phones and tablets they become a grid of buttons. */
+.attention-tabs { margin-top: var(--space-3); }
+@media (min-width: 1200px) { .attention-tabs.queue-tabs .nav-link { padding-left: var(--space-3); padding-right: var(--space-3); } }
+/* Below 1200px the seven tabs don't fit in a row, so use the button grid the Case queue uses on phones */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    .attention-tabs.queue-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); overflow: visible; border-bottom: 0; }
+    .attention-tabs.queue-tabs .nav-link { width: 100%; justify-content: space-between; padding: var(--space-2) var(--space-3); white-space: normal; line-height: 1.25; text-align: left; border: var(--border-width) solid var(--border-control); border-radius: var(--radius-md); background: var(--white); }
+    .attention-tabs.queue-tabs .nav-link:hover { border-color: var(--brand); }
+    .attention-tabs.queue-tabs .nav-link.active { border-color: var(--brand); background: var(--brand-tint); box-shadow: inset 0 0 0 1px var(--brand); }
+}
+@media (max-width: 991.98px) { .attention-tabs.queue-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 575.98px) { .attention-tabs.queue-tabs { grid-template-columns: 1fr 1fr; } }

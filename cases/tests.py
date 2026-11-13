@@ -1437,15 +1437,25 @@ class DashboardAttentionTests(TestCase):
         self.assertIn('Facilities Helpdesk · Serena', self.group(page, 'overdue'))
         self.assertIn('7 cases across 6 areas', page)
 
-    def test_long_groups_show_five_and_link_to_the_rest(self):
+    def test_long_groups_show_five_under_all_and_the_rest_in_their_tab(self):
         for i in range(7):
             self.add(f'Late job {i}', sla_due=self.hours(-10 + i), assigned_officer=self.officer)
         html = self.group(self.dashboard(), 'overdue')
+        # Every case is in the page; the two beyond the first five are only shown in the group's own tab
         self.assertEqual(html.count('<li>'), 5)
-        self.assertIn('Late job 0', html)  # most overdue first
-        self.assertNotIn('Late job 6', html)
-        self.assertIn('and 2 more in the Case queue', html)
-        self.assertIn('href="/triage/#teams"', html)
+        self.assertEqual(html.count('<li data-attention-extra>'), 2)
+        self.assertLess(html.index('Late job 0'), html.index('Late job 6'))  # most overdue first
+        self.assertIn('data-attention-show="overdue" hidden>Show all 7', html)
+
+    def test_tabs_for_all_and_each_group(self):
+        self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)
+        self.add('Grumpy', status=Status.CLOSED, satisfaction=1, date_closed=self.hours(-24))
+        page = self.dashboard()
+        self.assertIn('data-attention-tab="all">All <span class="tab-count">2</span>', page)
+        self.assertIn('data-attention-tab="overdue">Overdue <span class="tab-count">1</span>', page)
+        self.assertIn('data-attention-tab="unhappy">Unhappy reporters <span class="tab-count">1</span>', page)
+        self.assertNotIn('data-attention-tab="due-soon"', page)  # empty groups get no tab
+        self.assertIn('js/attention-tabs.js', page)
 
     def test_empty_groups_are_left_out(self):
         self.add('Overdue leak', sla_due=self.hours(-2), assigned_officer=self.officer)

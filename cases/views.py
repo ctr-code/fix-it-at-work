@@ -545,7 +545,7 @@ def _dashboard_stats():
 
 DUE_SOON = timedelta(hours=24)
 REPLY_WAIT = timedelta(hours=24)
-ATTENTION_SHOWN = 5  # rows shown in each group; the rest are counted
+ATTENTION_SHOWN = 5  # rows each group shows under "All"; its own tab shows every case
 
 
 def _who(c):
@@ -586,19 +586,21 @@ def _needs_attention(now):
                for c in _unhappy_reporters()]
 
     groups = [
-        ('overdue', 'Overdue', 'Past the date we promised the reporter.', 'fa-clock', overdue),
-        ('due-soon', 'Due in the next 24 hours', 'Check these are on track.', 'fa-hourglass-half', due_soon),
-        ('no-officer', 'Urgent or unsafe, no officer', 'Nobody has been sent yet.', 'fa-user-slash', no_officer),
-        ('slow-triage', 'Waiting too long for triage', "Past the response target, and the reporter hasn't heard from a person.",
-         'fa-inbox', slow_triage),
-        ('slow-reply', 'Fixed, no reply after a day', 'The outcome letter is still waiting for approval.',
+        ('overdue', 'Overdue', 'Overdue', 'Past the date we promised the reporter.', 'fa-clock', overdue),
+        ('due-soon', 'Due soon', 'Due in the next 24 hours', 'Check these are on track.', 'fa-hourglass-half',
+         due_soon),
+        ('no-officer', 'No officer', 'Urgent or unsafe, no officer', 'Nobody has been sent yet.', 'fa-user-slash',
+         no_officer),
+        ('slow-triage', 'Slow triage', 'Waiting too long for triage',
+         "Past the response target, and the reporter hasn't heard from a person.", 'fa-inbox', slow_triage),
+        ('slow-reply', 'No reply yet', 'Fixed, no reply after a day', 'The outcome letter is still waiting for approval.',
          'fa-envelope', slow_reply),
-        ('unhappy', 'Unhappy reporters', 'Rated the fix 2/5 or lower in the last four weeks.', 'fa-face-frown', unhappy),
+        ('unhappy', 'Unhappy reporters', 'Unhappy reporters', 'Rated the fix 2/5 or lower in the last four weeks.',
+         'fa-face-frown', unhappy),
     ]
-    return [{'key': key, 'title': title, 'help': help_text, 'icon': icon, 'total': len(items),
-             'items': items[:ATTENTION_SHOWN], 'more': max(len(items) - ATTENTION_SHOWN, 0),
-             'case_ids': {c.pk for c, _ in items}}
-            for key, title, help_text, icon, items in groups if items]
+    return [{'key': key, 'tab': tab, 'title': title, 'help': help_text, 'icon': icon, 'total': len(items),
+             'items': items, 'more': max(len(items) - ATTENTION_SHOWN, 0), 'case_ids': {c.pk for c, _ in items}}
+            for key, tab, title, help_text, icon, items in groups if items]
 
 
 TREND_WEEKS = 8
@@ -709,7 +711,7 @@ def dashboard(request):
     ctx.update({'teams': teams, 'categories': categories, 'max_cat': max_cat,
                 'trends': trends,
                 'trend_chart': {'weeks': trends['weeks'], 'stages': trends['stages']},
-                'attention': attention, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
+                'attention': attention, 'attention_shown': ATTENTION_SHOWN, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
     return render(request, 'cases/dashboard.html', ctx)
 
 
