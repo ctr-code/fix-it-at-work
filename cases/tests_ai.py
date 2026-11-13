@@ -13,7 +13,7 @@ from django.test import TestCase
 
 from .management.commands.seed_demo import CATEGORIES, TEAMS
 from . import ai
-from .models import Case, Category, Team
+from .models import PRIORITY_RANK, Case, Category, Team
 
 # (title, description, building, room, reporter urgency, impact, health and safety risk,
 #  expected category, expected priority)
@@ -152,3 +152,41 @@ class TriageBenchmarkTests(TestCase):
         s = self.suggest('Radiater broke', 'radiater not wokring', 'Depot', '', 'low', 'single_user', False)
         self.assertEqual(s['category'].name, 'Heating')
         self.assertIn('radiator (spelt "radiater")', s['reasoning'])
+
+
+class TriageFairnessTests(TestCase):
+    """The same problem written in clear English, poor English and another language. Measured 13 Nov 2026
+    (see docs/responsible-design.md): danger is caught in every version, and nothing is ever suggested
+    below the urgency the reporter chose. Categories and some priorities still differ, so a person checks."""
+
+    setUpTestData = TriageBenchmarkTests.setUpTestData
+    suggest = TriageBenchmarkTests.suggest
+
+    SETS = [
+        ('urgent', [('Socket sparking', 'The plug socket by my desk is sparking when I plug things in.'),
+                    ('socket spark', 'plug thing at desk make sparks when i put plug'),
+                    ('ساکٹ سے چنگاریاں', 'میری میز کے ساکٹ سے چنگاریاں نکل رہی ہیں اور آگ کا خطرہ ہے۔')]),
+        ('high', [('No heating', 'There is no heating in the office and it is freezing.'),
+                  ('heater no work', 'heater not work very cold all people cold'),
+                  ('Sin calefacción', 'No hay calefacción en la oficina y hace mucho frío.')]),
+        ('medium', [('Water leaking from ceiling', 'Water is leaking through the ceiling onto a desk in the office.'),
+                    ('watter leek', 'water coming from celing on desk pls help'),
+                    ('Przeciek z sufitu', 'Woda kapie z sufitu na biurko w biurze.')]),
+        ('medium', [('Printer not working', 'The printer on the second floor is jammed and will not print.'),
+                    ('printer broke', 'printer 2 floor paper stuck no print'),
+                    ('Drukarka nie działa', 'Drukarka na drugim piętrze zacina papier i nie drukuje.')]),
+    ]
+
+    def test_poor_english_and_other_languages_are_never_under_prioritised(self):
+        for at_least, versions in self.SETS:
+            for title, desc in versions:
+                with self.subTest(title=title):
+                    s = self.suggest(title, desc, 'Main Office', '', 'medium', 'team', False)
+                    # Never below the reporter's own "medium", and danger is caught in every language
+                    self.assertGreaterEqual(PRIORITY_RANK[s['priority']], PRIORITY_RANK[at_least])
+
+    def test_unrecognised_reports_are_flagged_for_a_person_to_check(self):
+        s = self.suggest('Drukarka nie działa', 'Drukarka na drugim piętrze zacina papier i nie drukuje.',
+                         'Main Office', '', 'medium', 'team', False)
+        # Either it was understood, or it's marked as low confidence so the case handler checks it carefully
+        self.assertTrue(s['category'] is not None or s['confidence'] <= 50)
