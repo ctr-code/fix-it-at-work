@@ -11,7 +11,7 @@ table-cards (cards on phones), table-sortable (sort by heading) and table-filter
         <div>
             <h1>My reports</h1>
             {% if reports %}
-            <p class="text-muted mb-0">You've made {{ reports|length }} report{{ reports|length|pluralize }}{% if open_count %}, {{ open_count }} still open{% endif %}. Select one to see its progress, add details or rate the fix.</p>
+            <p class="text-muted mb-0">You've made {{ reports|length }} report{{ reports|length|pluralize }}{% if open_count %}, {{ open_count }} still open{% endif %}.{% if new_total %} <strong>{{ new_total }} new message{{ new_total|pluralize }}.</strong>{% endif %} Select one to see its progress, add details or rate the fix.</p>
             {% endif %}
         </div>
         <a href="{% url 'report' %}" class="btn btn-primary mb-1"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a>
@@ -51,7 +51,7 @@ table-cards (cards on phones), table-sortable (sort by heading) and table-filter
             {% for c in reports %}
             <tr data-title="{{ c.title }}" data-ref="{{ c.reference }}" data-status="{{ c.status }}">
                 <td><a href="{% url 'track_case' c.reference %}" class="fw-bold">{{ c.reference }}</a></td>
-                <td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}{% if c.pk in to_rate %}<br><a class="small fw-semibold" href="{% url 'track_case' c.reference %}#feedback"><i class="fa-solid fa-star" aria-hidden="true"></i> Rate this fix</a>{% endif %}</td>
+                <td data-label="Issue" data-sort-value="{{ c.title }}">{{ c.title }}{% if c.new_messages %}<br><a class="small fw-semibold new-message-link" href="{% url 'track_case' c.reference %}#your-messages"><span class="alert-new">New</span> {{ c.new_messages }} message{{ c.new_messages|pluralize }}</a>{% endif %}{% if c.pk in to_rate %}<br><a class="small fw-semibold" href="{% url 'track_case' c.reference %}#feedback"><i class="fa-solid fa-star" aria-hidden="true"></i> Rate this fix</a>{% endif %}</td>
                 <td data-label="Where" data-sort-value="{{ c.building }} {{ c.location_detail }}">{{ c.building }}{% if c.location_detail %}<br><span class="small text-muted">{{ c.location_detail }}</span>{% endif %}</td>
                 <td data-label="Status" data-sort-value="{{ c.get_status_display }}"><span class="badge-status">{{ c.get_status_display }}</span></td>
                 <td data-label="Reported" data-sort-value="{{ c.date_reported|date:'c' }}"><time datetime="{{ c.date_reported|date:'c' }}">{{ c.date_reported|date:"j M Y" }}</time></td>

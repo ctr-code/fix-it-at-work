@@ -381,9 +381,12 @@ class SiteVisit(models.Model):
 
 
 class Communication(models.Model):
+    """A message to the reporter. It counts as sent once date_sent is set (an outcome letter waits as a
+    draft until a handler approves it), and as read once the reporter opens the report (read_at)."""
     class Kind(models.TextChoices):
         RECEIPT = 'receipt', 'Receipt (automatic)'
         ACKNOWLEDGEMENT = 'ack', 'Acknowledgement'
+        UPDATE = 'update', 'Progress update'
         OUTCOME = 'outcome', 'Outcome letter'
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='communications')
@@ -393,6 +396,7 @@ class Communication(models.Model):
     ai_drafted = models.BooleanField(default=False)
     approved_by = models.CharField(max_length=80, blank=True)
     date_sent = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['id']

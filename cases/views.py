@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import ai, alerts
+from . import ai, alerts, reporter_messages
 from .forms import (
     FeedbackForm, LetterForm, ReassignForm, ReportForm, ReportUpdateForm, RoleForm, TriageForm, VisitForm,
 )
@@ -78,10 +78,7 @@ def report(request):
             case.ai_confidence = suggestion['confidence']
             case.ai_duplicate_candidate = suggestion['duplicate']
             case.save()
-            Communication.objects.create(
-                case=case, kind=Communication.Kind.RECEIPT, language=case.preferred_language,
-                draft_text=ai.receipt_text(case), approved_by='Automatic', date_sent=timezone.now(),
-            )
+            reporter_messages.received(case)
             messages.success(request, f'Thank you - your report has been received. Your reference is {case.reference}.')
             return redirect('track_case', ref=case.reference)
     else:
@@ -93,14 +90,16 @@ def report(request):
 @login_required
 def my_reports(request):
     """Every report the signed-in user has made, newest first. Staff can report issues too."""
-    reports = list(Case.objects.filter(reporter_user=request.user).order_by('-date_reported'))
+    reports = list(Case.objects.filter(reporter_user=request.user).order_by('-date_reported').annotate(
+        new_messages=Count('communications', filter=Q(communications__date_sent__isnull=False,
+                                                      communications__read_at__isnull=True))))
     open_count = sum(c.status in OPEN_STATUSES for c in reports)
     to_rate = [c for c in reports if c.can_give_feedback(request.user) and c.satisfaction is None]
     # Only the statuses in the list, in the order a report moves through them, for the "Status" filter
     statuses = [(value, label) for value, label in Status.choices if any(c.status == value for c in reports)]
     return render(request, 'cases/my_reports.html', {
         'reports': reports, 'open_count': open_count, 'to_rate': {c.pk for c in to_rate},
-        'statuses': statuses,
+        'statuses': statuses, 'new_total': sum(c.new_messages for c in reports),
     })
 
 
@@ -154,7 +153,12 @@ def track_case(request, ref):
 
 
 def _render_track(request, case, feedback_form, update_form):
-    sent = case.communications.filter(date_sent__isnull=False)
+    # Newest message first. Ones the reporter hasn't seen are marked "New" this time, then count as read.
+    sent = list(case.communications.filter(date_sent__isnull=False).order_by('-date_sent', '-pk'))
+    for m in sent:
+        m.is_new = m.read_at is None
+    if case.reporter_user_id == request.user.id and any(m.is_new for m in sent):
+        Communication.objects.filter(pk__in=[m.pk for m in sent if m.is_new]).update(read_at=timezone.now())
     updates = case.updates.prefetch_related('photos')
     return render(request, 'cases/track.html', {
         'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
@@ -228,12 +232,7 @@ def triage_case(request, ref):
                 case.date_closed = timezone.now()
                 case.ai_suggestion_accepted = case.ai_duplicate_candidate_id == d['duplicate_of'].id
                 case.save()
-                Communication.objects.create(
-                    case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
-                    draft_text=(f'Thanks for your report. Someone has already reported this issue, so we have '
-                                f'linked your report to {case.duplicate_of.reference}. You can track progress there.'),
-                    approved_by=approver, date_sent=timezone.now(),
-                )
+                reporter_messages.merged(case, approver)
                 messages.success(request, f'{case.reference} merged into {case.duplicate_of.reference}.')
                 return redirect('triage_queue')
 
@@ -246,13 +245,7 @@ def triage_case(request, ref):
                 case.category_id == case.ai_category_id and case.priority == case.ai_priority)
             case.apply_sla()
             case.save()
-            Communication.objects.create(
-                case=case, kind=Communication.Kind.ACKNOWLEDGEMENT, language=case.preferred_language,
-                draft_text=(f'Your report {case.reference} has been passed to our {case.assigned_team} team '
-                            f'as {case.get_priority_display().lower()} priority. We aim to resolve it by '
-                            f'{timezone.localtime(case.sla_due):%H:%M on %A %d %B}.'),
-                approved_by=approver, date_sent=timezone.now(),
-            )
+            reporter_messages.routed(case, approver)
             alert = alerts.alert_routed(case, request)
             messages.success(request, f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}')
             return redirect('triage_queue')
@@ -308,6 +301,7 @@ def reassign_case(request, ref):
                       'officer': case.assigned_officer.name if case.assigned_officer else 'Unassigned'}
             priority_changed = d['priority'] != case.priority
             old_officer = case.assigned_officer
+            old_team_id, old_due = case.assigned_team_id, case.sla_due
             case.priority = d['priority']
             case.assigned_team = d['team']
             case.category = d['category']
@@ -321,7 +315,6 @@ def reassign_case(request, ref):
                 messages.info(request, f'Nothing was changed on {case.reference}.')
                 return redirect('case_detail', ref=ref)
             if priority_changed:
-                old_due = case.sla_due
                 case.apply_sla()  # the target date follows the priority, counted from when it was reported
                 if case.sla_due != old_due:
                     lines.append(f'SLA due: {_when(old_due)} → {_when(case.sla_due)}')
@@ -329,6 +322,8 @@ def reassign_case(request, ref):
             CaseChange.objects.create(case=case, changed_by=display_name(request.user),
                                       summary='\n'.join(lines), reason=d['reason'])
             alert = alerts.alert_changed(case, lines, old_officer, request)
+            reporter_messages.changed(case, display_name(request.user), new_due=case.sla_due != old_due,
+                                      new_team=case.assigned_team_id != old_team_id)
             messages.success(request, f'{case.reference} updated.{_alert_note(alert)}')
             return redirect('case_detail', ref=ref)
     else:
@@ -422,6 +417,7 @@ def officer_case(request, ref):
                 case.status = Status.IN_PROGRESS
                 messages.success(request, f'Visit recorded. {case.reference} stays open for a follow-up.')
             case.save()
+            reporter_messages.visited(case, visit)
             return redirect('officer_cases')
     else:
         form = VisitForm()
@@ -492,6 +488,7 @@ def outcome_letter(request, ref):
             letter.approved_by = display_name(request.user)
             letter.date_sent = timezone.now()
             letter.save()
+            reporter_messages.email_reporter(letter)
             case.status = Status.CLOSED
             case.date_closed = timezone.now()
             case.save()

@@ -577,3 +577,7 @@ main { margin-bottom: var(--space-10); }
 .alert-intro { margin-bottom: var(--space-2); }
 .alert-full { margin-bottom: var(--space-3); font-size: var(--fs-small); }
 .alert-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+/* Messages to the reporter: new ones get a teal background until they've been seen */
+.reporter-message.is-new { background: var(--brand-tint); }
+.new-message-link { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }

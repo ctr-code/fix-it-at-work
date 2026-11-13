@@ -952,6 +952,11 @@ class TeamAlertTests(TestCase):
     setUp = ReassignCaseTests.setUp
     post = ReassignCaseTests.post
 
+    def team_mail(self):
+        """Emails to staff only; the reporter is now emailed too (see ReporterMessageTests)."""
+        from django.core import mail
+        return [m for m in mail.outbox if 'nina@example.com' not in m.to]
+
     def triage(self, **choices):
         self.case.status = Status.NEW
         self.case.assigned_team = self.case.assigned_officer = None
@@ -968,8 +973,8 @@ class TeamAlertTests(TestCase):
     def test_triage_emails_the_team_and_officer(self):
         from django.core import mail
         response = self.triage(officer=self.serena.pk)
-        self.assertEqual(len(mail.outbox), 1)
-        email = mail.outbox[0]
+        self.assertEqual(len(self.team_mail()), 1)
+        email = self.team_mail()[0]
         self.assertEqual(email.to, ['fac@example.com', 's@example.com'])
         self.assertEqual(email.subject, f'[Medium] {self.case.reference} Radiator stuck on full')
         self.assertIn('Serena, you have a new medium priority job.', email.body)
@@ -983,18 +988,18 @@ class TeamAlertTests(TestCase):
     def test_triage_without_officer_alerts_the_team_inbox(self):
         from django.core import mail
         self.triage()
-        self.assertEqual(mail.outbox[0].to, ['fac@example.com'])
-        self.assertIn('Facilities Helpdesk has a new medium priority job.', mail.outbox[0].body)
-        self.assertIn('anyone in the team can take it', mail.outbox[0].body)
+        self.assertEqual(self.team_mail()[0].to, ['fac@example.com'])
+        self.assertIn('Facilities Helpdesk has a new medium priority job.', self.team_mail()[0].body)
+        self.assertIn('anyone in the team can take it', self.team_mail()[0].body)
 
     def test_urgent_and_safety_cases_are_flagged(self):
         from django.core import mail
         self.case.hs_risk = True
         self.case.save()
         self.triage(priority='urgent')
-        self.assertTrue(mail.outbox[0].subject.startswith('[Urgent] '))
-        self.assertTrue(mail.outbox[0].subject.endswith(' - health and safety risk'))
-        self.assertIn('HEALTH AND SAFETY RISK', mail.outbox[0].body)
+        self.assertTrue(self.team_mail()[0].subject.startswith('[Urgent] '))
+        self.assertTrue(self.team_mail()[0].subject.endswith(' - health and safety risk'))
+        self.assertIn('HEALTH AND SAFETY RISK', self.team_mail()[0].body)
 
     def test_merging_a_duplicate_alerts_nobody(self):
         from django.core import mail
@@ -1003,13 +1008,13 @@ class TeamAlertTests(TestCase):
                                     status=Status.ASSIGNED, assigned_team=self.facilities)
         self.triage(duplicate_of=other.pk)
         self.assertEqual(self.case.status, Status.DUPLICATE)
-        self.assertEqual(mail.outbox, [])
+        self.assertEqual(self.team_mail(), [])
 
     def test_reassigning_alerts_new_team_and_both_officers(self):
         from django.core import mail
         self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
-        self.assertEqual(mail.outbox[0].to, ['it@example.com', 'p@example.com', 's@example.com'])
-        body = mail.outbox[0].body
+        self.assertEqual(self.team_mail()[0].to, ['it@example.com', 'p@example.com', 's@example.com'])
+        body = self.team_mail()[0].body
         self.assertIn('- Team: Facilities Helpdesk → IT Service Desk', body)
         self.assertIn('Serena no longer needs to attend.', body)
         self.assertEqual(self.case.alerts.get().kind, 'changed')
@@ -1017,14 +1022,14 @@ class TeamAlertTests(TestCase):
     def test_priority_change_alerts_the_current_team(self):
         from django.core import mail
         self.post(priority='high')
-        self.assertEqual(mail.outbox[0].to, ['fac@example.com', 's@example.com'])
-        self.assertIn('- Priority: Medium → High', mail.outbox[0].body)
-        self.assertNotIn('no longer needs to attend', mail.outbox[0].body)
+        self.assertEqual(self.team_mail()[0].to, ['fac@example.com', 's@example.com'])
+        self.assertIn('- Priority: Medium → High', self.team_mail()[0].body)
+        self.assertNotIn('no longer needs to attend', self.team_mail()[0].body)
 
     def test_no_change_sends_nothing(self):
         from django.core import mail
         self.post()
-        self.assertEqual(mail.outbox, [])
+        self.assertEqual(self.team_mail(), [])
 
     def test_a_mail_failure_is_recorded_and_routing_still_happens(self):
         from unittest import mock
@@ -1093,7 +1098,7 @@ class AlertInboxTests(TestCase):
         self.assertContains(home, '<span class="nav-badge" aria-hidden="true">1</span>', html=False)
         self.assertContains(home, ', 1 unread</span>')
         # On phones the menu button carries the count too
-        self.assertContains(home, 'aria-label="Open menu, 1 unread alert"')
+        self.assertContains(home, 'aria-label="Open menu, 1 unread"')
         self.assertContains(home, 'toggler-badge')
         # No badge when there's nothing unread
         self.client.force_login(self.priya.user)
@@ -1158,3 +1163,135 @@ class AlertInboxTests(TestCase):
         self.client.force_login(self.handler)
         self.assertEqual(self.client.get('/alerts/').status_code, 403)
         self.assertNotContains(self.client.get('/'), 'href="/alerts/"')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class ReporterMessageTests(TestCase):
+    """The reporter hears from us at each stage, in their language, and sees new messages counted on My reports."""
+
+    make_user = ReassignCaseTests.make_user
+    post = ReassignCaseTests.post
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+        self.nina = self.make_user('nina', 'reporter', 'Nina')
+        self.case.reporter_user = self.nina
+        self.case.save()
+        self.serena.user = self.make_user('serena', 'officer')
+        self.serena.save()
+
+    def messages_to_nina(self):
+        return list(self.case.communications.filter(date_sent__isnull=False).order_by('pk'))
+
+    def nina_mail(self):
+        from django.core import mail
+        return [m for m in mail.outbox if m.to == ['nina@example.com']]
+
+    def unread(self):
+        from .reporter_messages import unread_count
+        return unread_count(self.nina)
+
+    def visit(self, fixed):
+        self.client.force_login(self.serena.user)
+        data = {'note': 'Valve seized.', 'action': 'Freed the valve.'}
+        if fixed:
+            data['fixed'] = 'on'
+        self.client.post(f'/officer/{self.case.reference}/', data)
+        self.case.refresh_from_db()
+
+    def test_triage_tells_the_reporter_and_emails_them(self):
+        self.triage()
+        message = self.messages_to_nina()[-1]
+        self.assertEqual(message.kind, 'ack')
+        self.assertIn('passed to our Facilities Helpdesk team as medium priority. We aim to resolve it by',
+                      message.draft_text)
+        self.assertEqual(len(self.nina_mail()), 1)
+        self.assertEqual(self.nina_mail()[0].body, message.draft_text)
+        self.assertEqual(self.unread(), 1)
+
+    def test_messages_use_the_reporters_language(self):
+        from . import reporter_messages
+        self.case.preferred_language = 'es'
+        self.case.save()
+        self.triage()
+        self.assertIn('con prioridad media', self.messages_to_nina()[-1].draft_text)
+        self.case.preferred_language = 'pl'
+        self.assertIn('Otrzymaliśmy Twoje zgłoszenie', reporter_messages.received(self.case).draft_text)
+        self.case.preferred_language = 'ur'
+        receipt = reporter_messages.received(self.case)
+        self.assertIn('موصول', receipt.draft_text)
+        self.assertEqual(receipt.language, 'ur')
+
+    def test_new_target_date_or_team_is_explained(self):
+        self.post(priority='high')
+        update = self.messages_to_nina()[-1]
+        self.assertEqual(update.kind, 'update')
+        self.assertIn('We now aim to fix it by', update.draft_text)
+        self.assertNotIn('now being handled', update.draft_text)
+        self.post(priority='high', team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertIn('It is now being handled by our IT Service Desk team.', self.messages_to_nina()[-1].draft_text)
+
+    def test_team_names_ending_in_team_are_not_doubled(self):
+        self.it.name = 'IT Network Team'
+        self.it.save()
+        self.post(team=self.it.pk, category=self.network.pk, officer=self.priya.pk)
+        self.assertIn('handled by our IT Network team.', self.messages_to_nina()[-1].draft_text)
+
+    def test_a_new_officer_alone_does_not_message_the_reporter(self):
+        self.post(officer=self.tom.pk)
+        self.assertEqual(self.messages_to_nina(), [])
+
+    def test_visits_are_reported(self):
+        self.visit(fixed=False)
+        self.assertIn('An officer visited on', self.messages_to_nina()[-1].draft_text)
+        self.assertIn('needs another visit', self.messages_to_nina()[-1].draft_text)
+        self.visit(fixed=True)
+        self.assertIn('Good news: an officer has fixed "Radiator stuck on full"', self.messages_to_nina()[-1].draft_text)
+        self.assertEqual(self.unread(), 2)
+
+    def test_approved_outcome_letter_is_emailed_and_draft_is_not_counted(self):
+        self.visit(fixed=True)
+        self.client.force_login(self.handler)
+        self.client.get(f'/cases/{self.case.reference}/letter/')  # makes the AI draft
+        self.assertEqual(self.unread(), 1)  # the "fixed" update only, not the draft letter
+        draft = self.case.communications.get(kind='outcome').draft_text
+        self.client.post(f'/cases/{self.case.reference}/letter/', {'draft_text': draft})
+        self.assertEqual(self.unread(), 2)
+        self.assertEqual(self.nina_mail()[-1].body, draft)
+
+    def test_opening_the_report_marks_messages_read(self):
+        self.triage()
+        self.post(priority='high')
+        # Staff looking at the report don't mark the reporter's messages as read
+        self.client.force_login(self.handler)
+        self.client.get(f'/track/{self.case.reference}/')
+        self.assertEqual(self.unread(), 2)
+        self.client.force_login(self.nina)
+        page = self.client.get(f'/track/{self.case.reference}/')
+        self.assertEqual(page.content.decode().count('<span class="alert-new">New</span>'), 2)
+        self.assertEqual(self.unread(), 0)
+        page = self.client.get(f'/track/{self.case.reference}/')
+        self.assertNotContains(page, '<span class="alert-new">New</span>')
+        # Newest first
+        text = page.content.decode()
+        self.assertLess(text.index('We now aim to fix it by'), text.index('passed to our Facilities Helpdesk'))
+
+    def test_my_reports_and_navbar_show_new_messages(self):
+        self.triage()
+        self.client.force_login(self.nina)
+        page = self.client.get('/my-reports/')
+        self.assertContains(page, '1 new message.')
+        self.assertContains(page, f'href="/track/{self.case.reference}/#your-messages"')
+        self.assertContains(page, ', 1 new message</span>')
+        self.assertContains(page, 'aria-label="Open menu, 1 unread"')
+        self.client.get(f'/track/{self.case.reference}/')
+        page = self.client.get('/my-reports/')
+        self.assertNotContains(page, 'new message')
+        self.assertNotContains(page, 'nav-badge')
