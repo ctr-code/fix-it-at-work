@@ -9,6 +9,7 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince, timeuntil
 
@@ -303,7 +304,7 @@ def triage_case(request, ref):
                 case.ai_suggestion_accepted = case.ai_duplicate_candidate_id == d['duplicate_of'].id
                 case.save()
                 reporter_messages.merged(case, approver)
-                messages.success(request, f'{case.reference} merged into {case.duplicate_of.reference}.')
+                messages.success(request, _with_next_case(f'{case.reference} merged into {case.duplicate_of.reference}.'))
                 return redirect('triage_queue')
 
             case.category = d['category']
@@ -317,7 +318,8 @@ def triage_case(request, ref):
             case.save()
             reporter_messages.routed(case, approver)
             alert = alerts.alert_routed(case, request)
-            messages.success(request, f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}')
+            messages.success(request, _with_next_case(
+                f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}'))
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
@@ -327,6 +329,28 @@ def triage_case(request, ref):
         })
     return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team(),
                                                       'info_draft': _info_draft(case)})
+
+
+def _next_to_triage():
+    """The case at the top of "Needs triage": highest AI-suggested priority first, then waiting longest."""
+    waiting = Case.objects.filter(status=Status.NEW).only('reference', 'title', 'ai_priority', 'date_reported')
+    return min(waiting, key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported), default=None)
+
+
+def _with_next_case(done):
+    """The message after triage, with a button to the next case so a handler can keep going without going
+    back to the list. Everything shown is escaped (case titles come from reporters)."""
+    nxt = _next_to_triage()
+    if not nxt:
+        return format_html('{} <span class="next-case-none">That was the last one: nothing else is waiting for '
+                           'triage.</span>', done)
+    left = Case.objects.filter(status=Status.NEW).count()
+    return format_html(
+        '{} <span class="next-case">'
+        '<a class="btn btn-sm btn-primary" href="{}">Next case <i class="fa-solid fa-arrow-right" aria-hidden="true">'
+        '</i><span class="visually-hidden">: {} {}</span></a> '
+        '<span class="small">{} &middot; {} still waiting</span></span>',
+        done, reverse('triage_case', args=[nxt.reference]), nxt.reference, nxt.title, nxt.title, left)
 
 
 def _by_team():

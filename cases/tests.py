@@ -2371,3 +2371,38 @@ class NextStepsTests(TestCase):
     def test_gone_once_a_handler_has_checked_it(self):
         Case.objects.filter(pk=self.case.pk).update(status=Status.ASSIGNED)
         self.assertNotIn('What happens next', self.page())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NextCaseTests(TestCase):
+    """After triaging a case, the message has a button to the next one in "Needs triage"."""
+
+    make_user = ReassignCaseTests.make_user
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+
+    def message(self, response):
+        return response.content.decode().split('id="msg"')[1].split('</div>')[0]
+
+    def test_button_goes_to_the_most_urgent_case_waiting(self):
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        Case.objects.create(title='Printer jammed', ai_priority='low', **common)
+        urgent = Case.objects.create(title='Sparks from <socket>', ai_priority='urgent', **common)
+        msg = self.message(self.triage())
+        self.assertIn(f'{self.case.reference} sent to Facilities Helpdesk.', msg)
+        self.assertIn(f'href="/triage/{urgent.reference}/">Next case', msg)
+        self.assertIn('Sparks from &lt;socket&gt; &middot; 2 still waiting', msg)  # titles are escaped
+        self.assertNotIn('<socket>', msg)
+
+    def test_says_when_nothing_is_left(self):
+        msg = self.message(self.triage())
+        self.assertNotIn('Next case', msg)
+        self.assertIn('That was the last one: nothing else is waiting for triage.', msg)
