@@ -14,8 +14,9 @@ when the text shown isn't what should be sorted (priorities, dates, scores).
     {% comment %}
     Each list is a tab. The address ends in #triage, #reply, #unhappy or #teams, so links
     (e.g. the manager's "Unhappy reporters" figure) and the Back button open the right tab.
+    The last tab used is also remembered on this device (static/js/tabs.js).
     {% endcomment %}
-    <ul class="nav nav-tabs queue-tabs" role="tablist">
+    <ul class="nav nav-tabs queue-tabs" role="tablist" data-remember-tab="fiaw-queue-tab">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="tab-triage" data-bs-toggle="tab" data-bs-target="#triage" type="button"
                 role="tab" aria-controls="triage" aria-selected="true">Needs triage <span class="tab-count">{{ new_cases|length }}</span></button>

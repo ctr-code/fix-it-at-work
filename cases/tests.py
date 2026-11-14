@@ -232,6 +232,8 @@ class CaseQueueSortTests(TestCase):
                 self.assertIn(f'id="{pane}" role="tabpanel" aria-labelledby="tab-{pane}"', html)
                 self.assertIn(f'>{label} <span class="tab-count">', html)
         self.assertEqual(html.count('class="tab-pane fade show active"'), 1)
+        # The last tab used is remembered on the device (static/js/tabs.js)
+        self.assertIn('<ul class="nav nav-tabs queue-tabs" role="tablist" data-remember-tab="fiaw-queue-tab">', html)
 
     def test_needs_triage_filters_list_only_whats_in_the_queue(self):
         user = User.objects.create_user('handler3', 'handler3@example.com', 'not-a-real-password-1')
