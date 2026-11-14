@@ -424,6 +424,16 @@ class OfficerJobPageTests(TestCase):
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
 
+    def test_record_visit_button_only_once_the_job_is_theirs(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertNotIn('data-record-jump', html)
+        self.client.post(self.url, {'take': ''})
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('<a href="#record-visit" class="btn btn-primary btn-lg sticky-record" data-record-jump>', html)
+        self.assertIn('id="record-visit"', html)
+        self.assertIn('id="record-visit-title" tabindex="-1">Record your visit</h2>', html)
+        self.assertIn('js/record-jump.js', html)
+
     def test_job_list_gives_sort_values(self):
         self.client.post(self.url, {'take': ''})
         Case.objects.filter(pk=self.case.pk).update(priority='urgent')

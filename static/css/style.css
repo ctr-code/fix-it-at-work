@@ -589,6 +589,15 @@ main { margin-bottom: var(--space-10); }
 .alert-item:not(.is-unread) .alert-subject { font-weight: var(--fw-medium); }
 .alert-intro { margin-bottom: var(--space-2); }
 .alert-reporter { margin-bottom: var(--space-2); color: var(--muted); }
+
+/* Officer job page: "Record visit" stays at the bottom of the screen until the visit form is in view */
+.sticky-record { position: fixed; left: 50%; bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); z-index: 1025;
+    transform: translateX(-50%); display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap;
+    border-radius: 999px; padding-inline: var(--space-6); box-shadow: 0 6px 18px rgba(7, 52, 71, .3); }
+.sticky-record[hidden] { display: none; }
+.has-sticky-action { padding-bottom: calc(var(--space-10) * 2); }   /* room for the button below the last field */
+.record-visit { scroll-margin-top: calc(var(--nav-offset) + var(--space-4)); }
+.record-visit h2:focus { outline: none; }
 .alert-reporter i { margin-right: var(--space-1); }
 .alert-full { margin-bottom: var(--space-3); font-size: var(--fs-small); }
 .alert-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
