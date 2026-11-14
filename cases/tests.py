@@ -172,6 +172,23 @@ class HeaderTests(TestCase):
         self.assertEqual(home.count('aria-current="page"'), 1)
         self.assertIn('href="/"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a>', home)
 
+    def test_people_page_filters_by_role(self):
+        manager = self.user_with_role('manager')
+        for name, role in [('ann', 'reporter'), ('bob', 'reporter'), ('cat', 'handler')]:
+            u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+            u.profile.role = role
+            u.profile.save()
+        html = self.client.get('/people/').content.decode()
+        options = html.split('id="people-role"')[1].split('</select>')[0]
+        self.assertIn('data-filter-rows="#people-table tbody" data-filter-key="role"', options)
+        self.assertIn('<option value="">All roles (4)</option>', options)
+        self.assertIn('<option value="reporter">Reporter (2)</option>', options)
+        self.assertIn('<option value="handler">Case handler (1)</option>', options)
+        self.assertIn('<option value="manager">Manager (1)</option>', options)
+        self.assertNotIn('value="officer"', options)  # nobody is an officer, so it isn't offered
+        self.assertIn('data-role="handler">', html)
+        self.assertIn(f'data-name=" {manager.username}" data-role="manager">', html)
+
     def test_people_page_sorts_by_name_and_email(self):
         manager = self.user_with_role('manager')
         html = self.client.get('/people/').content.decode()

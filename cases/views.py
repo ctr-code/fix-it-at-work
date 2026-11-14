@@ -868,4 +868,8 @@ def people(request):
     users = User.objects.select_related('profile', 'officer__team').order_by('first_name', 'username')
     rows = [{'user': u, 'role': get_role(u), 'team_id': getattr(getattr(u, 'officer', None), 'team_id', None)}
             for u in users]
-    return render(request, 'cases/people.html', {'rows': rows, 'roles': Role.choices, 'teams': Team.objects.all()})
+    # The "Role" filter lists each role that someone has, with how many people have it
+    role_counts = [(value, label, n) for value, label in Role.choices
+                   if (n := sum(1 for r in rows if r['role'] == value))]
+    return render(request, 'cases/people.html', {'rows': rows, 'roles': Role.choices, 'teams': Team.objects.all(),
+                                                 'role_counts': role_counts})
