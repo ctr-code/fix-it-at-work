@@ -2325,3 +2325,49 @@ class SimilarReportTests(TestCase):
     def test_signed_out_people_get_nothing(self):
         self.client.logout()
         self.assertEqual(self.client.get('/report/similar/', {'title': 'Lift grinding'}).status_code, 302)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NextStepsTests(TestCase):
+    """A report nobody has checked yet says what happens next, and when."""
+
+    def setUp(self):
+        from .models import SLARule
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours',
+                               resolve_amount=24, resolve_unit='hours')
+        self.case = Case.objects.create(title='Leak', description='Water on the floor.', building='Depot',
+                                        reporter_name='Nina', reporter_email='nina@example.com',
+                                        reporter_user=self.user, ai_priority='high')
+
+    def page(self):
+        return self.client.get(f'/track/{self.case.reference}/').content.decode()
+
+    def test_new_report_says_when_it_will_be_checked(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        html = self.page()
+        self.assertIn('What happens next</h2>', html)
+        due = timezone.localtime(self.case.date_reported + timedelta(hours=4))
+        self.assertIn(f'We aim to do this by <strong>{due:%A} {due.day} {due:%B, %H:%M}</strong> (within 4 hours).', html)
+        self.assertIn('We send it to the right team', html)
+        self.assertNotIn("site's emergency number", html)
+
+    def test_late_check_and_danger_advice(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        Case.objects.filter(pk=self.case.pk).update(date_reported=timezone.now() - timedelta(hours=6), hs_risk=True)
+        html = self.page()
+        self.assertIn('This is taking longer than we aim for, sorry.', html)
+        self.assertIn("If someone is in danger right now, don't wait for us: call your site's emergency number.", html)
+
+    def test_gone_once_a_handler_has_checked_it(self):
+        Case.objects.filter(pk=self.case.pk).update(status=Status.ASSIGNED)
+        self.assertNotIn('What happens next', self.page())

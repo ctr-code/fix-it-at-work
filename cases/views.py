@@ -202,8 +202,21 @@ def _render_track(request, case, feedback_form, update_form):
     info_request = case.info_request_pending() if update_form is not None else None
     return render(request, 'cases/track.html', {
         'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
-        'updates': updates, 'info_request': info_request,
+        'updates': updates, 'info_request': info_request, 'next_steps': _next_steps(case),
     })
+
+
+def _next_steps(case):
+    """For a report nobody has checked yet: when a person should have looked at it, from the response
+    target for the priority the AI suggested (or the reporter chose). Shown under "What happens next"."""
+    if case.status != Status.NEW:
+        return None
+    rule = SLARule.objects.filter(priority=case.ai_priority or case.reported_urgency).first()
+    if not rule:
+        return {}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
+    check_by = rule.acknowledge_due(case.date_reported, holidays)
+    return {'check_by': check_by, 'check_within': rule.acknowledge_text, 'late': timezone.now() > check_by}
 
 
 # ---------- 2. Triage and route (case handler) ----------
