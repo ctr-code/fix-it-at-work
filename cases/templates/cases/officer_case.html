@@ -8,6 +8,16 @@
     <p>{% include "cases/_pri.html" with p=case.priority %} <span class="badge-status">{{ case.reference }}</span>
         <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M, H:i" }}{% if case.is_overdue %} <span class="text-nowrap">({{ case.overdue_by }} overdue)</span>{% endif %}</span></p>
 
+    {# For when the officer can't find the problem or can't get in: opens their email app, with the reference as the subject #}
+    {% if case.reporter_email %}
+    {% with subject=case.reference|add:": "|add:case.title %}
+    <div class="contact-reporter">
+        <a class="btn btn-outline-primary btn-sm" href="mailto:{{ case.reporter_email }}?subject={{ subject|urlencode:'' }}"><i class="fa-solid fa-envelope" aria-hidden="true"></i> Contact reporter<span class="visually-hidden"> {{ case.reporter_name }} by email</span></a>
+        <span class="small text-muted">{{ case.reporter_name }} &middot; {{ case.reporter_email }}{% if case.preferred_language != 'en' %} &middot; prefers {{ case.get_preferred_language_display }}{% endif %}</span>
+    </div>
+    {% endwith %}
+    {% endif %}
+
     {% if case.ai_summary %}
     <div class="ai-box mb-3"><span class="ai-label">AI summary</span><br>{{ case.ai_summary }}</div>
     {% endif %}

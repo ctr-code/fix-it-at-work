@@ -424,6 +424,17 @@ class OfficerJobPageTests(TestCase):
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
 
+    def test_contact_reporter_link_emails_them_with_the_reference(self):
+        Case.objects.filter(pk=self.case.pk).update(preferred_language='pl')
+        html = self.client.get(self.url).content.decode()
+        ref = self.case.reference
+        self.assertIn(f'href="mailto:reporter@example.com?subject={ref}%3A%20Leaking%20tap"', html)
+        self.assertIn('Contact reporter<span class="visually-hidden"> A Reporter by email</span></a>', html)
+        self.assertIn('A Reporter &middot; reporter@example.com &middot; prefers Polski (Polish)', html)
+        # No email address, no link
+        Case.objects.filter(pk=self.case.pk).update(reporter_email='')
+        self.assertNotIn('Contact reporter', self.client.get(self.url).content.decode())
+
     def test_record_visit_button_only_once_the_job_is_theirs(self):
         html = self.client.get(self.url).content.decode()
         self.assertNotIn('data-record-jump', html)
