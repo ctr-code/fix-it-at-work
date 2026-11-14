@@ -588,6 +588,8 @@ main { margin-bottom: var(--space-10); }
 .alert-subject { margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .alert-item:not(.is-unread) .alert-subject { font-weight: var(--fw-medium); }
 .alert-intro { margin-bottom: var(--space-2); }
+.alert-reporter { margin-bottom: var(--space-2); color: var(--muted); }
+.alert-reporter i { margin-right: var(--space-1); }
 .alert-full { margin-bottom: var(--space-3); font-size: var(--fs-small); }
 .alert-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 

@@ -36,6 +36,7 @@ Alerts sent to this officer by name or to their team's inbox (cases/alerts.py). 
             </div>
             <h2 class="alert-subject">{{ a.subject }}</h2>
             <p class="alert-intro">{{ a.intro|linebreaksbr }}</p>
+            <p class="alert-reporter"><i class="fa-solid fa-user" aria-hidden="true"></i> Reported by {{ a.case.reporter_name|default:"-" }}</p>
             <details class="alert-full"><summary>Full alert</summary><p class="mt-2 mb-0 small">{{ a.body|linebreaksbr }}</p></details>
             <form method="post" class="alert-actions"{% if show_unread %} action="?show=unread"{% endif %}>
                 {% csrf_token %}

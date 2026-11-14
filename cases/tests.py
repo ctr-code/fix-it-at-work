@@ -1128,6 +1128,14 @@ class AlertInboxTests(TestCase):
         self.assertContains(self.page(self.tom), 'Sent to Facilities Helpdesk')
         self.assertContains(self.page(self.priya), 'No alerts yet')
 
+    def test_each_alert_shows_who_reported_the_job(self):
+        self.triage(officer=self.serena.pk)
+        self.case.refresh_from_db()
+        self.assertTrue(self.case.reporter_name)
+        for officer in (self.serena, self.tom):  # sent by name, and to the team
+            with self.subTest(officer=officer.name):
+                self.assertContains(self.page(officer), f'</i> Reported by {self.case.reporter_name}</p>')
+
     def test_navbar_shows_the_unread_count(self):
         self.triage(officer=self.serena.pk)
         self.client.force_login(self.serena.user)
