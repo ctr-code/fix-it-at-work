@@ -189,6 +189,19 @@ def _render_track(request, case, feedback_form, update_form):
 
 # ---------- 2. Triage and route (case handler) ----------
 
+def _past_response_target(new_cases, now):
+    """New reports waiting longer than the response target for the priority the AI suggested (or the
+    reporter chose), which is when the reporter should have heard from a person. Returns their ids."""
+    rules = {r.priority: r for r in SLARule.objects.all()}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
+    late = set()
+    for c in new_cases:
+        rule = rules.get(c.ai_priority or c.reported_urgency)
+        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
+            late.add(c.pk)
+    return late
+
+
 def _unhappy_reporters():
     """Recently closed cases where the reporter gave a low score, for handlers to follow up."""
     return (Case.objects.filter(status=Status.CLOSED, satisfaction__lte=UNHAPPY_SCORE,
@@ -210,6 +223,10 @@ def triage_queue(request):
     triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
                          if any(c.ai_priority == value for c in new_cases)]
     triage_buildings = sorted({c.building for c in new_cases if c.building}, key=str.lower)
+    # Past the response target, for the "Overdue" filter and the note in the "Reported" column
+    late = _past_response_target(new_cases, timezone.now())
+    for c in new_cases:
+        c.past_target = c.pk in late
     # The same for cases with teams: priorities, teams and officers that are in the "With teams" list
     in_flight = list(in_flight)
     teams_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
@@ -618,12 +635,11 @@ def _needs_attention(now):
     # New reports waiting longer than the response target for the priority the AI suggested
     # (or the reporter chose), which is when the reporter should have heard from a person
     rules = {r.priority: r for r in SLARule.objects.all()}
-    holidays = set(Holiday.objects.values_list('date', flat=True))
-    slow_triage = []
-    for c in Case.objects.filter(status=Status.NEW).order_by('date_reported'):
-        rule = rules.get(c.ai_priority or c.reported_urgency)
-        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
-            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {rule.acknowledge_text}'))
+    waiting = list(Case.objects.filter(status=Status.NEW).order_by('date_reported'))
+    late = _past_response_target(waiting, now)
+    slow_triage = [(c, f'Waiting {timesince(c.date_reported, now)} · target '
+                       f'{rules[c.ai_priority or c.reported_urgency].acknowledge_text}')
+                   for c in waiting if c.pk in late]
 
     slow_reply = [(c, f'Fixed {timesince(c.date_resolved, now)} ago · {c.assigned_team or "No team"}')
                   for c in Case.objects.filter(status=Status.RESOLVED, date_resolved__lt=now - REPLY_WAIT)

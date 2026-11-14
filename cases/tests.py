@@ -246,7 +246,7 @@ class CaseQueueSortTests(TestCase):
         options = html.split('id="triage-priority"')[1].split('</select>')[0]
         self.assertIn('<option value="3">High</option>', options)
         self.assertNotIn('Urgent', options)
-        self.assertIn('data-priority="3" data-building="Main Office">', html)
+        self.assertIn('data-priority="3" data-building="Main Office"', html)
         places = html.split('id="triage-location"')[1].split('</select>')[0]
         self.assertIn('<option value="Main Office">Main Office</option>', places)
         self.assertEqual(places.count('<option'), 2)  # "All locations" plus the one building with a case
@@ -328,6 +328,44 @@ class CaseQueueSortTests(TestCase):
                 ref = Case.objects.get(title=title).reference
                 self.assertIn(f'<tr data-title="{title}" data-ref="{ref}"', pane)
         self.assertNotIn('{#', html)
+
+    def test_needs_triage_and_with_teams_filter_by_overdue(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import SLARule
+        user = User.objects.create_user('handler9', 'handler9@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours',
+                               resolve_amount=24, resolve_unit='hours')
+        now = timezone.now()
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        # Needs triage: one waiting past the 4-hour response target, one reported just now
+        old = Case.objects.create(title='Heating off', ai_priority='high', **common)
+        Case.objects.filter(pk=old.pk).update(date_reported=now - timedelta(hours=6))
+        Case.objects.create(title='Tap dripping', ai_priority='high', **common)
+        # With teams: one past its due date, one not
+        Case.objects.create(title='Exit blocked', status=Status.ASSIGNED, assigned_team=team,
+                            sla_due=now - timedelta(days=2), **common)
+        Case.objects.create(title='Blind broken', status=Status.ASSIGNED, assigned_team=team,
+                            sla_due=now + timedelta(days=2), **common)
+        html = self.client.get('/triage/').content.decode()
+        for tab in ('triage', 'teams'):
+            with self.subTest(tab=tab):
+                options = html.split(f'id="{tab}-overdue"')[1].split('</select>')[0]
+                self.assertIn(f'data-filter-rows="#{tab} tbody" data-filter-key="overdue"', options)
+                self.assertIn('<option value="1">', options)
+                self.assertIn('<option value="0">', options)
+        rows = {title: html.split(f'<tr data-title="{title}"')[1].split('>')[0]
+                for title in ('Heating off', 'Tap dripping', 'Exit blocked', 'Blind broken')}
+        self.assertIn('data-overdue="1"', rows['Heating off'])
+        self.assertIn('data-overdue="0"', rows['Tap dripping'])
+        self.assertIn('data-overdue="1"', rows['Exit blocked'])
+        self.assertIn('data-overdue="0"', rows['Blind broken'])
+        triage = html.split('id="triage" role="tabpanel"')[1].split('role="tabpanel"')[0]
+        self.assertEqual(triage.count('Past response target</span>'), 1)
 
     def test_tabs_show_who_reported_each_case(self):
         user = User.objects.create_user('handler8', 'handler8@example.com', 'not-a-real-password-1')
