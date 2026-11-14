@@ -210,7 +210,7 @@ class CaseQueueSortTests(TestCase):
                                    building='Main Office', reporter_name='A Reporter',
                                    reporter_email='reporter@example.com', ai_priority='urgent')
         html = self.client.get('/triage/').content.decode()
-        self.assertEqual(html.count('class="sort-btn"'), 19)
+        self.assertEqual(html.count('class="sort-btn"'), 22)
         self.assertIn('js/sort-table.js', html)
         self.assertIn('data-label="AI suggests" data-sort-value="4"', html)  # urgent ranks highest
         self.assertIn(f'data-sort-value="{case.date_reported.isoformat()[:19]}', html)
@@ -320,11 +320,34 @@ class CaseQueueSortTests(TestCase):
                            ('unhappy', 'Toilet blocked'), ('teams', 'Window blind broken')]:
             with self.subTest(tab=tab):
                 self.assertIn(f'id="{tab}-search"', html)
-                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title ref"', html)
+                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title ref', html)
                 pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
                 ref = Case.objects.get(title=title).reference
                 self.assertIn(f'<tr data-title="{title}" data-ref="{ref}"', pane)
         self.assertNotIn('{#', html)
+
+    def test_tabs_show_who_reported_each_case(self):
+        user = User.objects.create_user('handler8', 'handler8@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        common = dict(description='x', building='Depot', reporter_email='r@example.com')
+        Case.objects.create(title='Lift noisy', reporter_name='Priya Shah', **common)
+        Case.objects.create(title='Monitor flickering', reporter_name='Tomasz Nowak', status=Status.RESOLVED,
+                            assigned_team=team, **common)
+        Case.objects.create(title='Window blind broken', reporter_name='Grace Obi', status=Status.ASSIGNED,
+                            assigned_team=team, **common)
+        html = self.client.get('/triage/').content.decode()
+        for tab, name in [('triage', 'Priya Shah'), ('reply', 'Tomasz Nowak'), ('teams', 'Grace Obi')]:
+            with self.subTest(tab=tab):
+                pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
+                self.assertIn('Reported by', pane.split('</thead>')[0])
+                self.assertIn(f'<td data-label="Reported by" data-sort-value="{name}">{name}</td>', pane)
+                # The search box also finds cases by the reporter's name
+                self.assertIn('data-search-key="title ref reporter"', pane)
+                self.assertIn(f'data-reporter="{name}"', pane)
+                self.assertNotIn('colspan="5"', pane)
 
 
 @override_settings(
