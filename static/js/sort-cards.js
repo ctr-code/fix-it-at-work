@@ -1,7 +1,8 @@
 /* jshint esversion: 6 */
 // "Sort by", filters (e.g. "Location", "Priority") and a search box for lists of job cards.
-// - <input data-search-cards=".job-list" data-search-key="title"> keeps cards whose data-title contains
-//   the typed text, ignoring capitals and accents. It combines with the filters.
+// - <input data-search-cards=".job-list" data-search-key="title reporter"> keeps cards whose data-title or
+//   data-reporter contains the typed text, ignoring capitals and accents. It combines with the filters.
+//   data-search-label (e.g. "titles or reporters") is what the screen-reader summary calls them.
 // - <select data-sort-cards=".job-list"> reorders the cards in every matching list. Cards give
 //   data-title, data-priority (number, higher is more urgent), data-due (ISO date), data-overdue ("1"/"0").
 // - <select data-filter-cards=".job-list" data-filter-key="building"> keeps only cards whose
@@ -75,7 +76,8 @@
 
     const applyFilters = () => {
         const active = filters.filter((s) => s.value);
-        const terms = searches.map((i) => ({ key: i.dataset.searchKey, q: fold(i.value) })).filter((t) => t.q);
+        const terms = searches.map((i) => ({ keys: i.dataset.searchKey.split(/\s+/), q: fold(i.value),
+                                             label: i.dataset.searchLabel || "titles" })).filter((t) => t.q);
         const filtering = active.length + terms.length > 0;
         let shown = 0;
         filterLists.forEach((list) => {
@@ -83,7 +85,7 @@
             let inList = 0;
             cards.forEach((card) => {
                 const match = active.every((s) => card.dataset[s.dataset.filterKey] === s.value)
-                    && terms.every((t) => fold(card.dataset[t.key] || "").includes(t.q));
+                    && terms.every((t) => t.keys.some((k) => fold(card.dataset[k] || "").includes(t.q)));
                 card.hidden = !match;
                 inList += match;
             });
@@ -98,7 +100,7 @@
         document.querySelectorAll("[data-sort-bar] [data-clear-filters]").forEach((b) => { b.hidden = !filtering; });
         // e.g. "Showing 1 job: Main Office, Medium, titles containing "tap"."
         const parts = active.map((s) => s.options[s.selectedIndex].text)
-            .concat(terms.map((t) => 'titles containing "' + t.q + '"'));
+            .concat(terms.map((t) => t.label + ' containing "' + t.q + '"'));
         return parts.length
             ? "Showing " + shown + (shown === 1 ? " job" : " jobs") + ": " + parts.join(", ") + "."
             : "Showing all jobs.";

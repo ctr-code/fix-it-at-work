@@ -407,11 +407,24 @@ class OfficerJobPageTests(TestCase):
         self.client.post(self.url, {'take': ''})  # the job set up for this officer is medium
         html = self.client.get('/officer/').content.decode()
         self.assertIn('id="job-priority"', html)
-        self.assertIn('data-search-cards=".job-list" data-search-key="title"', html)
+        self.assertIn('data-search-cards=".job-list" data-search-key="title reporter"', html)
         self.assertIn('data-clear-filters hidden', html)  # shown by the script once something is filtered
         self.assertIn('<option value="2">Medium</option>', html)
         for absent in ('Urgent', 'High', 'Low'):
             self.assertNotIn(f'">{absent}</option>', html)
+
+    def test_job_cards_show_who_reported_them(self):
+        # One job is this officer's and one is unassigned in their team: both lists show the reporter
+        self.client.post(self.url, {'take': ''})
+        Case.objects.create(title='Door sticking', description='x', building='Depot', reporter_name='Grace Obi',
+                            reporter_email='g@example.com', status=Status.ASSIGNED, assigned_team=self.officer.team)
+        html = self.client.get('/officer/').content.decode()
+        mine = html.split('Assigned to me')[1].split('Unassigned in')[0]
+        unassigned = html.split('Unassigned in')[1]
+        self.assertIn('Reported by A Reporter</div>', mine)
+        self.assertIn('Reported by Grace Obi</div>', unassigned)
+        self.assertIn('data-title="Leaking tap" data-reporter="A Reporter"', html)
+        self.assertIn('placeholder="Search by job title or reporter"', html)
 
 
 @override_settings(
