@@ -88,7 +88,7 @@
                             </li>
                             <li><a class="dropdown-item" href="{% url 'profile' %}"{% if p == profile_url %} aria-current="page"{% endif %}><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
+                            <li><form method="post" action="{% url 'account_logout' %}" data-clear-drafts>{% csrf_token %}<button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
                         </ul>
                     </li>
                 </ul>
@@ -153,6 +153,8 @@
     {% endblock extra_body %}
     {# Header menu: closes after choosing a link or pressing Escape; adds a shadow when scrolled #}
     <script src="{% static 'js/nav.js' %}"></script>
+    {# Unsent report drafts: kept on this device, removed on sign-out #}
+    <script src="{% static 'js/draft.js' %}"></script>
 </body>
 
 </html>

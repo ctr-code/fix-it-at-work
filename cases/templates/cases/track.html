@@ -50,8 +50,10 @@
         <h2 class="h5">Details you've added</h2>
         {% if updates %}{% include "cases/_report_updates.html" %}{% else %}<p class="text-muted">Nothing added yet.</p>{% endif %}
         {% if update_form %}
-        <form method="post" enctype="multipart/form-data" class="add-details" novalidate>
+        <form method="post" enctype="multipart/form-data" class="add-details" novalidate
+              data-draft-key="fiaw-draft-details-{{ user.pk }}-{{ case.reference }}"{% if not update_form.is_bound %} data-draft-restore{% endif %}>
             {% csrf_token %}
+            {% include "cases/_draft_notice.html" with what="details" %}
             {% if info_request %}
             <h3 class="h6">Send the information we asked for</h3>
             <p class="small text-muted">Answer our message of {{ info_request.date_sent|date:"j M Y" }} here, and add photos if they help. The team working on your report will see it straight away.</p>

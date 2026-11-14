@@ -184,7 +184,7 @@ class HeaderTests(TestCase):
     def test_sign_out_still_works(self):
         self.user_with_role('reporter')
         html = self.client.get('/').content.decode()
-        self.assertIn('<form method="post" action="/accounts/logout/">', html)
+        self.assertIn('<form method="post" action="/accounts/logout/" data-clear-drafts>', html)
         self.client.post('/accounts/logout/')
         self.assertNotIn('_auth_user_id', self.client.session)
 
@@ -2235,3 +2235,42 @@ class WordingTests(TestCase):
         self.assertEqual(_when(moment), 'Wednesday 18 November, 16:21')
         self.assertEqual(_when(moment, 'pl'), '18/11/2026 16:21')
         self.assertEqual(_when(None), '-')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DraftTests(TestCase):
+    """Half-filled reports and added details are kept on the device (static/js/draft.js), per person."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+
+    def test_report_form_keeps_a_draft_for_this_person(self):
+        html = self.client.get('/report/').content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-report-{self.user.pk}" data-draft-restore>', html)
+        self.assertIn("We've filled in the report you started", html)
+        self.assertIn('Photos and the map location aren', html)
+        self.assertIn('js/draft.js', html)
+
+    def test_a_failed_send_is_not_overwritten_by_the_draft(self):
+        html = self.client.post('/report/', {'title': 'Leak'}).content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-report-{self.user.pk}">', html)
+        self.assertNotIn('data-draft-restore', html)
+
+    def test_added_details_keep_a_draft_for_this_report(self):
+        case = Case.objects.create(title='Tap dripping', description='x', building='Depot', reporter_name='Nina',
+                                   reporter_email='nina@example.com', reporter_user=self.user)
+        html = self.client.get(f'/track/{case.reference}/').content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-details-{self.user.pk}-{case.reference}" data-draft-restore>', html)
+        self.assertIn("We've filled in the details you started", html)
+        self.assertNotIn('and the map location', html)
+
+    def test_signing_out_clears_drafts(self):
+        html = self.client.get('/').content.decode()
+        self.assertIn('action="/accounts/logout/" data-clear-drafts>', html)

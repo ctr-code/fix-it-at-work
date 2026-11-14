@@ -5,8 +5,11 @@
 <section class="report-page">
     <h1>Report an issue</h1>
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
-    <form method="post" enctype="multipart/form-data" class="panel" novalidate>
+    {# What's typed is kept as a draft on this device until it's sent (static/js/draft.js) #}
+    <form method="post" enctype="multipart/form-data" class="panel" novalidate
+          data-draft-key="fiaw-draft-report-{{ user.pk }}"{% if not form.is_bound %} data-draft-restore{% endif %}>
         {% csrf_token %}
+        {% include "cases/_draft_notice.html" with what="report" map=True %}
         {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<p class="mb-0">{{ e }}</p>{% endfor %}</div>{% endif %}
 
         <section class="form-section" aria-labelledby="section-what">

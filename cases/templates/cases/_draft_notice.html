@@ -1,0 +1,12 @@
+{% comment %}
+Shown by static/js/draft.js when it puts back a form someone started and didn't send.
+Usage: {% include "cases/_draft_notice.html" with what="report" map=True %}
+{% endcomment %}
+<div class="draft-notice" data-draft-notice role="status" hidden>
+    <i class="fa-solid fa-clock-rotate-left draft-notice-icon" aria-hidden="true"></i>
+    <div class="draft-notice-text">
+        <p class="mb-1"><strong>We've filled in the {{ what }} you started</strong> on <span data-draft-when></span>. It hasn't been sent yet.</p>
+        <p class="small mb-0">Photos{% if map %} and the map location{% endif %} aren't kept, so add them again before you send it.</p>
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-draft-discard>Start again</button>
+</div>
