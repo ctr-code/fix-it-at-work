@@ -208,6 +208,58 @@ def triage(case):
     }
 
 
+# Words too common to say two reports are about the same thing
+STOP_WORDS = {
+    'the', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'were', 'it', 'its', 'in', 'on', 'at', 'to', 'of', 'for',
+    'by', 'with', 'from', 'this', 'that', 'there', 'has', 'have', 'been', 'be', 'not', 'no', 'our', 'my', 'we',
+    'i', 'me', 'all', 'very', 'again', 'still', 'please', 'working', 'broken', 'room', 'floor', 'office',
+}
+SIMILAR_DAYS, SIMILAR_MIN_SCORE, SIMILAR_SHOWN = 30, 0.55, 3
+
+
+def _words(text):
+    return {w for w in re.findall(r'\w+', text.lower()) if len(w) > 2 and w not in STOP_WORDS}
+
+
+def _best_category(text):
+    tokens = re.findall(r'\w+', text)
+    best = max(((_score_category(c, text, tokens)[0], c) for c in Category.objects.all()),
+               key=lambda s: s[0], default=(0, None))
+    return best[1] if best[0] > 0 else None
+
+
+def similar_open_reports(title, description='', building='', location_detail='', exclude_user=None):
+    """
+    Open reports in the same building that look like the one being typed, so the reporter can see it's
+    already in hand before sending a duplicate. Used while they type, so it works on a few words.
+    Score: share of the typed words found in the other report, plus a bonus for the same room and for the
+    same likely category. Nothing is changed: the reporter decides, and a handler still checks duplicates.
+    """
+    text = _text(title, description)
+    words = _words(text)
+    if not building.strip() or len(words) < 2:
+        return []
+    category = _best_category(text)
+    since = timezone.now() - timedelta(days=SIMILAR_DAYS)
+    candidates = (Case.objects.filter(status__in=OPEN_STATUSES, building__iexact=building.strip(),
+                                      date_reported__gte=since)
+                  .select_related('assigned_team'))
+    if exclude_user is not None:
+        candidates = candidates.exclude(reporter_user=exclude_user)
+    scored = []
+    for other in candidates:
+        other_words = _words(_text(other.title, other.description, other.location_detail))
+        score = len(words & other_words) / len(words)
+        if location_detail.strip() and other.location_detail.strip().lower() == location_detail.strip().lower():
+            score += 0.2
+        if category and category.id in (other.category_id, other.ai_category_id):
+            score += 0.2
+        if score >= SIMILAR_MIN_SCORE:
+            scored.append((score, other))
+    scored.sort(key=lambda s: (-s[0], -s[1].date_reported.timestamp()))
+    return [other for _, other in scored[:SIMILAR_SHOWN]]
+
+
 def _first_sentences(text, n=2, limit=220):
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     out = ' '.join(sentences[:n])

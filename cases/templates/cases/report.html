@@ -27,6 +27,12 @@
                 <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
                 <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
             </div>
+            {# Open reports that look like this one, found while typing (static/js/similar-reports.js) #}
+            <div class="similar-reports" data-similar data-similar-url="{% url 'similar_reports' %}" role="status" hidden>
+                <p class="similar-title"><i class="fa-solid fa-clone" aria-hidden="true"></i> Already reported?</p>
+                <p class="small mb-2">These open reports in the same building look similar. If one is the same problem, the team is already on it and you don't need to report it again. If yours is different, carry on.</p>
+                <ul class="similar-list" data-similar-list></ul>
+            </div>
             {{ form.address|as_crispy_field }}
             {% comment %}
             Optional exact spot (static/js/locate.js): the reporter's own position, or a pin they drop on a map.
@@ -113,6 +119,7 @@
 {% load static %}
 <script src="{% static 'js/photo-upload.js' %}"></script>
 <script src="{% static 'js/locate.js' %}"></script>
+<script src="{% static 'js/similar-reports.js' %}"></script>
 <script>
     // Show that the report is sending and stop a second click creating a duplicate.
     // The photo goes with the report in this one request, so this is its upload feedback too.

@@ -596,6 +596,15 @@ main { margin-bottom: var(--space-10); }
     border-radius: 999px; padding-inline: var(--space-6); box-shadow: 0 6px 18px rgba(7, 52, 71, .3); }
 .sticky-record[hidden] { display: none; }
 .has-sticky-action { padding-bottom: calc(var(--space-10) * 2); }   /* room for the button below the last field */
+/* "Already reported?" on the report form (static/js/similar-reports.js) */
+.similar-reports { margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); border: var(--border-width) solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.similar-reports[hidden] { display: none; }
+.similar-title { margin-bottom: var(--space-1); font-weight: var(--fw-bold); }
+.similar-title i { color: var(--brand); margin-right: var(--space-1); }
+.similar-list { list-style: none; margin: 0; padding: 0; }
+.similar-item { padding: var(--space-2) 0; border-top: var(--border-width) solid var(--border); }
+
 /* A restored draft of a report or of added details (static/js/draft.js) */
 .draft-notice { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-4);
     padding: var(--space-3) var(--space-4); border: var(--border-width) solid var(--border); border-left: 4px solid var(--brand);

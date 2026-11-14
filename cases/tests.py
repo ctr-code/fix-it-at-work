@@ -2274,3 +2274,54 @@ class DraftTests(TestCase):
     def test_signing_out_clears_drafts(self):
         html = self.client.get('/').content.decode()
         self.assertIn('action="/accounts/logout/" data-clear-drafts>', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class SimilarReportTests(TestCase):
+    """While typing a report, open reports that look the same are suggested (static/js/similar-reports.js)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        common = dict(building='Main Office', reporter_name='Someone Else', reporter_email='else@example.com')
+        self.lift = Case.objects.create(title='Lift making grinding noise', location_detail='Main lift',
+                                        description='The lift grinds loudly between floors two and three.', **common)
+        Case.objects.create(title='Printer jammed', description='Paper stuck in tray two.', **common)
+
+    def similar(self, **typed):
+        return self.client.get('/report/similar/', typed).json()['reports']
+
+    def test_a_matching_open_report_is_suggested(self):
+        found = self.similar(title='Lift grinding', description='Loud grinding noise in the lift',
+                             building='Main Office')
+        self.assertEqual([r['reference'] for r in found], [self.lift.reference])
+        self.assertEqual(found[0]['where'], 'Main Office, Main lift')
+        self.assertEqual(found[0]['status'], 'Waiting to be checked')
+        # Only what's needed to recognise it: not the description or who reported it
+        self.assertEqual(set(found[0]), {'reference', 'title', 'where', 'reported', 'status'})
+
+    def test_nothing_for_another_building_a_closed_report_or_too_few_words(self):
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Depot'), [])
+        self.assertEqual(self.similar(title='Lift', building='Main Office'), [])
+        self.assertEqual(self.similar(title='Lift grinding noise'), [])
+        Case.objects.filter(pk=self.lift.pk).update(status=Status.CLOSED)
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Main Office'), [])
+
+    def test_their_own_reports_are_not_suggested(self):
+        Case.objects.filter(pk=self.lift.pk).update(reporter_user=self.user)
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Main Office'), [])
+
+    def test_report_form_has_the_suggestions_box(self):
+        html = self.client.get('/report/').content.decode()
+        self.assertIn('data-similar data-similar-url="/report/similar/" role="status" hidden>', html)
+        self.assertIn('js/similar-reports.js', html)
+
+    def test_signed_out_people_get_nothing(self):
+        self.client.logout()
+        self.assertEqual(self.client.get('/report/similar/', {'title': 'Lift grinding'}).status_code, 302)

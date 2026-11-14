@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -99,6 +100,24 @@ def report(request):
                        for b in Building.objects.exclude(latitude=None).exclude(longitude=None)}
     return render(request, 'cases/report.html', {'form': form, 'buildings': buildings,
                                                  'building_points': building_points})
+
+
+@login_required
+def similar_reports(request):
+    """Open reports that look like the one being typed on the report form (static/js/similar-reports.js).
+    Only what's needed to recognise one is shared: no descriptions, reporters or photos."""
+    q = request.GET
+    found = ai.similar_open_reports(q.get('title', '')[:200], q.get('description', '')[:2000],
+                                    q.get('building', '')[:100], q.get('location_detail', '')[:100],
+                                    exclude_user=request.user)
+    return JsonResponse({'reports': [{
+        'reference': c.reference,
+        'title': c.title,
+        'where': ', '.join(p for p in (c.building, c.location_detail) if p),
+        'reported': timesince(c.date_reported).split(',')[0] + ' ago',
+        'status': (f'With {c.assigned_team.short_name} team' if c.assigned_team
+                   else 'Waiting to be checked'),
+    } for c in found]})
 
 
 @login_required
