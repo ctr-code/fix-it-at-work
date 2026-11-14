@@ -2093,3 +2093,75 @@ class InfoRequestTests(TestCase):
         response = self.ask(text='  ', next_url='https://example.org/')
         self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
         self.assertFalse(self.case.communications.filter(kind='info').exists())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class WordingTests(TestCase):
+    """Small wording fixes: team names, how late a case is, and dates in messages to reporters."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        self.now = timezone.now()
+        self.team = Team.objects.create(name='Security & Access Team', contact_email='s@example.com', manager='M')
+        user = User.objects.create_user('mei', 'mei@example.com', 'not-a-real-password-1')
+        user.profile.role = 'officer'
+        user.profile.save()
+        self.officer = Officer.objects.create(name='Mei Lin', team=self.team, contact_email='m@example.com', user=user)
+        self.case = Case.objects.create(title='Barrier stuck', description='x', building='Main Office',
+                                        reporter_name='Alex Morgan', reporter_email='a@example.com',
+                                        status=Status.ASSIGNED, assigned_team=self.team, assigned_officer=self.officer,
+                                        priority='high')
+        Case.objects.filter(pk=self.case.pk).update(sla_due=self.now - timedelta(days=19, hours=5))
+        self.case.refresh_from_db()
+        self.client.force_login(user)
+
+    def test_team_name_is_not_doubled(self):
+        self.assertEqual(self.team.short_name, 'Security & Access')
+        self.assertEqual(Team(name='Facilities Helpdesk').short_name, 'Facilities Helpdesk')
+        for url in ('/', '/officer/'):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn('Security &amp; Access team', html)
+                self.assertNotIn('Team team', html)
+
+    def test_overdue_says_by_how_much(self):
+        from datetime import timedelta
+        self.assertEqual(self.case.overdue_by, '19 days')
+        self.case.sla_due = self.now - timedelta(hours=1, minutes=5)
+        self.assertEqual(self.case.overdue_by, '1 hour')
+        self.case.sla_due = self.now + timedelta(hours=1)
+        self.assertEqual(self.case.overdue_by, '')
+
+    def test_officer_job_page_says_it_is_overdue_in_words(self):
+        html = self.client.get(f'/officer/{self.case.reference}/').content.decode()
+        self.assertIn('(19 days overdue)</span></span>', html)
+
+    def test_job_cards_and_queue_say_how_long_overdue(self):
+        for url in ('/', '/officer/'):  # the officer's Home and My jobs
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn('(19 days overdue)</span></div>', html)
+                self.assertNotIn('(overdue)', html)
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        html = self.client.get('/triage/').content.decode()  # "With teams" in the Case queue
+        self.assertIn('(19 days overdue)</span></td>', html)
+        self.assertNotIn('(overdue)', html)
+
+    def test_dates_in_english_messages_are_written_out(self):
+        from datetime import datetime
+        from django.utils import timezone
+        from .reporter_messages import _when
+        moment = timezone.make_aware(datetime(2026, 11, 18, 16, 21))
+        self.assertEqual(_when(moment), 'Wednesday 18 November, 16:21')
+        self.assertEqual(_when(moment, 'pl'), '18/11/2026 16:21')
+        self.assertEqual(_when(None), '-')

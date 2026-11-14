@@ -606,7 +606,7 @@ def _needs_attention(now):
     Each item is (case, note)."""
     open_cases = (Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS])
                   .select_related('assigned_team', 'assigned_officer'))
-    overdue = [(c, f'Due {timesince(c.sla_due, now)} ago · {_who(c)}')
+    overdue = [(c, f'{c.overdue_by} overdue · {_who(c)}')
                for c in open_cases.filter(sla_due__lt=now).order_by('sla_due')]
     due_soon = [(c, f'Due in {timeuntil(c.sla_due, now)} · {_who(c)}')
                 for c in open_cases.filter(sla_due__gte=now, sla_due__lt=now + DUE_SOON).order_by('sla_due')]

@@ -96,6 +96,12 @@ class Team(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def short_name(self):
+        """The name without a trailing "Team", for text that adds its own word for team
+        ("Security & Access team", not "Security & Access Team team")."""
+        return self.name[:-5] if self.name.lower().endswith(' team') else self.name
+
 
 class Category(models.Model):
     name = models.CharField(max_length=80, unique=True)
@@ -341,6 +347,19 @@ class Case(models.Model):
     @property
     def is_open(self):
         return self.status in OPEN_STATUSES
+
+    @property
+    def overdue_by(self):
+        """How long past its due date an open case is, in the largest whole unit: "19 days", "3 hours",
+        "5 minutes". Empty when it isn't overdue."""
+        if not self.is_overdue:
+            return ''
+        late = (self.date_resolved or timezone.now()) - self.sla_due
+        for size, unit in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+            amount = int(late.total_seconds() // size)
+            if amount >= 1:
+                return f'{amount} {unit}{"" if amount == 1 else "s"}'
+        return 'less than a minute'
 
     @property
     def is_overdue(self):
