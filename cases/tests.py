@@ -142,14 +142,15 @@ class HeaderTests(TestCase):
     def nav_links(self, response):
         html = response.content.decode()
         # The link text follows its icon, sometimes wrapped with a count badge and a hidden "3 cases waiting"
-        return [label for label in ('Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
+        return [label for label in ('Home', 'Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
                 if re.search(rf'</(?:i|span)> {re.escape(label)}(?:<span class="visually-hidden">[^<]*</span>)?</a>', html)]
 
     def test_each_role_sees_its_links(self):
         expected = {
-            'reporter': ['Report an issue'],
-            'handler': ['Report an issue', 'Case queue'],
-            'manager': ['Report an issue', 'Case queue', 'Dashboard', 'People'],
+            'reporter': ['Home', 'Report an issue'],
+            'handler': ['Home', 'Report an issue', 'Case queue'],
+            'officer': ['Home', 'Report an issue', 'My jobs'],
+            'manager': ['Home', 'Report an issue', 'Case queue', 'Dashboard', 'People'],
         }
         for role, links in expected.items():
             with self.subTest(role=role):
@@ -166,8 +167,10 @@ class HeaderTests(TestCase):
                 self.assertEqual(html.count('aria-current="page"'), 1)
                 marked = html.split('aria-current="page"')[1].split('</a>')[0]
                 self.assertIn(label, marked)
+        # Home is the page they land on after signing in, so it's marked there
         home = self.client.get('/').content.decode()
-        self.assertNotIn('aria-current="page"', home)
+        self.assertEqual(home.count('aria-current="page"'), 1)
+        self.assertIn('href="/"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a>', home)
 
     def test_people_page_sorts_by_name_and_email(self):
         manager = self.user_with_role('manager')

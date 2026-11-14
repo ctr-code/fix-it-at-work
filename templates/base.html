@@ -4,6 +4,7 @@
 {% url 'account_signup' as signup_url %}
 {% url 'profile' as profile_url %}
 {% url 'report' as report_url %}
+{% url 'index' as home_url %}
 
 <!DOCTYPE html>
 <html lang="en-gb">
@@ -53,6 +54,8 @@
                 {% with p=request.path %}
                 {% if user.is_authenticated %}
                 <ul class="navbar-nav main-nav mx-lg-auto">
+                    {# Home is the page each role lands on after signing in (cases.views.home shows it for their role) #}
+                    <li class="nav-item"><a class="nav-link{% if p == home_url %} active" aria-current="page{% endif %}" href="{{ home_url }}"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a></li>
                     <li class="nav-item"><a class="nav-link{% if p == report_url %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
                     {# A report's tracking page belongs under "My reports" #}
                     <li class="nav-item"><a class="nav-link{% if '/my-reports' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'my_reports' %}"><span class="nav-icon{% if unread_messages %} has-badge{% endif %}"><i class="fa-solid fa-folder-open" aria-hidden="true"></i>{% if unread_messages %}<span class="nav-badge" aria-hidden="true">{{ unread_messages_label }}</span>{% endif %}</span> My reports{% if unread_messages %}<span class="visually-hidden">, {{ unread_messages }} new message{{ unread_messages|pluralize }}</span>{% endif %}</a></li>
