@@ -8,14 +8,23 @@
     <p>{% include "cases/_pri.html" with p=case.priority %} <span class="badge-status">{{ case.reference }}</span>
         <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M, H:i" }}{% if case.is_overdue %} <span class="text-nowrap">({{ case.overdue_by }} overdue)</span>{% endif %}</span></p>
 
-    {# For when the officer can't find the problem or can't get in: opens their email app, with the reference as the subject #}
-    {% if case.reporter_email %}
-    {% with subject=case.reference|add:": "|add:case.title %}
-    <div class="contact-reporter">
+    {% comment %}
+    Getting there and getting hold of the reporter. "Directions" opens the phone's maps app (Google Maps) from
+    where the officer is. "Contact reporter" opens their email app with the reference as the subject, for when
+    they can't find the problem or can't get in.
+    {% endcomment %}
+    {% if case.directions_url or case.reporter_email %}
+    <div class="job-actions">
+        {% if case.directions_url %}
+        <a class="btn btn-outline-primary btn-sm" href="{{ case.directions_url }}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i> Directions<span class="visually-hidden"> to {{ case.building }} (Google Maps, opens in a new tab)</span></a>
+        {% endif %}
+        {% if case.reporter_email %}
+        {% with subject=case.reference|add:": "|add:case.title %}
         <a class="btn btn-outline-primary btn-sm" href="mailto:{{ case.reporter_email }}?subject={{ subject|urlencode:'' }}"><i class="fa-solid fa-envelope" aria-hidden="true"></i> Contact reporter<span class="visually-hidden"> {{ case.reporter_name }} by email</span></a>
+        {% endwith %}
         <span class="small text-muted">{{ case.reporter_name }} &middot; {{ case.reporter_email }}{% if case.preferred_language != 'en' %} &middot; prefers {{ case.get_preferred_language_display }}{% endif %}</span>
+        {% endif %}
     </div>
-    {% endwith %}
     {% endif %}
 
     {% if case.ai_summary %}

@@ -5,6 +5,7 @@ Follows Appendix A of the brief. Reporter details are kept on the Case to
 keep the prototype simple (one form, no accounts needed to report).
 """
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -331,6 +332,19 @@ class Case(models.Model):
             return ''
         return (f'https://www.openstreetmap.org/?mlat={self.latitude}&mlon={self.longitude}'
                 f'#map=18/{self.latitude}/{self.longitude}')
+
+    @property
+    def directions_url(self):
+        """Directions to the problem in Google Maps, which opens the maps app on most phones and starts from
+        where the officer is. Uses the map point, or the address if there's no point. Nothing is sent to
+        Google unless the officer opens the link."""
+        if self.has_map_point:
+            destination = f'{self.latitude},{self.longitude}'
+        elif self.address:
+            destination = self.address
+        else:
+            return ''
+        return 'https://www.google.com/maps/dir/?api=1&destination=' + quote(destination, safe=',')
 
     def fill_location_from_building(self):
         """Use the building directory for anything the reporter didn't give: the address, and the map point

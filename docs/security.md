@@ -72,7 +72,8 @@ mark the reporter's messages as read.
 - **Clickjacking:** `X-Frame-Options` stops other sites framing the app.
 - **Outside code:** the only outside script is the map library (Leaflet, from cdnjs). It loads only when a
   reporter presses "Pick on a map", is pinned with a **Subresource Integrity** hash so the browser refuses it if
-  it's been changed, and doesn't send our page address. Map links open OpenStreetMap with `noopener noreferrer`.
+  it's been changed, and doesn't send our page address. Map links open OpenStreetMap, and the officer's
+  "Directions" link opens Google Maps, both with `noopener noreferrer`; neither sends anything until it's opened.
 - **Other external services:** the Inter font loads from Google Fonts on every page, which shares visitors' IP
   addresses with Google. Bootstrap and the icons are served from our own site. Hosting the font ourselves would
   remove this.

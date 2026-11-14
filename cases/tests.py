@@ -424,6 +424,17 @@ class OfficerJobPageTests(TestCase):
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
 
+    def test_directions_link_uses_the_map_point_or_the_address(self):
+        # No point and no address: no link
+        self.assertNotIn('Directions', self.client.get(self.url).content.decode())
+        Case.objects.filter(pk=self.case.pk).update(address='10 Example Square, Birmingham')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('href="https://www.google.com/maps/dir/?api=1&amp;destination=10%20Example%20Square,%20Birmingham"', html)
+        Case.objects.filter(pk=self.case.pk).update(latitude='52.47960', longitude='-1.90270')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('destination=52.479600,-1.902700" target="_blank" rel="noopener noreferrer">', html)
+        self.assertIn('Directions<span class="visually-hidden"> to Main Office (Google Maps, opens in a new tab)</span>', html)
+
     def test_contact_reporter_link_emails_them_with_the_reference(self):
         Case.objects.filter(pk=self.case.pk).update(preferred_language='pl')
         html = self.client.get(self.url).content.decode()
