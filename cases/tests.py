@@ -730,6 +730,21 @@ class VisitOutcomeFlowTests(TestCase):
         self.assertIn('Closed', html)
         self.assertIn(self.DID, html)
 
+    def test_sending_the_letter_asks_first(self):
+        self.record('Valve seized solid.', self.DID, fixed=True)
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/letter/').content.decode()
+        self.assertIn('<form method="post" class="panel" data-confirm="#confirm-send">', html)
+        self.assertIn('Send this letter to Nina Gallagher?</h2>', html)
+        self.assertIn("It's emailed to <strong>nina@example.com</strong> and shown on their report, in English.", html)
+        self.assertIn(f'<strong>{self.ref} will be closed.</strong>', html)
+        self.assertIn('data-confirm-yes>', html)
+        self.assertIn('js/confirm-send.js', html)
+        # The dialog is only in the browser: sending still works exactly as before
+        self.client.post(f'/cases/{self.ref}/letter/', {'draft_text': 'Dear Nina, all fixed.'})
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, Status.CLOSED)
+
     def test_not_fixed_keeps_reporter_informed_and_no_letter_yet(self):
         self.record('Valve seized solid.', 'Ordered a new valve. Return visit booked for Thursday.', fixed=False)
         self.assertEqual(self.case.status, Status.IN_PROGRESS)
