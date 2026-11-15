@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load crispy_forms_tags %}
-{% block head_title %}Report an issue - Fix It at Work{% endblock %}
+{% block head_title %}{% if form.errors %}Error: {% endif %}Report an issue{% endblock %}
 {% block main %}
 <section class="report-page">
     <h1>Report an issue</h1>

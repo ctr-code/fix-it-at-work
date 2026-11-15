@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load ticket_links %}
-{% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
+{% block head_title %}{{ case.reference }} {{ case.title|truncatechars:40 }} – Case{% endblock %}
 {% block main %}
 <section class="container">
     <h1>{{ case.reference }}: {{ case.title }}</h1>

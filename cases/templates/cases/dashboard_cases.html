@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block head_title %}{{ info.title }}{% if team %} - {{ team.name }}{% endif %}{% if category %} - {{ category.name }}{% endif %} - Fix It at Work{% endblock %}
+{% block head_title %}{{ info.title }}{% if team %}: {{ team.name }}{% endif %}{% if category %}: {{ category.name }}{% endif %} – Dashboard{% endblock %}
 {% block main %}
 {% comment %}
 The cases behind one of the dashboard's figures (views.dashboard_cases). The ones to look at first are at the

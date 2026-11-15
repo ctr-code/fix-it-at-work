@@ -2568,3 +2568,41 @@ class DashboardListTests(TestCase):
         self.assertNotEqual(self.client.get('/dashboard/cases/?show=open').status_code, 200)
         # The handler's own "Overdue with teams" figure opens their Case queue instead
         self.assertIn('href="/triage/#teams"', self.client.get('/').content.decode())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class PageTitleTests(TestCase):
+    """Each browser tab says which page it is, what's waiting, and when a form has a problem."""
+
+    def title(self, url, **post):
+        response = self.client.post(url, post) if post else self.client.get(url)
+        html = response.content.decode()
+        return ' '.join(html.split('<title>')[1].split('</title>')[0].split())
+
+    def test_titles_name_the_page_and_the_case(self):
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        case = Case.objects.create(title='Water dripping from ceiling', description='x', building='Depot',
+                                   reporter_name='R', reporter_email='r@example.com')
+        # One case waiting for triage, so every tab starts with (1), like the navbar badge
+        self.assertEqual(self.title('/triage/'), '(1) Case queue – Fix It at Work')
+        self.assertEqual(self.title(f'/triage/{case.reference}/'),
+                         f'(1) Triage {case.reference} Water dripping from ceiling – Fix It at Work')
+        self.assertEqual(self.title('/'), '(1) Home – Fix It at Work')
+
+    def test_a_form_with_a_problem_says_error_first(self):
+        reporter = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(reporter)
+        self.assertEqual(self.title('/report/'), 'Report an issue – Fix It at Work')
+        self.assertEqual(self.title('/report/', title='Leak'), 'Error: Report an issue – Fix It at Work')
+
+    def test_sign_in_pages_get_the_site_name_too(self):
+        self.assertEqual(self.title('/accounts/login/'), 'Sign In – Fix It at Work')

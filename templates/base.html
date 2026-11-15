@@ -13,10 +13,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Fix It at Work - report a workplace issue and track it to resolution">
-    <title>
-        {% block head_title %}
-        {% endblock head_title %}
-    </title>
+    {% comment %}
+    The browser tab: what's waiting for this person (the same count as the navbar badge), the page, then the
+    site name, e.g. "(3) Triage TKT-2026-0030 Water dripping from ceiling – Fix It at Work". Each page gives
+    the middle part in head_title, starting with "Error: " when a form on it couldn't be sent.
+    {% endcomment %}
+    <title>{% if unread_total %}({{ unread_total }}) {% endif %}{% block head_title %}{% endblock head_title %} – Fix It at Work</title>
     {# favicon #}
     <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon-32x32.png' %}">
