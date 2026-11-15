@@ -3,7 +3,10 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, JsonResponse
+import mimetypes
+
+from django.core.files.storage import FileSystemStorage, default_storage
+from django.http import FileResponse, Http404, JsonResponse
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -23,6 +26,7 @@ from .models import (
     Holiday, Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
+from .files import case_for_file
 
 ALL_ROLES = [r.value for r in Role]
 HANDLERS = [Role.HANDLER, Role.MANAGER]
@@ -109,6 +113,35 @@ def report(request):
                        for b in Building.objects.exclude(latitude=None).exclude(longitude=None)}
     return render(request, 'cases/report.html', {'form': form, 'buildings': buildings,
                                                  'building_points': building_points})
+
+
+# Photos and voice notes: the only way to reach an upload (see cases/files.py)
+FILE_TYPES_SHOWN_INLINE = ('image/', 'audio/', 'video/')
+
+
+@login_required
+def case_file(request, name):
+    """Send an uploaded photo or voice note, but only to someone who may see its case. Anyone else gets
+    "not found", whether or not the file exists, so a copied link gives nothing away."""
+    case = case_for_file(name)
+    if case is None or not can_view_case(request.user, case):
+        raise Http404('No such file')
+    if not isinstance(default_storage, FileSystemStorage):
+        # Cloudinary: a signed link that expires in a few minutes (project/storage.py)
+        response = redirect(default_storage.url(name))
+    else:
+        try:
+            handle = default_storage.open(name, 'rb')
+        except (FileNotFoundError, OSError):
+            raise Http404('No such file')
+        kind = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+        response = FileResponse(handle, content_type=kind,
+                                as_attachment=not kind.startswith(FILE_TYPES_SHOWN_INLINE))
+        # An upload is never run as a page, even if someone disguised one
+        response['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; media-src 'self'; sandbox"
+    response['Cache-Control'] = 'private, max-age=300'  # never kept by shared caches
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @login_required

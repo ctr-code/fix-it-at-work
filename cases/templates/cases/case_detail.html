@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load ticket_links %}
+{% load ticket_links files %}
 {% block head_title %}{{ case.reference }} {{ case.title|truncatechars:40 }} – Case{% endblock %}
 {% block main %}
 <section class="container">
@@ -58,7 +58,7 @@
                         {% if u.text %}<p class="mb-0 small">{{ u.text|linebreaksbr }}</p>{% endif %}
                         {% with photos=u.photos.all %}{% if photos %}
                         <ul class="photo-grid mt-2" aria-label="Photos the reporter added {{ u.created_at|date:'j M Y, H:i' }}">
-                            {% for p in photos %}<li><a href="{{ p.image.url }}" target="_blank" rel="noopener"><img src="{{ p.image.url }}" alt="Added photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>{% endfor %}
+                            {% for p in photos %}<li><a href="{{ p.image|private_url }}" target="_blank" rel="noopener"><img src="{{ p.image|private_url }}" alt="Added photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>{% endfor %}
                         </ul>
                         {% endif %}{% endwith %}
                         {% endwith %}{% endif %}

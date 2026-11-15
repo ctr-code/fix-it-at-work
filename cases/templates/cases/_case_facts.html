@@ -1,4 +1,4 @@
-<div class="panel">
+{% load files %}<div class="panel">
     <div class="d-flex justify-content-between flex-wrap gap-2">
         <h2 class="h5 mb-0">Reporter's words</h2>
         <span class="text-muted small">Reported {{ case.date_reported|date:"j M Y, H:i" }} by {{ case.reporter_name }} &middot; {{ case.get_preferred_language_display }}</span>
@@ -14,7 +14,7 @@
     {% with photos=case.all_photos %}{% if photos %}
     <ul class="photo-grid mt-2" aria-label="Photos attached by the reporter">
         {% for p in photos %}
-        <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Photo {{ forloop.counter }} of {{ photos|length }} from the reporter (opens full size in a new tab)" loading="lazy"></a></li>
+        <li><a href="{{ p|private_url }}" target="_blank" rel="noopener"><img src="{{ p|private_url }}" alt="Photo {{ forloop.counter }} of {{ photos|length }} from the reporter (opens full size in a new tab)" loading="lazy"></a></li>
         {% endfor %}
     </ul>
     {% endif %}{% endwith %}

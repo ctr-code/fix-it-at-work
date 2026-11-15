@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags static ticket_links %}
+{% load crispy_forms_tags static ticket_links files %}
 {% block head_title %}{% if update_form.errors or feedback_form.errors %}Error: {% endif %}{{ case.reference }} {{ case.title|truncatechars:40 }} – Your report{% endblock %}
 {% block main %}
 <section class="container page-lg">
@@ -63,7 +63,7 @@
         {% with photos=case.all_photos %}{% if photos %}
         <ul class="photo-grid mt-3" aria-label="Photos you sent with your report">
             {% for p in photos %}
-            <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Your photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
+            <li><a href="{{ p|private_url }}" target="_blank" rel="noopener"><img src="{{ p|private_url }}" alt="Your photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
             {% endfor %}
         </ul>
         {% endif %}{% endwith %}

@@ -1961,10 +1961,10 @@ class VisitMediaTests(TestCase):
         self.client.force_login(handler)
         page = self.client.get(f'/cases/{self.case.reference}/').content.decode()
         visit = self.case.visits.get()
-        self.assertIn(f'src="{visit.audio.url}"', page)
+        self.assertIn(f'src="/files/{visit.audio.name}"', page)
         self.assertIn('Dictation, as heard', page)
         self.assertIn('Valve seized.', page)
-        self.assertIn(visit.photos.get().image.url, page)
+        self.assertIn(f'/files/{visit.photos.get().image.name}', page)
 
     def test_older_visits_with_one_photo_still_show_it(self):
         from .models import SiteVisit
@@ -2842,3 +2842,117 @@ class NewDetailsTests(TestCase):
         self.assertIn(self.TAG, self.page(self.handler, '/'))  # "Next to triage" on their home page
         self.page(self.handler, f'/triage/{self.ref}/')
         self.assertNotIn(self.TAG, self.page(self.handler, '/triage/'))
+
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class PrivateFileTests(TestCase):
+    """Photos and voice notes only reach people who may see their case (cases/files.py)."""
+
+    # Made-up Cloudinary details for the tests that use the Cloudinary storage: nothing is sent anywhere
+    FAKE_CLOUDINARY = {'CLOUDINARY_URL': 'cloudinary://example-key:example-secret@example-cloud'}
+
+    PNG = (b'\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01\\x08\\x06\\x00\\x00\\x00\\x1f'
+           b'\\x15\\xc4\\x89\\x00\\x00\\x00\\rIDATx\\x9cc\\xf8\\x0f\\x00\\x00\\x01\\x01\\x00\\x05\\x18\\xd8N\\x00\\x00\\x00\\x00IEND'
+           b'\\xaeB`\\x82')
+
+    def user(self, name, role='reporter'):
+        u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+        u.profile.role = role
+        u.profile.save()
+        return u
+
+    def setUp(self):
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        other = Team.objects.create(name='IT Service Desk', contact_email='i@example.com', manager='K')
+        self.reporter = self.user('nina')
+        self.case = Case.objects.create(title='Leak', description='x', building='Depot', reporter_name='Nina',
+                                        reporter_email='nina@example.com', reporter_user=self.reporter,
+                                        status=Status.ASSIGNED, assigned_team=self.team)
+        photo = ReportPhoto.objects.create(case=self.case, image=SimpleUploadedFile('leak.png', self.PNG, 'image/png'))
+        self.name = photo.image.name
+        self.url = f'/files/{self.name}'
+        self.team_officer = self.user('sam', 'officer')
+        Officer.objects.create(name='Sam', team=self.team, contact_email='sam@example.com', user=self.team_officer)
+        self.other_officer = self.user('kim', 'officer')
+        Officer.objects.create(name='Kim', team=other, contact_email='kim@example.com', user=self.other_officer)
+
+    def fetch(self, user):
+        self.client.force_login(user)
+        return self.client.get(self.url)
+
+    def test_people_who_can_see_the_case_get_the_file(self):
+        for user in (self.reporter, self.team_officer, self.user('jo', 'handler'), self.user('ade', 'manager')):
+            with self.subTest(user=user.username):
+                response = self.fetch(user)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(b''.join(response.streaming_content), self.PNG)
+                self.assertEqual(response['Content-Type'], 'image/png')
+                self.assertEqual(response['Cache-Control'], 'private, max-age=300')
+                self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+                self.assertIn('sandbox', response['Content-Security-Policy'])
+
+    def test_everyone_else_gets_not_found(self):
+        for user in (self.user('ann'), self.other_officer):  # another reporter; an officer in another team
+            with self.subTest(user=user.username):
+                self.assertEqual(self.fetch(user).status_code, 404)
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.client.get('/files/reports/not-a-real-file.png').status_code, 404)
+        self.client.logout()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response['Location'])
+
+    def test_the_old_public_address_is_gone_and_pages_link_privately(self):
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.client.get(f'/media/{self.name}').status_code, 404)
+        page = self.client.get(f'/track/{self.case.reference}/').content.decode()
+        self.assertIn(f'src="{self.url}"', page)
+        self.assertNotIn('/media/', page)
+
+    def test_cloudinary_uploads_are_private_and_links_expire(self):
+        import os
+        import time
+        from unittest import mock
+        import cloudinary
+        with mock.patch.dict(os.environ, self.FAKE_CLOUDINARY):
+            from project.storage import CloudinaryMediaStorage
+        cloudinary.config(cloud_name='example-cloud', api_key='example-key', api_secret='example-secret')
+        storage = CloudinaryMediaStorage()
+        with mock.patch('cloudinary.uploader.upload', return_value={'public_id': 'media/reports/leak'}) as upload:
+            storage._upload('reports/leak.png', SimpleUploadedFile('leak.png', self.PNG))
+        self.assertEqual(upload.call_args.kwargs['type'], 'authenticated')
+        link = storage.url('reports/leak')
+        self.assertIn('/download?', link)
+        self.assertIn('type=authenticated', link)
+        expires = int(link.split('expires_at=')[1].split('&')[0])
+        self.assertTrue(time.time() < expires <= time.time() + 5 * 60 + 5)
+        # The app's /files/ address sends people with access to that expiring link
+        with mock.patch('cases.views.default_storage', storage):
+            response = self.fetch(self.reporter)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('type=authenticated', response['Location'])
+        self.assertEqual(response['Cache-Control'], 'private, max-age=300')
+
+    def test_command_makes_older_cloudinary_uploads_private(self):
+        from io import StringIO
+        from unittest import mock
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):  # nothing to do without Cloudinary
+            call_command('make_uploads_private')
+        cloud = {'default': {'BACKEND': 'project.storage.CloudinaryMediaStorage'},
+                 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}}
+        out = StringIO()
+        import os
+        with self.settings(STORAGES=cloud), mock.patch.dict(os.environ, self.FAKE_CLOUDINARY),                 mock.patch('cloudinary.uploader.rename') as rename:
+            call_command('make_uploads_private', stdout=out)
+        rename.assert_called_once()
+        self.assertEqual(rename.call_args.kwargs['to_type'], 'authenticated')
+        self.assertIn('Made private: 1.', out.getvalue())

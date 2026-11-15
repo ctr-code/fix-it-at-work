@@ -6,6 +6,8 @@ urlpatterns = [
     path('', views.home, name='index'),
     path('report/', views.report, name='report'),
     path('report/similar/', views.similar_reports, name='similar_reports'),
+    # Uploaded photos and voice notes, only for people who may see the case (cases/files.py)
+    path('files/<path:name>', views.case_file, name='case_file'),
     path('my-reports/', views.my_reports, name='my_reports'),
     path('track/', views.track, name='track'),
     path('track/<str:ref>/', views.track_case, name='track_case'),

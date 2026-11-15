@@ -20,14 +20,15 @@ Since then, a teammate's work (merged from main) closed most of another gap:
 
 | Gap | Now |
 |---|---|
-| Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production. The links are still public (see below) |
+| Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production |
 
-And three more from the list below, on 15 November:
+And four more from the list below, on 15 November:
 
 | Gap | Now |
 |---|---|
 | No early warning for urgent or unsafe reports | As soon as a report arrives that's urgent (by the reporter's choice or the AI's) or marked "This could hurt someone", the case handlers are emailed with a link to triage it, and the team the AI suggests gets a heads-up on their Alerts page. Nothing is routed until a handler decides, and the triage page says the warning went out |
 | No "new details" flag | When a reporter adds details or photos, or answers a request for more information, the case shows "New details" in the Case queue, on the handler's Home, on My jobs and the officer's Home, until a handler (or the officer) opens it. The additions are marked "New" on the case page that once, and the team and officer get a "New details" alert |
+| Uploaded files had public links | Every photo and voice note goes through `/files/`, which only sends it to people who may see the case; anyone else gets "not found". `/media/` isn't served. Cloudinary uploads are stored as authenticated and opened through signed links that expire after 5 minutes. Older Cloudinary uploads need `python manage.py make_uploads_private` run once |
 | Misspelled danger and leak words weren't recognised | Common misspellings ("leek", "sparkin", "flodded", "electic shock", "slipery" and others) count like the words themselves and are explained (for example: leak (spelt "leek")). It's a fixed list rather than fuzzy matching, which would also catch real words such as "flooring" or "parking". "watter leek from celing" is now high, like the clear version |
 
 ### Usability improvements (14 and 15 November)
@@ -53,7 +54,6 @@ duplicates at triage. The Directions link uses Google Maps, an outside service, 
 
 | Gap | Why it matters | Suggested fix |
 |---|---|---|
-| **Uploaded files have public links** | Anyone with the link to a photo or voice note can open it without signing in. The links are hard to guess and only shown to people allowed to see the case, but they can be copied or shared | Cloudinary's authenticated delivery, with files served through a view that checks the user can see the case, using short-lived signed links |
 | **Cloudinary holds personal data** | Photos and voice recordings are stored by an outside service | A data processing agreement, and storage in the UK or EU |
 | **Email is printed, not sent** | Right for the brief's "no real systems" rule, but nobody actually receives alerts or messages | A mail service, with its key in the environment |
 
@@ -94,8 +94,8 @@ These are explained in more detail in the [responsible-design checklist](respons
 
 ## Suggested order
 
-1. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
-2. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
-3. Everything else as time allows.
+1. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
+2. Everything else as time allows.
 
-If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart.
+If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart, and run
+`python manage.py make_uploads_private` once there so photos uploaded before 15 November are private too.

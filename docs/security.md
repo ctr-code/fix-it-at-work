@@ -14,8 +14,8 @@ This page sets out what we did, what we checked, and what would still need doing
   being framed by other sites, rate-limited sign-in, and strong-password rules.
 - **People decide; the AI suggests.** Every routing decision, duplicate merge and outgoing letter is approved by
   a named person, and every change is recorded.
-- **Not production-ready yet.** HTTPS settings, private links for uploaded files and real email need finishing
-  before real use (see the last section).
+- **Not production-ready yet.** HTTPS settings and real email need finishing before real use (see the last
+  section).
 
 ## Data
 
@@ -60,7 +60,7 @@ hiding a link is never the only protection:
 | Case handler | Triage, merge duplicates, change priority or assignment, approve letters | Use the Dashboard or People page |
 | Manager | Everything a handler can, plus the Dashboard and roles | Change their own role |
 
-Automated tests (203 in total) cover these rules, for example that officers and reporters are refused the
+Automated tests (208 in total) cover these rules, for example that officers and reporters are refused the
 Change assignment page, that officers can't see another team's alerts, and that staff opening a report don't
 mark the reporter's messages as read.
 
@@ -82,15 +82,28 @@ mark the reporter's messages as read.
 
 Report photos, visit photos and voice notes are stored in one of two places:
 
-- **Cloudinary**, when `CLOUDINARY_URL` is set (for example on Heroku). Files survive restarts and are served from
-  Cloudinary. Photos are stored as images and voice notes as audio. Each file name gets a random suffix, so links
-  are hard to guess.
-- **The app's `media` folder**, when it isn't (local development). Django serves these only while debugging.
+- **Cloudinary**, when `CLOUDINARY_URL` is set (for example on Heroku). Files survive restarts. Photos are stored
+  as images and voice notes as audio, all as Cloudinary's **authenticated** type, so Cloudinary refuses their plain
+  links.
+- **The app's `media` folder**, when it isn't (local development). It isn't served at `/media/` at all.
 
-Either way, the server checks every file's type and size before it's saved. **Two things still need care:**
+Either way, the server checks every file's type and size before it's saved, and **links are private**
+(`cases/files.py`, since 15 November):
 
-- **Links aren't private.** Anyone who has a file's link can open it without signing in, in Cloudinary and
-  locally. The app only shows the links to people allowed to see the case, but a link can be copied or shared.
+- Every photo and voice note is reached through `/files/<name>`. That view finds the case the file belongs to and
+  only sends it to someone allowed to see that case (`can_view_case`): the reporter, staff, or officers in the
+  case's team. Anyone else, or a file that doesn't exist, gets "not found", so a copied link gives nothing away.
+  Signed-out visitors are sent to sign in.
+- Locally the view sends the file itself, marked `private` (never kept by shared caches) and `nosniff`, with a
+  Content Security Policy that stops an upload ever running as a page.
+- With Cloudinary it redirects to a **signed link that expires after 5 minutes**.
+- Files uploaded to Cloudinary **before** this change are still public until someone runs
+  `python manage.py make_uploads_private` once where Cloudinary is used (it has a `--dry-run`). It moves each one
+  to the authenticated type and is safe to run again. This couldn't be run from the development computer, which
+  doesn't use Cloudinary.
+
+**One thing still needs care:**
+
 - **Cloudinary is an outside service** that holds personal data (photos and voice recordings). Real use would
   need a data processing agreement and a check of where it stores data. This doesn't break the brief's "no
   connection to real systems" rule for the demo, because only fictional data is uploaded.
@@ -112,7 +125,7 @@ prototype:
 |---|---|
 | HTTPS isn't enforced; cookies can travel without HTTPS (`SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`) | Turn these on in production behind HTTPS |
 | Email uses the console backend | Use a real mail service with its key in the environment, never in code |
-| **Anyone with an uploaded file's link can open it**, in Cloudinary or the local `media` folder | Use Cloudinary's authenticated delivery (or private S3 / Azure Blob storage) and serve files through a view that checks `can_view_case`, with short-lived signed links |
+| Uploads made to Cloudinary before private links are still public | Run `python manage.py make_uploads_private` once on the server that uses Cloudinary |
 | Photos and voice notes are held by an outside service (Cloudinary) | A data processing agreement, and storage in the UK or EU |
 | Voice notes and exact locations are personal data | Set how long they're kept (for example, delete voice notes 90 days after a case closes) and say so in a privacy notice |
 | Old test page in Git history | Rotate anything sensitive it could expose (nothing real was in it) and, if needed, rewrite the history |
