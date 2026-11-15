@@ -49,6 +49,12 @@ transitions or smooth scrolling.
   chart has a "Show as a table" view, and the latest full week's values are written on the chart.
 - Pages work from 320px wide. Tables become cards on phones, and the Case queue and dashboard tabs become a grid
   of large buttons.
+- **Dark mode** follows the device's setting, and anyone can choose Light, Dark or "Same as my device" in the
+  footer. The theme is set before the page is drawn, so it never flashes white. Every dark colour was checked:
+  body text 13.6:1 on panels, secondary text 7.8:1, links 7.6:1, priority colours over 7:1, white on the teal
+  buttons 6.5:1, and form field borders 3.75:1. A text-contrast check of seven main pages (dashboard, Home,
+  Case queue, triage, officer job, report form and tracking page) found no failures in either theme
+  (15 November 2026).
 
 **Keyboard and assistive technology**
 - A "Skip to main content" link, `lang="en-gb"`, landmarks (header, navigation, main, footer) and one `h1` per

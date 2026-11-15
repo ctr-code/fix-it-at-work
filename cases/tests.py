@@ -2606,3 +2606,39 @@ class PageTitleTests(TestCase):
 
     def test_sign_in_pages_get_the_site_name_too(self):
         self.assertEqual(self.title('/accounts/login/'), 'Sign In – Fix It at Work')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DarkModeTests(TestCase):
+    """Pages follow the device's light or dark setting, and the footer lets people choose."""
+
+    def test_every_page_sets_the_theme_before_drawing_and_offers_the_choice(self):
+        for user in (None, User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')):
+            if user:
+                self.client.force_login(user)
+            with self.subTest(signed_in=bool(user)):
+                html = self.client.get('/').content.decode()
+                head = html.split('</head>')[0]
+                self.assertIn('<meta name="color-scheme" content="light dark">', head)
+                self.assertIn('prefers-color-scheme: dark', head)  # decided in <head>, so no white flash
+                self.assertIn('data-theme-picker hidden>', html)
+                self.assertIn('<option value="auto">Same as my device</option>', html)
+                self.assertIn('js/theme.js', html)
+
+    def test_dark_colours_cover_the_tokens_and_white_text_stays_on_dark_teal(self):
+        from pathlib import Path
+        from django.conf import settings
+        css = (Path(settings.BASE_DIR) / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+        dark = css.split('[data-bs-theme="dark"] {')[1].split('}')[0]
+        for token in ('--ink', '--muted', '--white', '--surface', '--border', '--brand', '--brand-fill', '--urgent',
+                      '--ai', '--warning-bg', '--bs-body-bg', '--bs-link-color'):
+            with self.subTest(token=token):
+                self.assertIn(f'{token}:', dark)
+        # White text never sits on the text teal, which is light in dark mode
+        self.assertNotIn('background: var(--brand); color: var(--on-brand)', css)
