@@ -103,19 +103,29 @@
         </div>
     </nav>
 
-    {# Display Django messages #}
-    <div id="messages" class="container">
-        <div class="row">
-            <div class="col-md-10 offset-md-1">
-                {% for message in messages %}
-                <div class="alert {{ message.tags }} alert-dismissible
-        fade show" id="msg" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    {% comment %}
+    Messages after an action ("Report sent", "Saved") show as toasts in the top corner (static/js/toasts.js).
+    Confirmations fade after a few seconds, but wait while the pointer or keyboard focus is on them.
+    Problems and warnings, and any message with a link or button in it (such as "Next case"), stay until
+    closed. Without JavaScript they simply stay on screen. #messages also keeps the page clear of the
+    fixed header.
+    {% endcomment %}
+    <div id="messages">
+        {% if messages %}
+        <div class="toast-stack">
+            {% for message in messages %}
+            <div class="toast show site-toast {% if message.level >= 40 %}is-error{% elif message.level >= 30 %}is-warning{% else %}is-success{% endif %}"
+                 role="{% if message.level >= 30 %}alert{% else %}status{% endif %}" aria-live="{% if message.level >= 30 %}assertive{% else %}polite{% endif %}" aria-atomic="true"
+                 data-bs-autohide="{% if message.level >= 30 or '<a ' in message.message %}false{% else %}true{% endif %}">
+                <div class="toast-row">
+                    <i class="fa-solid {% if message.level >= 40 %}fa-circle-exclamation{% elif message.level >= 30 %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %} toast-icon" aria-hidden="true"></i>
+                    <div class="toast-body">{{ message|safe }}</div>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close message"></button>
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
+        {% endif %}
     </div>
 
     {% block header %}
@@ -155,6 +165,8 @@
     <script src="{% static 'js/nav.js' %}"></script>
     {# Unsent report drafts: kept on this device, removed on sign-out #}
     <script src="{% static 'js/draft.js' %}"></script>
+    {# Messages fade after a few seconds (see #messages above) #}
+    <script src="{% static 'js/toasts.js' %}"></script>
 </body>
 
 </html>

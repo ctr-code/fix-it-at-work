@@ -308,6 +308,19 @@ h3, .h3, h5, .h5, .form-section-title { font-size: var(--fs-section); font-weigh
 }
 
 #messages { margin-top: var(--nav-offset); }
+/* Toasts: messages after an action, in the top corner below the header (static/js/toasts.js) */
+.toast-stack { position: fixed; z-index: 1090; top: calc(var(--nav-height) + var(--space-3)); right: var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-2); width: min(26rem, calc(100% - 2 * var(--space-4))); }
+.site-toast { width: 100%; background: var(--white); color: var(--ink); border: var(--border-width) solid var(--border);
+    border-left: 4px solid var(--low); border-radius: var(--radius-md); box-shadow: var(--shadow-menu); font-size: var(--fs-body); }
+.site-toast.is-warning { border-left-color: var(--warning-border); background: var(--warning-bg); }
+.site-toast.is-error { border-left-color: var(--urgent); background: var(--urgent-tint); }
+.toast-row { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4); }
+.toast-icon { margin-top: .2rem; color: var(--low); }
+.is-warning .toast-icon { color: var(--warning-ink); }
+.is-error .toast-icon { color: var(--urgent); }
+.site-toast .toast-body { flex: 1; padding: 0; overflow-wrap: anywhere; }
+.site-toast .btn-close { flex: none; margin-top: .1rem; }
 main { margin-bottom: var(--space-10); }
 .site-footer { background: var(--white); border-top: var(--line); padding: var(--space-4) 0; color: var(--muted); }
 .social-links a { color: var(--ink); margin-left: var(--space-3); }

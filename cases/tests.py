@@ -172,6 +172,28 @@ class HeaderTests(TestCase):
         self.assertEqual(home.count('aria-current="page"'), 1)
         self.assertIn('href="/"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a>', home)
 
+    def test_messages_are_toasts_and_only_confirmations_fade(self):
+        manager = self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        # A confirmation fades
+        html = self.client.post('/people/', {'user_id': ann.pk, 'role': 'handler', 'team': ''}, follow=True).content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('</button>')[0]
+        self.assertIn('is-success"', toast)
+        self.assertIn('role="status" aria-live="polite"', toast)
+        self.assertIn('data-bs-autohide="true"', toast)
+        self.assertIn('is now: Case handler.', toast)
+        self.assertIn('js/toasts.js', html)
+        # A problem stays until it's closed
+        html = self.client.post('/people/', {'user_id': manager.pk, 'role': 'reporter', 'team': ''},
+                                follow=True).content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('</button>')[0]
+        self.assertIn('is-error"', toast)
+        self.assertIn('role="alert" aria-live="assertive"', toast)
+        self.assertIn('data-bs-autohide="false"', toast)
+        self.assertIn('You cannot change your own role.', toast)
+        # No messages, no toast area
+        self.assertNotIn('toast-stack', self.client.get('/').content.decode())
+
     def test_people_page_filters_by_role(self):
         manager = self.user_with_role('manager')
         for name, role in [('ann', 'reporter'), ('bob', 'reporter'), ('cat', 'handler')]:
@@ -2424,7 +2446,7 @@ class NextCaseTests(TestCase):
         ReassignCaseTests.setUp(self)
 
     def message(self, response):
-        return response.content.decode().split('id="msg"')[1].split('</div>')[0]
+        return response.content.decode().split('class="toast-body"')[1].split('</div>')[0]
 
     def test_button_goes_to_the_most_urgent_case_waiting(self):
         common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
@@ -2435,6 +2457,13 @@ class NextCaseTests(TestCase):
         self.assertIn(f'href="/triage/{urgent.reference}/">Next case', msg)
         self.assertIn('Sparks from &lt;socket&gt; &middot; 2 still waiting', msg)  # titles are escaped
         self.assertNotIn('<socket>', msg)
+
+    def test_message_with_the_button_stays_until_closed(self):
+        Case.objects.create(title='Printer jammed', description='x', building='Depot', reporter_name='R',
+                            reporter_email='r@example.com', ai_priority='low')
+        html = self.triage().content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('class="toast-body"')[0]
+        self.assertIn('data-bs-autohide="false"', toast)
 
     def test_says_when_nothing_is_left(self):
         msg = self.message(self.triage())
