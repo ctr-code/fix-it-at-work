@@ -2758,3 +2758,87 @@ class EarlyWarningTests(TestCase):
         html = self.client.get(f'/triage/{case.reference}/').content.decode()
         self.assertIn('<strong>Urgent report:</strong> early warning sent', html)
         self.assertIn('with a heads-up to Facilities Helpdesk. Please triage it first.', html)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NewDetailsTests(TestCase):
+    """When a reporter adds to their report, staff see "New details" until they open the case."""
+
+    TAG = 'New details</span>'
+
+    def user(self, name, role):
+        u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+        u.profile.role = role
+        u.profile.save()
+        return u
+
+    def setUp(self):
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='facilities@example.com', manager='R')
+        self.handler = self.user('jo', 'handler')
+        self.officer = Officer.objects.create(name='Sam Okafor', team=self.team, contact_email='sam@example.com',
+                                              user=self.user('sam', 'officer'))
+        self.reporter = self.user('nina', 'reporter')
+        self.case = Case.objects.create(title='Radiator cold', description='x', building='Depot',
+                                        reporter_name='Nina Gallagher', reporter_email='nina@example.com',
+                                        reporter_user=self.reporter, status=Status.ASSIGNED, assigned_team=self.team,
+                                        assigned_officer=self.officer, priority='medium')
+        self.ref = self.case.reference
+
+    def add_details(self, text='It is also leaking now.'):
+        from django.core import mail
+        mail.outbox = []
+        self.client.force_login(self.reporter)
+        self.client.post(f'/track/{self.ref}/', {'add_details': '1', 'text': text})
+
+    def page(self, user, url):
+        self.client.force_login(user)
+        return self.client.get(url).content.decode()
+
+    def test_team_and_officer_are_alerted(self):
+        from django.core import mail
+        self.add_details()
+        alert = self.case.alerts.get(kind='details')
+        self.assertIn('Nina Gallagher has added to this job: "It is also leaking now."', alert.body)
+        self.assertEqual(sorted(m for msg in mail.outbox for m in msg.to if m != 'nina@example.com'),
+                         ['facilities@example.com', 'sam@example.com'])
+        html = self.page(self.officer.user, '/alerts/')
+        self.assertIn('fa-circle-plus', html)
+        self.assertIn('name="open"', html)  # it's their job, so they can open it
+
+    def test_tag_shows_until_each_role_opens_the_case(self):
+        self.add_details()
+        self.assertIn(self.TAG, self.page(self.handler, '/triage/'))
+        self.assertIn(self.TAG, self.page(self.officer.user, '/officer/'))
+        self.assertIn(self.TAG, self.page(self.officer.user, '/'))
+        # The handler opens the case: the addition is marked "New" this once, and their tag goes
+        html = self.page(self.handler, f'/cases/{self.ref}/')
+        self.assertIn('<li class="report-update is-new">', html)
+        self.assertNotIn(self.TAG, self.page(self.handler, '/triage/'))
+        self.assertNotIn('report-update is-new', self.page(self.handler, f'/cases/{self.ref}/'))
+        # ...but the officer still hasn't seen it, until they open the job
+        self.assertIn(self.TAG, self.page(self.officer.user, '/officer/'))
+        self.assertIn('report-update is-new', self.page(self.officer.user, f'/officer/{self.ref}/'))
+        self.assertNotIn(self.TAG, self.page(self.officer.user, '/officer/'))
+
+    def test_counts_more_than_one_addition(self):
+        self.add_details('First thing.')
+        self.add_details('Second thing.')
+        self.assertIn('New details (2)</span>', self.page(self.handler, '/triage/'))
+
+    def test_answer_to_a_request_for_information_shows_in_needs_triage(self):
+        Case.objects.filter(pk=self.case.pk).update(status=Status.NEW, assigned_team=None, assigned_officer=None)
+        self.add_details('It is in room 2.14.')
+        self.assertFalse(self.case.alerts.filter(kind='details').exists())  # no team has it yet
+        html = self.page(self.handler, '/triage/')
+        pane = html.split('id="triage" role="tabpanel"')[1].split('role="tabpanel"')[0]
+        self.assertIn(self.TAG, pane)
+        self.assertIn(self.TAG, self.page(self.handler, '/'))  # "Next to triage" on their home page
+        self.page(self.handler, f'/triage/{self.ref}/')
+        self.assertNotIn(self.TAG, self.page(self.handler, '/triage/'))

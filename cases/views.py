@@ -28,6 +28,11 @@ ALL_ROLES = [r.value for r in Role]
 HANDLERS = [Role.HANDLER, Role.MANAGER]
 
 
+# Additions from the reporter that case handlers, or officers, haven't opened the case to see yet
+NEW_FOR_HANDLERS = Count('updates', filter=Q(updates__handler_seen_at__isnull=True))
+NEW_FOR_OFFICERS = Count('updates', filter=Q(updates__officer_seen_at__isnull=True))
+
+
 def display_name(user):
     return user.get_full_name() or user.username
 
@@ -44,7 +49,8 @@ def home(request):
         ctx['awaiting_feedback'] = [c for c in mine.filter(status=Status.CLOSED, satisfaction__isnull=True)
                                     if c.feedback_open]
     elif role == Role.HANDLER:
-        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team'),
+        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team')
+                               .annotate(new_details=NEW_FOR_HANDLERS),
                                key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported))
         ctx['replies'] = Case.objects.filter(status=Status.RESOLVED).count()
         ctx['unhappy'] = _unhappy_reporters().count()
@@ -54,7 +60,8 @@ def home(request):
         ctx['officer'] = officer
         if officer:
             ctx['jobs'] = Case.objects.filter(
-                assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+                assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(
+                new_details=NEW_FOR_OFFICERS).order_by('sla_due')
             ctx['team_unassigned'] = Case.objects.filter(
                 assigned_team=officer.team, assigned_officer__isnull=True,
                 status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).count()
@@ -167,6 +174,7 @@ def track_case(request, ref):
                                                  text=update_form.cleaned_data['text'].strip())
             for photo in update_form.cleaned_data['photo']:
                 ReportPhoto.objects.create(case=case, update=update, image=photo)
+            alerts.alert_new_details(case, update, request)  # the team and officer hear about it
             if answering:
                 messages.success(request, f'Thank you - the information you sent has been added to {case.reference}. '
                                           'The team working on it can see it now.')
@@ -246,12 +254,14 @@ def _unhappy_reporters():
 @role_required(*HANDLERS)
 def triage_queue(request):
     new_cases = sorted(
-        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate'),
+        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate')
+        .annotate(new_details=NEW_FOR_HANDLERS),
         key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported),
     )
-    awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
+    awaiting_reply = (Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
+                      .annotate(new_details=NEW_FOR_HANDLERS))
     in_flight = Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).select_related(
-        'assigned_team', 'assigned_officer').order_by('sla_due')
+        'assigned_team', 'assigned_officer').annotate(new_details=NEW_FOR_HANDLERS).order_by('sla_due')
     # Priorities the AI suggested, and buildings, for cases waiting for triage: the
     # "Priority" and "Location" filters only list what's in the queue
     triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
@@ -329,7 +339,8 @@ def triage_case(request, ref):
             'priority': case.ai_priority,
         })
     return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team(),
-                                                      'info_draft': _info_draft(case)})
+                                                      'info_draft': _info_draft(case),
+                                                      'new_update_ids': ReportUpdate.mark_seen(case, 'handler')})
 
 
 def _next_to_triage():
@@ -372,7 +383,8 @@ def _by_team():
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
     return render(request, 'cases/case_detail.html', {'case': case, 'history': case_history(case),
-                                                      'info_draft': _info_draft(case)})
+                                                      'info_draft': _info_draft(case),
+                                                      'new_update_ids': ReportUpdate.mark_seen(case, 'handler')})
 
 
 def _info_draft(case):
@@ -484,10 +496,11 @@ def officer_cases(request):
     cases, team_unassigned = [], []
     if officer:
         cases = Case.objects.filter(
-            assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+            assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(
+            new_details=NEW_FOR_OFFICERS).order_by('sla_due')
         team_unassigned = Case.objects.filter(
             assigned_team=officer.team, assigned_officer__isnull=True,
-            status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+            status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(new_details=NEW_FOR_OFFICERS).order_by('sla_due')
     # Buildings and priorities the officer has jobs in, for the "Location" and "Priority" filters
     jobs = [*cases, *team_unassigned]
     buildings = sorted({c.building for c in jobs if c.building}, key=str.lower)
@@ -550,7 +563,8 @@ def officer_case(request, ref):
             return redirect('officer_cases')
     else:
         form = VisitForm()
-    return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer})
+    return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer,
+                                                        'new_update_ids': ReportUpdate.mark_seen(case, 'officer')})
 
 
 @role_required(Role.OFFICER)

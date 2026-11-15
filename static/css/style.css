@@ -604,6 +604,11 @@ a.kpi-link:hover .label { color: var(--brand); text-decoration: underline; }
 .alert-new { padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--brand-fill); color: var(--on-brand); font-size: var(--fs-caption); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .04em; }
 .alert-kind { font-size: var(--fs-caption); font-weight: var(--fw-semibold); color: var(--brand-dark); text-transform: uppercase; letter-spacing: .04em; }
 .alert-kind-heads_up { color: var(--warning-ink); }
+/* "New details": the reporter has added something staff haven't opened yet */
+.new-details-tag { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: var(--space-1); padding: 1px var(--space-2);
+    border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand-dark); font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold); white-space: nowrap; vertical-align: middle; }
+.report-update.is-new { border-left-color: var(--brand); background: var(--brand-tint); }
 /* On the triage page of an urgent report: the early warning has gone out */
 .early-warning-note { padding: var(--space-2) var(--space-3); border-left: 4px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-bg); }
 .early-warning-note i { color: var(--warning-ink); margin-right: var(--space-1); }

@@ -103,6 +103,17 @@ def alert_changed(case, changes, old_officer=None, request=None):
                            also_officers)
 
 
+def alert_new_details(case, update, request=None):
+    """The reporter added details or photos to a job a team already has: tell the team and the officer."""
+    if case.status not in ('assigned', 'in_progress') or not case.assigned_team:
+        return None
+    photos = update.photos.count()
+    added = (f'"{update.text}"' if update.text else '') + (
+        f'{" and " if update.text else ""}{photos} photo{"" if photos == 1 else "s"}' if photos else '')
+    intro = f'{case.reporter_name or "The reporter"} has added to this job: {added}'
+    return send_case_alert(case, Alert.Kind.DETAILS, intro, request)
+
+
 # ---------- Early warning: an urgent or unsafe report has just arrived ----------
 
 def needs_early_warning(case):

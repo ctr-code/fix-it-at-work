@@ -411,12 +411,27 @@ class ReportUpdate(models.Model):
                                related_name='+')
     text = models.TextField('What else should we know?', blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    # When a case handler (or manager), and an officer, first opened the case after this was added. Until then
+    # the case shows "New details" in the Case queue and on My jobs.
+    handler_seen_at = models.DateTimeField(null=True, blank=True)
+    officer_seen_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['created_at', 'pk']
 
     def __str__(self):
         return f'Update to {self.case.reference}'
+
+    @classmethod
+    def mark_seen(cls, case, by):
+        """The case has been opened by a handler (by='handler') or an officer (by='officer'). Returns the ids
+        that were new to them, so the page can mark those additions as new this once."""
+        field = f'{by}_seen_at'
+        unseen = cls.objects.filter(case=case, **{f'{field}__isnull': True})
+        ids = set(unseen.values_list('pk', flat=True))
+        if ids:
+            unseen.update(**{field: timezone.now()})
+        return ids
 
 
 class ReportPhoto(models.Model):
@@ -464,6 +479,8 @@ class Alert(models.Model):
         # to the case handlers, and a heads-up to the team the AI thinks it's for
         URGENT = 'urgent', 'Urgent report'
         HEADS_UP = 'heads_up', 'Heads-up'
+        # The reporter added details or photos to a job the team already has
+        DETAILS = 'details', 'New details'
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='alerts')
     kind = models.CharField(max_length=10, choices=Kind.choices)

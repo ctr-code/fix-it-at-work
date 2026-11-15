@@ -31,7 +31,7 @@ Alerts sent to this officer by name or to their team's inbox (cases/alerts.py). 
         <li class="alert-item{% if a.unread %} is-unread{% endif %}">
             <div class="alert-item-head">
                 {% if a.unread %}<span class="alert-new">New</span>{% endif %}
-                <span class="alert-kind alert-kind-{{ a.kind }}">{% if a.kind == 'routed' %}<i class="fa-solid fa-briefcase" aria-hidden="true"></i>{% elif a.kind == 'heads_up' %}<i class="fa-solid fa-bolt" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-pen" aria-hidden="true"></i>{% endif %} {{ a.get_kind_display }}</span>
+                <span class="alert-kind alert-kind-{{ a.kind }}">{% if a.kind == 'routed' %}<i class="fa-solid fa-briefcase" aria-hidden="true"></i>{% elif a.kind == 'heads_up' %}<i class="fa-solid fa-bolt" aria-hidden="true"></i>{% elif a.kind == 'details' %}<i class="fa-solid fa-circle-plus" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-pen" aria-hidden="true"></i>{% endif %} {{ a.get_kind_display }}</span>
                 <span class="alert-meta">{% if a.to_you %}Sent to you{% else %}Sent to {{ a.team|default:"your team" }}{% endif %} &middot; <time datetime="{{ a.sent_at|date:'c' }}">{{ a.sent_at|date:"j M Y, H:i" }}</time></span>
             </div>
             <h2 class="alert-subject">{{ a.subject }}</h2>

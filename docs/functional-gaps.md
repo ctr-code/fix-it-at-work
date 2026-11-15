@@ -22,11 +22,12 @@ Since then, a teammate's work (merged from main) closed most of another gap:
 |---|---|
 | Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production. The links are still public (see below) |
 
-And one more from the list below, on 15 November:
+And two more from the list below, on 15 November:
 
 | Gap | Now |
 |---|---|
 | No early warning for urgent or unsafe reports | As soon as a report arrives that's urgent (by the reporter's choice or the AI's) or marked "This could hurt someone", the case handlers are emailed with a link to triage it, and the team the AI suggests gets a heads-up on their Alerts page. Nothing is routed until a handler decides, and the triage page says the warning went out |
+| No "new details" flag | When a reporter adds details or photos, or answers a request for more information, the case shows "New details" in the Case queue, on the handler's Home, on My jobs and the officer's Home, until a handler (or the officer) opens it. The additions are marked "New" on the case page that once, and the team and officer get a "New details" alert |
 
 ### Usability improvements (14 and 15 November)
 
@@ -59,7 +60,6 @@ duplicates at triage. The Directions link uses Google Maps, an outside service, 
 
 | Gap | Why it matters | Suggested fix |
 |---|---|---|
-| **No "new details" flag** | When a reporter adds details or photos to an open case, or answers a handler's request for more information, the case page shows it but nothing flags it in the Case queue or on My jobs, so it's easily missed | A "New details" tag in the Case queue and on My jobs until a handler or the officer opens the case, plus an alert to the officer |
 | **Unhappy reporters can't be ticked off** | They stay on the list for four weeks whatever is done, so they can't be counted in the Case queue badge | A "Followed up" button that records who followed up and when |
 | **The outcome letter mixes languages** | A Polish letter is drafted in Polish, but "What we did" is the officer's notes in English | Translate the officer's action, or keep a short summary in the reporter's language and attach the full notes in English |
 
@@ -93,9 +93,9 @@ These are explained in more detail in the [responsible-design checklist](respons
 
 ## Suggested order
 
-1. The **"new details" flag**, which most improves the journey for staff now the early warning is built.
-2. **Misspelled danger words**, which is a quick improvement to fairness.
-3. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
+1. **Misspelled danger words**, which is a quick improvement to fairness.
+2. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
+3. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
 4. Everything else as time allows.
 
 If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart.
