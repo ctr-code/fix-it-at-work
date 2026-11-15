@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block head_title %}Alerts - Fix It at Work{% endblock %}
+{% block head_title %}Alerts{% endblock %}
 {% block main %}
 {% comment %}
 Alerts sent to this officer by name or to their team's inbox (cases/alerts.py). Unread ones are marked
@@ -31,18 +31,22 @@ Alerts sent to this officer by name or to their team's inbox (cases/alerts.py). 
         <li class="alert-item{% if a.unread %} is-unread{% endif %}">
             <div class="alert-item-head">
                 {% if a.unread %}<span class="alert-new">New</span>{% endif %}
-                <span class="alert-kind alert-kind-{{ a.kind }}">{% if a.kind == 'routed' %}<i class="fa-solid fa-briefcase" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-pen" aria-hidden="true"></i>{% endif %} {{ a.get_kind_display }}</span>
+                <span class="alert-kind alert-kind-{{ a.kind }}">{% if a.kind == 'routed' %}<i class="fa-solid fa-briefcase" aria-hidden="true"></i>{% elif a.kind == 'heads_up' %}<i class="fa-solid fa-bolt" aria-hidden="true"></i>{% elif a.kind == 'details' %}<i class="fa-solid fa-circle-plus" aria-hidden="true"></i>{% else %}<i class="fa-solid fa-pen" aria-hidden="true"></i>{% endif %} {{ a.get_kind_display }}</span>
                 <span class="alert-meta">{% if a.to_you %}Sent to you{% else %}Sent to {{ a.team|default:"your team" }}{% endif %} &middot; <time datetime="{{ a.sent_at|date:'c' }}">{{ a.sent_at|date:"j M Y, H:i" }}</time></span>
             </div>
             <h2 class="alert-subject">{{ a.subject }}</h2>
             <p class="alert-intro">{{ a.intro|linebreaksbr }}</p>
+            <p class="alert-reporter"><i class="fa-solid fa-user" aria-hidden="true"></i> Reported by {{ a.case.reporter_name|default:"-" }}</p>
             <details class="alert-full"><summary>Full alert</summary><p class="mt-2 mb-0 small">{{ a.body|linebreaksbr }}</p></details>
             <form method="post" class="alert-actions"{% if show_unread %} action="?show=unread"{% endif %}>
                 {% csrf_token %}
                 {% if a.can_open %}
                 <button type="submit" name="open" value="{{ a.pk }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Open job<span class="visually-hidden"> {{ a.case.reference }}</span></button>
                 {% else %}
+                {% if a.kind == 'heads_up' and a.case.status == 'new' %}<span class="small text-muted">{{ a.case.reference }} is waiting for a case handler. You'll get a "New job" alert if it's sent to your team.</span>
+                {% else %}
                 <span class="small text-muted">{{ a.case.reference }} is {% if a.case.status == 'assigned' or a.case.status == 'in_progress' %}no longer with you{% else %}{{ a.case.get_status_display|lower }}{% endif %}.</span>
+                {% endif %}
                 {% endif %}
                 {% if a.unread %}
                 <button type="submit" name="read" value="{{ a.pk }}" class="btn btn-outline-secondary btn-sm">Mark as read<span class="visually-hidden">: {{ a.subject }}</span></button>

@@ -1,12 +1,31 @@
 {% extends "base.html" %}
 {% load static crispy_forms_tags %}
-{% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
+{% block head_title %}{% if form.errors %}Error: {% endif %}{{ case.reference }} {{ case.title|truncatechars:40 }} – Job{% endblock %}
 {% block main %}
-<section class="container page-sm">
+<section class="container page-sm{% if case.is_open and case.assigned_officer_id == officer.id %} has-sticky-action{% endif %}">
     <p class="mt-3 mb-0"><a href="{% url 'officer_cases' %}">&larr; My jobs</a></p>
     <h1 class="h3">{{ case.title }}</h1>
     <p>{% include "cases/_pri.html" with p=case.priority %} <span class="badge-status">{{ case.reference }}</span>
-        <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M, H:i" }}</span></p>
+        <span class="{% if case.is_overdue %}overdue{% else %}text-muted{% endif %} ms-1">Due {{ case.sla_due|date:"D j M, H:i" }}{% if case.is_overdue %} <span class="text-nowrap">({{ case.overdue_by }} overdue)</span>{% endif %}</span></p>
+
+    {% comment %}
+    Getting there and getting hold of the reporter. "Directions" opens the phone's maps app (Google Maps) from
+    where the officer is. "Contact reporter" opens their email app with the reference as the subject, for when
+    they can't find the problem or can't get in.
+    {% endcomment %}
+    {% if case.directions_url or case.reporter_email %}
+    <div class="job-actions">
+        {% if case.directions_url %}
+        <a class="btn btn-outline-primary btn-sm" href="{{ case.directions_url }}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i> Directions<span class="visually-hidden"> to {{ case.building }} (Google Maps, opens in a new tab)</span></a>
+        {% endif %}
+        {% if case.reporter_email %}
+        {% with subject=case.reference|add:": "|add:case.title %}
+        <a class="btn btn-outline-primary btn-sm" href="mailto:{{ case.reporter_email }}?subject={{ subject|urlencode:'' }}"><i class="fa-solid fa-envelope" aria-hidden="true"></i> Contact reporter<span class="visually-hidden"> {{ case.reporter_name }} by email</span></a>
+        {% endwith %}
+        <span class="small text-muted">{{ case.reporter_name }} &middot; {{ case.reporter_email }}{% if case.preferred_language != 'en' %} &middot; prefers {{ case.get_preferred_language_display }}{% endif %}</span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     {% if case.ai_summary %}
     <div class="ai-box mb-3"><span class="ai-label">AI summary</span><br>{{ case.ai_summary }}</div>
@@ -23,9 +42,15 @@
     {% endif %}
 
     {% if case.is_open and case.assigned_officer_id == officer.id %}
-    <form method="post" enctype="multipart/form-data" class="panel">
+    {% comment %}
+    On a phone the visit form is several screens down, so this button stays at the bottom of the screen and
+    jumps to it. It's a plain link, so it works without JavaScript; static/js/record-jump.js hides it while
+    the form is on screen and moves keyboard focus to the form's heading.
+    {% endcomment %}
+    <a href="#record-visit" class="btn btn-primary btn-lg sticky-record" data-record-jump><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Record visit</a>
+    <form method="post" enctype="multipart/form-data" class="panel record-visit" id="record-visit" aria-labelledby="record-visit-title">
         {% csrf_token %}
-        <h2 class="h5">Record your visit</h2>
+        <h2 class="h5" id="record-visit-title" tabindex="-1">Record your visit</h2>
         <div class="mb-2">
             <button type="button" id="dictate" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-microphone" aria-hidden="true"></i> <span>Dictate</span></button>
             <span id="dictate-status" class="small text-muted ms-2" aria-live="polite"></span>
@@ -67,6 +92,7 @@
 {% block extra_body %}
 <script src="{% static 'js/photo-upload.js' %}"></script>
 <script src="{% static 'js/voice-note.js' %}"></script>
+<script src="{% static 'js/record-jump.js' %}"></script>
 <script>
 // Voice notes using the browser's built-in speech recognition (Chrome / Edge)
 (function () {

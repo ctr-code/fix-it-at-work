@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block head_title %}Manager dashboard - Fix It at Work{% endblock %}
+{% block head_title %}Dashboard{% endblock %}
 {% block main %}
 <section class="container">
     <h1>Manager dashboard</h1>
@@ -60,13 +60,13 @@
         {% endif %}
     </section>
     <div class="row g-3 mt-1">
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ within_sla|default_if_none:"-" }}%</div><div class="label">Resolved within SLA</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ avg_hours|default_if_none:"-" }}</div><div class="label">Avg hours to fix</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }} ratings)</div></div></div>
-        <div class="col-6 col-md-3 col-xl"><div class="panel kpi h-100"><div class="value is-ai">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted ({{ ai_triaged }})</div></div></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=open"><div class="value">{{ open_count }}</div><div class="label">Open cases</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=overdue"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=first-time-fix"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=within-sla"><div class="value">{{ within_sla|default_if_none:"-" }}%</div><div class="label">Resolved within SLA</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=time-to-fix"><div class="value">{{ avg_hours|default_if_none:"-" }}</div><div class="label">Avg hours to fix</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=satisfaction"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }} ratings)</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-md-3 col-xl"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=ai"><div class="value is-ai">{{ ai_accept|default_if_none:"-" }}%</div><div class="label">AI suggestions accepted ({{ ai_triaged }})</div><span class="visually-hidden"> - see these cases</span></a></div>
     </div>
 
 
@@ -121,10 +121,10 @@
                     <thead><tr><th scope="col">Team</th><th scope="col" style="width: 40%">Open</th><th scope="col">Overdue</th><th scope="col">First-time fix</th></tr></thead>
                     <tbody>
                     {% for t in teams %}
-                    <tr><td>{{ t.name }}</td>
-                        <td data-label="Open"><div class="d-flex align-items-center gap-2"><div class="bar-track flex-grow-1"><div class="bar" style="width: {{ t.bar }}%"></div></div><span>{{ t.open }}</span></div></td>
-                        <td data-label="Overdue" class="{% if t.overdue %}overdue{% endif %}">{{ t.overdue }}</td>
-                        <td data-label="First-time fix">{{ t.ftf|default_if_none:"-" }}{% if t.ftf is not None %}%{% endif %}</td></tr>
+                    <tr><td><a href="{% url 'dashboard_cases' %}?show=open&amp;team={{ t.id }}">{{ t.name }}</a></td>
+                        <td data-label="Open"><div class="d-flex align-items-center gap-2"><div class="bar-track flex-grow-1"><div class="bar" style="width: {{ t.bar }}%"></div></div><a href="{% url 'dashboard_cases' %}?show=open&amp;team={{ t.id }}">{{ t.open }}<span class="visually-hidden"> open cases for {{ t.name }}</span></a></div></td>
+                        <td data-label="Overdue" class="{% if t.overdue %}overdue{% endif %}">{% if t.overdue %}<a class="overdue" href="{% url 'dashboard_cases' %}?show=overdue&amp;team={{ t.id }}">{{ t.overdue }}<span class="visually-hidden"> overdue for {{ t.name }}</span></a>{% else %}0{% endif %}</td>
+                        <td data-label="First-time fix">{% if t.ftf is not None %}<a href="{% url 'dashboard_cases' %}?show=first-time-fix&amp;team={{ t.id }}">{{ t.ftf }}%<span class="visually-hidden"> first-time fix for {{ t.name }}</span></a>{% else %}-{% endif %}</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
@@ -135,12 +135,12 @@
                 <h2>What's being reported</h2>
                 {% for c in categories %}
                 <div class="d-flex align-items-center gap-2 mb-2">
-                    <span style="width: 40%">{{ c.name }}</span>
+                    <a style="width: 40%" href="{% url 'dashboard_cases' %}?show=category&amp;category={{ c.pk }}">{{ c.name }}<span class="visually-hidden">, {{ c.n }} cases</span></a>
                     <div class="bar-track flex-grow-1"><div class="bar" style="width: {% widthratio c.n max_cat 100 %}%"></div></div>
                     <span style="width: 2rem" class="text-end">{{ c.n }}</span>
                 </div>
                 {% endfor %}
-                <p class="small text-muted mt-3 mb-0">{{ awaiting_triage }} waiting for triage &middot; {{ duplicates }} duplicates merged (saved visits)</p>
+                <p class="small text-muted mt-3 mb-0"><a href="{% url 'triage_queue' %}#triage">{{ awaiting_triage }} waiting for triage</a> &middot; <a href="{% url 'dashboard_cases' %}?show=duplicates">{{ duplicates }} duplicates merged</a> (saved visits)</p>
             </div>
         </div>
     </div>

@@ -1,12 +1,36 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags static ticket_links %}
-{% block head_title %}{{ case.reference }} - Fix It at Work{% endblock %}
+{% load crispy_forms_tags static ticket_links files %}
+{% block head_title %}{% if update_form.errors or feedback_form.errors %}Error: {% endif %}{{ case.reference }} {{ case.title|truncatechars:40 }} – Your report{% endblock %}
 {% block main %}
 <section class="container page-lg">
     <h1>{{ case.reference }}: {{ case.title }}</h1>
     <p><span class="badge-status">{{ case.get_status_display }}</span>
         {% if case.status == 'duplicate' %} - linked to {{ case.duplicate_of.reference }}, which is already being fixed{% endif %}</p>
     {% include "cases/_journey.html" %}
+    {% comment %}
+    While nobody has checked the report yet: what happens now, and when. The times come from the response
+    target for its priority (views._next_steps). Once a handler has checked it, the messages take over.
+    {% endcomment %}
+    {% if next_steps is not None %}
+    <section class="panel next-steps" aria-labelledby="next-steps-title">
+        <h2 class="h5" id="next-steps-title"><i class="fa-solid fa-route" aria-hidden="true"></i> What happens next</h2>
+        <ol class="next-steps-list">
+            <li class="is-current">
+                <strong>A case handler checks your report</strong>
+                <span>{% if next_steps.late %}This is taking longer than we aim for, sorry. Someone will check it as soon as they can.{% elif next_steps.check_by %}We aim to do this by <strong>{{ next_steps.check_by|date:"l j F, H:i" }}</strong> (within {{ next_steps.check_within }}).{% else %}We'll do this as soon as we can.{% endif %}</span>
+            </li>
+            <li>
+                <strong>We send it to the right team</strong>
+                <span>You'll get a message here and by email saying which team has it and the date we aim to fix it by.</span>
+            </li>
+            <li>
+                <strong>An officer fixes it</strong>
+                <span>We'll tell you when it's fixed and what was done. Then you can tell us how we did.</span>
+            </li>
+        </ol>
+        <p class="small mb-0">Has something changed, or did you forget something? <a href="#updates">Add more details</a>.{% if case.hs_risk or case.reported_urgency == 'urgent' %} <strong>If someone is in danger right now, don't wait for us: call your site's emergency number.</strong>{% endif %}</p>
+    </section>
+    {% endif %}
     {% if info_request %}
     <div class="panel info-needed" role="status">
         <p class="mb-0"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> <strong>We need more information about this report.</strong> Please read our message below, then <a href="#updates">send the information requested</a>.</p>
@@ -39,7 +63,7 @@
         {% with photos=case.all_photos %}{% if photos %}
         <ul class="photo-grid mt-3" aria-label="Photos you sent with your report">
             {% for p in photos %}
-            <li><a href="{{ p.url }}" target="_blank" rel="noopener"><img src="{{ p.url }}" alt="Your photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
+            <li><a href="{{ p|private_url }}" target="_blank" rel="noopener"><img src="{{ p|private_url }}" alt="Your photo {{ forloop.counter }} of {{ photos|length }} (opens full size in a new tab)" loading="lazy"></a></li>
             {% endfor %}
         </ul>
         {% endif %}{% endwith %}
@@ -50,8 +74,10 @@
         <h2 class="h5">Details you've added</h2>
         {% if updates %}{% include "cases/_report_updates.html" %}{% else %}<p class="text-muted">Nothing added yet.</p>{% endif %}
         {% if update_form %}
-        <form method="post" enctype="multipart/form-data" class="add-details" novalidate>
+        <form method="post" enctype="multipart/form-data" class="add-details" novalidate
+              data-draft-key="fiaw-draft-details-{{ user.pk }}-{{ case.reference }}"{% if not update_form.is_bound %} data-draft-restore{% endif %}>
             {% csrf_token %}
+            {% include "cases/_draft_notice.html" with what="details" %}
             {% if info_request %}
             <h3 class="h6">Send the information we asked for</h3>
             <p class="small text-muted">Answer our message of {{ info_request.date_sent|date:"j M Y" }} here, and add photos if they help. The team working on your report will see it straight away.</p>

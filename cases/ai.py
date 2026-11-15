@@ -39,6 +39,30 @@ SAFETY_TERMS = {
     ],
 }
 
+# Common misspellings of the danger words, and the word each one means. They count exactly like the word
+# itself, so "watter leek from celing" is raised to high just like "water leak from ceiling". This is a fixed
+# list, not fuzzy matching: a near-miss rule would also catch real words one letter away, such as "flooring"
+# for "flooding" or "parking" for "sparking", and push ordinary reports up the queue.
+SAFETY_MISSPELLINGS = {
+    'urgent': {
+        'sparkin': 'sparking', 'sparkng': 'sparking', 'spraking': 'sparking', 'sparkes': 'sparks', 'sparkz': 'sparks',
+        'smoak': 'smoke', 'smokeing': 'smoke', 'burnin': 'burning', 'burnning': 'burning', 'buring': 'burning',
+        'flodding': 'flooding', 'floding': 'flooding', 'flodded': 'flooding', 'flooded': 'flooding',
+        'electic shock': 'electric shock', 'eletric shock': 'electric shock', 'electrick shock': 'electric shock',
+        'elecrtic shock': 'electric shock', 'gass leak': 'gas leak', 'gas leek': 'gas leak', 'gass smell': 'gas smell',
+        'smell of gass': 'smell of gas', 'injurd': 'injured', 'injerd': 'injured', 'injuried': 'injured',
+        'exposed wires': 'exposed wire', 'live wires': 'live wire', 'pooring through': 'pouring through',
+        'pooring in': 'pouring in',
+    },
+    'high': {
+        'leek': 'leak', 'leeks': 'leak', 'leeking': 'leaking', 'leakin': 'leaking', 'leeky': 'leak', 'leaky': 'leak',
+        'leakage': 'leak', 'no heeting': 'no heating', 'no heatin': 'no heating', 'no heat': 'no heating',
+        'freezin': 'freezing', 'freesing': 'freezing', 'powercut': 'power cut', 'power cutt': 'power cut',
+        'no electric': 'no power', 'no electricity': 'no power', 'trip hazzard': 'trip hazard',
+        'tripping hazard': 'trip hazard', 'slippery': 'slip', 'slipery': 'slip',
+    },
+}
+
 # Phrases that contain a danger word but aren't a danger in themselves. They're blanked out before
 # the danger words are checked, so "fire extinguisher missing" or "locked out of my account" doesn't
 # jump the queue. The category's own default priority still applies (e.g. Fire Equipment is high).
@@ -153,7 +177,10 @@ def triage(case):
     # 2. Priority: highest of category default, safety words, and reporter's own view
     priority = category.default_priority if category else Priority.MEDIUM
     for level in ('urgent', 'high'):
-        found = _danger_terms(SAFETY_TERMS[level], text)
+        misspelt = SAFETY_MISSPELLINGS[level]
+        # A misspelling is explained with the word it stands for: 'leak (spelt "leek")'
+        found = [f'{misspelt[t]} (spelt "{t}")' if t in misspelt else t
+                 for t in _danger_terms([*SAFETY_TERMS[level], *misspelt], text)]
         if found:
             if PRIORITY_RANK[level] > PRIORITY_RANK[priority]:
                 reasons.append(f'Raised to {level} because of: {", ".join(found[:3])}.')
@@ -206,6 +233,58 @@ def triage(case):
         'confidence': confidence,
         'duplicate': duplicate,
     }
+
+
+# Words too common to say two reports are about the same thing
+STOP_WORDS = {
+    'the', 'a', 'an', 'and', 'or', 'is', 'are', 'was', 'were', 'it', 'its', 'in', 'on', 'at', 'to', 'of', 'for',
+    'by', 'with', 'from', 'this', 'that', 'there', 'has', 'have', 'been', 'be', 'not', 'no', 'our', 'my', 'we',
+    'i', 'me', 'all', 'very', 'again', 'still', 'please', 'working', 'broken', 'room', 'floor', 'office',
+}
+SIMILAR_DAYS, SIMILAR_MIN_SCORE, SIMILAR_SHOWN = 30, 0.55, 3
+
+
+def _words(text):
+    return {w for w in re.findall(r'\w+', text.lower()) if len(w) > 2 and w not in STOP_WORDS}
+
+
+def _best_category(text):
+    tokens = re.findall(r'\w+', text)
+    best = max(((_score_category(c, text, tokens)[0], c) for c in Category.objects.all()),
+               key=lambda s: s[0], default=(0, None))
+    return best[1] if best[0] > 0 else None
+
+
+def similar_open_reports(title, description='', building='', location_detail='', exclude_user=None):
+    """
+    Open reports in the same building that look like the one being typed, so the reporter can see it's
+    already in hand before sending a duplicate. Used while they type, so it works on a few words.
+    Score: share of the typed words found in the other report, plus a bonus for the same room and for the
+    same likely category. Nothing is changed: the reporter decides, and a handler still checks duplicates.
+    """
+    text = _text(title, description)
+    words = _words(text)
+    if not building.strip() or len(words) < 2:
+        return []
+    category = _best_category(text)
+    since = timezone.now() - timedelta(days=SIMILAR_DAYS)
+    candidates = (Case.objects.filter(status__in=OPEN_STATUSES, building__iexact=building.strip(),
+                                      date_reported__gte=since)
+                  .select_related('assigned_team'))
+    if exclude_user is not None:
+        candidates = candidates.exclude(reporter_user=exclude_user)
+    scored = []
+    for other in candidates:
+        other_words = _words(_text(other.title, other.description, other.location_detail))
+        score = len(words & other_words) / len(words)
+        if location_detail.strip() and other.location_detail.strip().lower() == location_detail.strip().lower():
+            score += 0.2
+        if category and category.id in (other.category_id, other.ai_category_id):
+            score += 0.2
+        if score >= SIMILAR_MIN_SCORE:
+            scored.append((score, other))
+    scored.sort(key=lambda s: (-s[0], -s[1].date_reported.timestamp()))
+    return [other for _, other in scored[:SIMILAR_SHOWN]]
 
 
 def _first_sentences(text, n=2, limit=220):

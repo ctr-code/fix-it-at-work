@@ -8,7 +8,8 @@ see MAILERS in settings.
 
 The English texts are the originals. The Polish, Urdu and Spanish ones are fixed translations written
 for this prototype, not produced by AI at run time; a native speaker should check them before real use.
-Dates are written as numbers (14/11/2026 09:00) so they read the same in every language.
+English messages write dates out (Saturday 14 November, 09:00), as the report page does. The other languages
+write them as numbers (14/11/2026 09:00), which read the same in every language without translated day names.
 """
 from django.core.mail import send_mail
 from django.utils import timezone
@@ -95,22 +96,25 @@ TEXTS = {
 }
 
 
-def _when(moment):
-    return f'{timezone.localtime(moment):%d/%m/%Y %H:%M}' if moment else '-'
+def _when(moment, language='en'):
+    if not moment:
+        return '-'
+    local = timezone.localtime(moment)
+    if language == 'en' or language not in TEXTS:  # languages without texts get the English message
+        return f'{local:%A} {local.day} {local:%B, %H:%M}'
+    return f'{local:%d/%m/%Y %H:%M}'
 
 
 def _team(case):
-    """The team's name without a trailing "Team", because every message adds its own word for team
-    ("our Security & Access team", not "our Security & Access Team team")."""
-    name = case.assigned_team.name if case.assigned_team else ''
-    return name[:-5] if name.lower().endswith(' team') else name
+    """The team's name without a trailing "Team", because every message adds its own word for team."""
+    return case.assigned_team.short_name if case.assigned_team else ''
 
 
 def _text(case, key, **extra):
     t = TEXTS.get(case.preferred_language, TEXTS['en'])
     values = {
         'name': case.reporter_name.split()[0] if case.reporter_name else '',
-        'title': case.title, 'ref': case.reference, 'due': _when(case.sla_due),
+        'title': case.title, 'ref': case.reference, 'due': _when(case.sla_due, case.preferred_language),
         'team': _team(case),
         'priority': t['priority'].get(case.priority, case.priority),
         **extra,
@@ -170,7 +174,7 @@ def visited(case, visit):
     """After an officer's visit: either fixed, or a follow-up is needed."""
     if visit.fixed:
         return send(case, Communication.Kind.UPDATE, _text(case, 'fixed'))
-    text = _text(case, 'update') + ' ' + _text(case, 'follow_up', date=_when(visit.visited_at))
+    text = _text(case, 'update') + ' ' + _text(case, 'follow_up', date=_when(visit.visited_at, case.preferred_language))
     return send(case, Communication.Kind.UPDATE, text)
 
 

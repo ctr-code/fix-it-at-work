@@ -5,6 +5,7 @@ Follows Appendix A of the brief. Reporter details are kept on the Case to
 keep the prototype simple (one form, no accounts needed to report).
 """
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -95,6 +96,12 @@ class Team(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def short_name(self):
+        """The name without a trailing "Team", for text that adds its own word for team
+        ("Security & Access team", not "Security & Access Team team")."""
+        return self.name[:-5] if self.name.lower().endswith(' team') else self.name
 
 
 class Category(models.Model):
@@ -326,6 +333,19 @@ class Case(models.Model):
         return (f'https://www.openstreetmap.org/?mlat={self.latitude}&mlon={self.longitude}'
                 f'#map=18/{self.latitude}/{self.longitude}')
 
+    @property
+    def directions_url(self):
+        """Directions to the problem in Google Maps, which opens the maps app on most phones and starts from
+        where the officer is. Uses the map point, or the address if there's no point. Nothing is sent to
+        Google unless the officer opens the link."""
+        if self.has_map_point:
+            destination = f'{self.latitude},{self.longitude}'
+        elif self.address:
+            destination = self.address
+        else:
+            return ''
+        return 'https://www.google.com/maps/dir/?api=1&destination=' + quote(destination, safe=',')
+
     def fill_location_from_building(self):
         """Use the building directory for anything the reporter didn't give: the address, and the map point
         unless they shared their own."""
@@ -341,6 +361,19 @@ class Case(models.Model):
     @property
     def is_open(self):
         return self.status in OPEN_STATUSES
+
+    @property
+    def overdue_by(self):
+        """How long past its due date an open case is, in the largest whole unit: "19 days", "3 hours",
+        "5 minutes". Empty when it isn't overdue."""
+        if not self.is_overdue:
+            return ''
+        late = (self.date_resolved or timezone.now()) - self.sla_due
+        for size, unit in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+            amount = int(late.total_seconds() // size)
+            if amount >= 1:
+                return f'{amount} {unit}{"" if amount == 1 else "s"}'
+        return 'less than a minute'
 
     @property
     def is_overdue(self):
@@ -378,12 +411,27 @@ class ReportUpdate(models.Model):
                                related_name='+')
     text = models.TextField('What else should we know?', blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    # When a case handler (or manager), and an officer, first opened the case after this was added. Until then
+    # the case shows "New details" in the Case queue and on My jobs.
+    handler_seen_at = models.DateTimeField(null=True, blank=True)
+    officer_seen_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['created_at', 'pk']
 
     def __str__(self):
         return f'Update to {self.case.reference}'
+
+    @classmethod
+    def mark_seen(cls, case, by):
+        """The case has been opened by a handler (by='handler') or an officer (by='officer'). Returns the ids
+        that were new to them, so the page can mark those additions as new this once."""
+        field = f'{by}_seen_at'
+        unseen = cls.objects.filter(case=case, **{f'{field}__isnull': True})
+        ids = set(unseen.values_list('pk', flat=True))
+        if ids:
+            unseen.update(**{field: timezone.now()})
+        return ids
 
 
 class ReportPhoto(models.Model):
@@ -422,11 +470,17 @@ class CaseChange(models.Model):
 
 
 class Alert(models.Model):
-    """An email telling a team (and its officer) about a case sent to them, kept so staff can see who was
-    told what and when. Written by cases/alerts.py."""
+    """An email telling a team (and its officer) about a case sent to them, or warning about an urgent report
+    before it's triaged, kept so staff can see who was told what and when. Written by cases/alerts.py."""
     class Kind(models.TextChoices):
         ROUTED = 'routed', 'New job'
         CHANGED = 'changed', 'Job changed'
+        # Early warning when an urgent or unsafe report arrives, before anyone has triaged it:
+        # to the case handlers, and a heads-up to the team the AI thinks it's for
+        URGENT = 'urgent', 'Urgent report'
+        HEADS_UP = 'heads_up', 'Heads-up'
+        # The reporter added details or photos to a job the team already has
+        DETAILS = 'details', 'New details'
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='alerts')
     kind = models.CharField(max_length=10, choices=Kind.choices)

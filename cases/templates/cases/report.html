@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% load crispy_forms_tags %}
-{% block head_title %}Report an issue - Fix It at Work{% endblock %}
+{% block head_title %}{% if form.errors %}Error: {% endif %}Report an issue{% endblock %}
 {% block main %}
 <section class="report-page">
     <h1>Report an issue</h1>
     <p class="text-muted">Tell us what's wrong and where. It takes about a minute. Fields marked * are required.</p>
-    <form method="post" enctype="multipart/form-data" class="panel" novalidate>
+    {# What's typed is kept as a draft on this device until it's sent (static/js/draft.js) #}
+    <form method="post" enctype="multipart/form-data" class="panel" novalidate
+          data-draft-key="fiaw-draft-report-{{ user.pk }}"{% if not form.is_bound %} data-draft-restore{% endif %}>
         {% csrf_token %}
+        {% include "cases/_draft_notice.html" with what="report" map=True %}
         {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<p class="mb-0">{{ e }}</p>{% endfor %}</div>{% endif %}
 
         <section class="form-section" aria-labelledby="section-what">
@@ -23,6 +26,12 @@
             <div class="row">
                 <div class="col-md-6">{{ form.building|as_crispy_field }}</div>
                 <div class="col-md-6">{{ form.location_detail|as_crispy_field }}</div>
+            </div>
+            {# Open reports that look like this one, found while typing (static/js/similar-reports.js) #}
+            <div class="similar-reports" data-similar data-similar-url="{% url 'similar_reports' %}" role="status" hidden>
+                <p class="similar-title"><i class="fa-solid fa-clone" aria-hidden="true"></i> Already reported?</p>
+                <p class="small mb-2">These open reports in the same building look similar. If one is the same problem, the team is already on it and you don't need to report it again. If yours is different, carry on.</p>
+                <ul class="similar-list" data-similar-list></ul>
             </div>
             {{ form.address|as_crispy_field }}
             {% comment %}
@@ -110,6 +119,7 @@
 {% load static %}
 <script src="{% static 'js/photo-upload.js' %}"></script>
 <script src="{% static 'js/locate.js' %}"></script>
+<script src="{% static 'js/similar-reports.js' %}"></script>
 <script>
     // Show that the report is sending and stop a second click creating a duplicate.
     // The photo goes with the report in this one request, so this is its upload feedback too.

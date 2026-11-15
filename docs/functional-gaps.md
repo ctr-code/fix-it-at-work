@@ -1,0 +1,101 @@
+# Functional gaps
+
+What the app still doesn't do, compared with the WMCA challenge brief and with what a real deployment would need.
+Written 13 November 2026, updated 15 November 2026.
+
+## Already closed
+
+The first comparison with the brief found six functional gaps. All six are now built:
+
+| Gap | Now |
+|---|---|
+| Teams weren't alerted automatically | Email alerts to the team and officer when a case is routed or changed, an Alerts page and an unread count |
+| Location was free text only | Address, latitude and longitude on each case, from a building list, the reporter's location or a pin on a map |
+| Visits stored one photo and no audio | Up to 5 photos, a voice note and the dictation transcript per visit |
+| SLA rules didn't match the brief | The brief's table, counted in working hours and days, skipping weekends and bank holidays |
+| No trends on the dashboard | Weekly reported vs resolved, and the median time at each stage |
+| The receipt was English only | Every message to the reporter is in their chosen language |
+
+Since then, a teammate's work (merged from main) closed most of another gap:
+
+| Gap | Now |
+|---|---|
+| Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production |
+
+And four more from the list below, on 15 November:
+
+| Gap | Now |
+|---|---|
+| No early warning for urgent or unsafe reports | As soon as a report arrives that's urgent (by the reporter's choice or the AI's) or marked "This could hurt someone", the case handlers are emailed with a link to triage it, and the team the AI suggests gets a heads-up on their Alerts page. Nothing is routed until a handler decides, and the triage page says the warning went out |
+| No "new details" flag | When a reporter adds details or photos, or answers a request for more information, the case shows "New details" in the Case queue, on the handler's Home, on My jobs and the officer's Home, until a handler (or the officer) opens it. The additions are marked "New" on the case page that once, and the team and officer get a "New details" alert |
+| Uploaded files had public links | Every photo and voice note goes through `/files/`, which only sends it to people who may see the case; anyone else gets "not found". `/media/` isn't served. Cloudinary uploads are stored as authenticated and opened through signed links that expire after 5 minutes. Older Cloudinary uploads need `python manage.py make_uploads_private` run once |
+| Misspelled danger and leak words weren't recognised | Common misspellings ("leek", "sparkin", "flodded", "electic shock", "slipery" and others) count like the words themselves and are explained (for example: leak (spelt "leek")). It's a fixed list rather than fuzzy matching, which would also catch real words such as "flooring" or "parking". "watter leek from celing" is now high, like the clear version |
+
+### Usability improvements (14 and 15 November)
+
+A walk through the app as each person found things that slowed them down. These weren't gaps against the brief,
+but they make the journey quicker and clearer. All of them are built, tested and checked on phones.
+
+| Who | What changed |
+|---|---|
+| **Reporters** | Half-filled reports and added details are kept as drafts on the device, and removed when sent or on sign-out. "Already reported?" lists matching open reports in the same building while they type. A "What happens next" panel says when a person will check a new report. English messages write dates out ("Wednesday 18 November, 16:21") |
+| **Case handlers** | "Reported by" in the Case queue, and the search finds reporters' names. An Overdue filter on Needs triage (past the response target) and With teams. A "Next case" button after triage. A check before the outcome letter is sent. The queue reopens on the last tab used |
+| **Field officers** | "Reported by" on My jobs and every alert. Overdue jobs say by how much ("19 days overdue"). On the job page: Directions (Google Maps, from where they are), Contact reporter (email with the reference as the subject) and a Record visit button that stays in reach |
+| **Managers** | Every dashboard figure opens the cases behind it, for all teams or one team or category. The People page filters by role, and saves a role or team as soon as it's chosen |
+| **Everyone** | A Home link in the navbar. Messages appear as toasts: confirmations fade after a few seconds, problems stay. Browser tabs name the page and the case, show what's waiting and start with "Error:" when a form needs fixing. Dark mode, following the device or chosen in the footer, checked to WCAG AA |
+
+"Already reported?" also means fewer duplicates reach the Case queue, but a handler still checks every report for
+duplicates at triage. The Directions link uses Google Maps, an outside service, only when an officer opens it
+(see the [security notes](security.md)).
+
+## Still open
+
+### 1. Would break in a real deployment
+
+| Gap | Why it matters | Suggested fix |
+|---|---|---|
+| **Cloudinary holds personal data** | Photos and voice recordings are stored by an outside service | A data processing agreement, and storage in the UK or EU |
+| **Email is printed, not sent** | Right for the brief's "no real systems" rule, but nobody actually receives alerts or messages | A mail service, with its key in the environment |
+
+### 2. Missing pieces of the journey
+
+| Gap | Why it matters | Suggested fix |
+|---|---|---|
+| **Unhappy reporters can't be ticked off** | They stay on the list for four weeks whatever is done, so they can't be counted in the Case queue badge | A "Followed up" button that records who followed up and when |
+| **The outcome letter mixes languages** | A Polish letter is drafted in Polish, but "What we did" is the officer's notes in English | Translate the officer's action, or keep a short summary in the reporter's language and attach the full notes in English |
+
+### 3. AI limits
+
+These are explained in more detail in the [responsible-design checklist](responsible-design.md).
+
+| Gap | Effect | Suggested fix |
+|---|---|---|
+| Unusual misspellings of danger words | Common ones are recognised now, but one not on the list can still mean a lower suggested priority. It never drops below the reporter's own urgency, and a person approves it | Grow the list from real reports where staff raised the priority |
+| Reports in other languages often get no category | Safe (marked low confidence for a person to choose) but more work for handlers | More category words in Polish, Urdu and Spanish, or a multilingual AI model |
+| One known false duplicate match | Same room and category, but a different problem | Weigh the description more heavily than the room |
+| Sentences split at abbreviations; "Dr" taken as a first name | Visit summaries can cut a sentence short, and a letter can greet someone as "Dear Dr" | Recognise common abbreviations and titles |
+
+### 4. Reach
+
+| Gap | Why it matters | Suggested fix |
+|---|---|---|
+| Only messages to reporters are translated | The pages themselves are in English, which matters most on the report form | Translate the report form and tracking page first, with Django's translation tools |
+| No offline mode | Officers in basements or poor signal can't record a visit | Save visits on the phone and send them when back online |
+| No non-digital way to report | People without a smartphone or computer at work can't report | A phone line or kiosk where staff fill in the same form |
+| One working week for every team | SLA targets use Mon–Fri 08:00–17:00 for all, although each team has its own working hours | Use each team's working hours for its cases |
+| Bank holidays stop at the end of 2027 | Due dates after that would count holidays as working days | Add later years in the admin, or load them from the GOV.UK bank holidays feed |
+
+### 5. Differences from the brief to explain in the pitch
+
+| Difference | Why |
+|---|---|
+| **Platform:** the brief names Microsoft Power Platform; this is Django | Agreed team choice (to confirm with the organisers) |
+| **Data model:** reporter details are stored on each case, not in a separate Reporter table | Simpler for a prototype; each case keeps the details as they were when reported. A Reporter table would avoid repeating them |
+
+## Suggested order
+
+1. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
+2. Everything else as time allows.
+
+If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart, and run
+`python manage.py make_uploads_private` once there so photos uploaded before 15 November are private too.

@@ -142,14 +142,15 @@ class HeaderTests(TestCase):
     def nav_links(self, response):
         html = response.content.decode()
         # The link text follows its icon, sometimes wrapped with a count badge and a hidden "3 cases waiting"
-        return [label for label in ('Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
+        return [label for label in ('Home', 'Report an issue', 'Case queue', 'My jobs', 'Dashboard', 'People')
                 if re.search(rf'</(?:i|span)> {re.escape(label)}(?:<span class="visually-hidden">[^<]*</span>)?</a>', html)]
 
     def test_each_role_sees_its_links(self):
         expected = {
-            'reporter': ['Report an issue'],
-            'handler': ['Report an issue', 'Case queue'],
-            'manager': ['Report an issue', 'Case queue', 'Dashboard', 'People'],
+            'reporter': ['Home', 'Report an issue'],
+            'handler': ['Home', 'Report an issue', 'Case queue'],
+            'officer': ['Home', 'Report an issue', 'My jobs'],
+            'manager': ['Home', 'Report an issue', 'Case queue', 'Dashboard', 'People'],
         }
         for role, links in expected.items():
             with self.subTest(role=role):
@@ -166,8 +167,86 @@ class HeaderTests(TestCase):
                 self.assertEqual(html.count('aria-current="page"'), 1)
                 marked = html.split('aria-current="page"')[1].split('</a>')[0]
                 self.assertIn(label, marked)
+        # Home is the page they land on after signing in, so it's marked there
         home = self.client.get('/').content.decode()
-        self.assertNotIn('aria-current="page"', home)
+        self.assertEqual(home.count('aria-current="page"'), 1)
+        self.assertIn('href="/"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a>', home)
+
+    def test_messages_are_toasts_and_only_confirmations_fade(self):
+        manager = self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        # A confirmation fades
+        html = self.client.post('/people/', {'user_id': ann.pk, 'role': 'handler', 'team': ''}, follow=True).content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('</button>')[0]
+        self.assertIn('is-success"', toast)
+        self.assertIn('role="status" aria-live="polite"', toast)
+        self.assertIn('data-bs-autohide="true"', toast)
+        self.assertIn('is now: Case handler.', toast)
+        self.assertIn('js/toasts.js', html)
+        # A problem stays until it's closed
+        html = self.client.post('/people/', {'user_id': manager.pk, 'role': 'reporter', 'team': ''},
+                                follow=True).content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('</button>')[0]
+        self.assertIn('is-error"', toast)
+        self.assertIn('role="alert" aria-live="assertive"', toast)
+        self.assertIn('data-bs-autohide="false"', toast)
+        self.assertIn('You cannot change your own role.', toast)
+        # No messages, no toast area
+        self.assertNotIn('toast-stack', self.client.get('/').content.decode())
+
+    def test_people_page_saves_each_change_straight_away(self):
+        manager = self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        save = lambda **data: self.client.post('/people/', {'user_id': ann.pk, 'team': '', **data},
+                                               HTTP_ACCEPT='application/json')
+        # Saved, with the new role sent back so the page can update its filter
+        response = save(role='handler')
+        self.assertEqual(response.json(), {'saved': True, 'message': 'ann is now: Case handler.', 'role': 'handler'})
+        ann.refresh_from_db()
+        self.assertEqual(ann.profile.role, 'handler')
+        # A field officer needs a team: nothing changes without one
+        response = save(role='officer')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['message'], 'Choose a team for a field officer.')
+        ann.refresh_from_db()
+        self.assertEqual(ann.profile.role, 'handler')
+        response = save(role='officer', team=team.pk)
+        self.assertEqual(response.json()['message'], 'ann is now: Field officer, Facilities Helpdesk.')
+        # Not their own role, and no message is left waiting for the next page
+        response = self.client.post('/people/', {'user_id': manager.pk, 'role': 'reporter', 'team': ''},
+                                    HTTP_ACCEPT='application/json')
+        self.assertEqual(response.json()['message'], 'You cannot change your own role.')
+        self.assertNotIn('toast-stack', self.client.get('/people/').content.decode())
+
+    def test_people_page_has_the_autosave_and_keeps_save_buttons_without_it(self):
+        self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        html = self.client.get('/people/').content.decode()
+        self.assertIn('id="people-table" data-autosave>', html)
+        self.assertIn('js/people-autosave.js', html)
+        self.assertIn('data-save-status role="status" aria-live="polite"', html)
+        self.assertIn('data-save-button>Save', html)
+        # The Save button still works on its own, with a message after the reload
+        response = self.client.post('/people/', {'user_id': ann.pk, 'role': 'manager', 'team': ''}, follow=True)
+        self.assertContains(response, 'ann is now: Manager.')
+
+    def test_people_page_filters_by_role(self):
+        manager = self.user_with_role('manager')
+        for name, role in [('ann', 'reporter'), ('bob', 'reporter'), ('cat', 'handler')]:
+            u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+            u.profile.role = role
+            u.profile.save()
+        html = self.client.get('/people/').content.decode()
+        options = html.split('id="people-role"')[1].split('</select>')[0]
+        self.assertIn('data-filter-rows="#people-table tbody" data-filter-key="role"', options)
+        self.assertIn('<option value="">All roles (4)</option>', options)
+        self.assertIn('<option value="reporter">Reporter (2)</option>', options)
+        self.assertIn('<option value="handler">Case handler (1)</option>', options)
+        self.assertIn('<option value="manager">Manager (1)</option>', options)
+        self.assertNotIn('value="officer"', options)  # nobody is an officer, so it isn't offered
+        self.assertIn('data-role="handler">', html)
+        self.assertIn(f'data-name=" {manager.username}" data-role="manager">', html)
 
     def test_people_page_sorts_by_name_and_email(self):
         manager = self.user_with_role('manager')
@@ -181,7 +260,7 @@ class HeaderTests(TestCase):
     def test_sign_out_still_works(self):
         self.user_with_role('reporter')
         html = self.client.get('/').content.decode()
-        self.assertIn('<form method="post" action="/accounts/logout/">', html)
+        self.assertIn('<form method="post" action="/accounts/logout/" data-clear-drafts>', html)
         self.client.post('/accounts/logout/')
         self.assertNotIn('_auth_user_id', self.client.session)
 
@@ -210,7 +289,7 @@ class CaseQueueSortTests(TestCase):
                                    building='Main Office', reporter_name='A Reporter',
                                    reporter_email='reporter@example.com', ai_priority='urgent')
         html = self.client.get('/triage/').content.decode()
-        self.assertEqual(html.count('class="sort-btn"'), 19)
+        self.assertEqual(html.count('class="sort-btn"'), 22)
         self.assertIn('js/sort-table.js', html)
         self.assertIn('data-label="AI suggests" data-sort-value="4"', html)  # urgent ranks highest
         self.assertIn(f'data-sort-value="{case.date_reported.isoformat()[:19]}', html)
@@ -229,6 +308,8 @@ class CaseQueueSortTests(TestCase):
                 self.assertIn(f'id="{pane}" role="tabpanel" aria-labelledby="tab-{pane}"', html)
                 self.assertIn(f'>{label} <span class="tab-count">', html)
         self.assertEqual(html.count('class="tab-pane fade show active"'), 1)
+        # The last tab used is remembered on the device (static/js/tabs.js)
+        self.assertIn('<ul class="nav nav-tabs queue-tabs" role="tablist" data-remember-tab="fiaw-queue-tab">', html)
 
     def test_needs_triage_filters_list_only_whats_in_the_queue(self):
         user = User.objects.create_user('handler3', 'handler3@example.com', 'not-a-real-password-1')
@@ -243,7 +324,7 @@ class CaseQueueSortTests(TestCase):
         options = html.split('id="triage-priority"')[1].split('</select>')[0]
         self.assertIn('<option value="3">High</option>', options)
         self.assertNotIn('Urgent', options)
-        self.assertIn('data-priority="3" data-building="Main Office">', html)
+        self.assertIn('data-priority="3" data-building="Main Office"', html)
         places = html.split('id="triage-location"')[1].split('</select>')[0]
         self.assertIn('<option value="Main Office">Main Office</option>', places)
         self.assertEqual(places.count('<option'), 2)  # "All locations" plus the one building with a case
@@ -320,11 +401,72 @@ class CaseQueueSortTests(TestCase):
                            ('unhappy', 'Toilet blocked'), ('teams', 'Window blind broken')]:
             with self.subTest(tab=tab):
                 self.assertIn(f'id="{tab}-search"', html)
-                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title ref"', html)
+                self.assertIn(f'data-search-rows="#{tab} tbody" data-search-key="title ref', html)
                 pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
                 ref = Case.objects.get(title=title).reference
                 self.assertIn(f'<tr data-title="{title}" data-ref="{ref}"', pane)
         self.assertNotIn('{#', html)
+
+    def test_needs_triage_and_with_teams_filter_by_overdue(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import SLARule
+        user = User.objects.create_user('handler9', 'handler9@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours',
+                               resolve_amount=24, resolve_unit='hours')
+        now = timezone.now()
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        # Needs triage: one waiting past the 4-hour response target, one reported just now
+        old = Case.objects.create(title='Heating off', ai_priority='high', **common)
+        Case.objects.filter(pk=old.pk).update(date_reported=now - timedelta(hours=6))
+        Case.objects.create(title='Tap dripping', ai_priority='high', **common)
+        # With teams: one past its due date, one not
+        Case.objects.create(title='Exit blocked', status=Status.ASSIGNED, assigned_team=team,
+                            sla_due=now - timedelta(days=2), **common)
+        Case.objects.create(title='Blind broken', status=Status.ASSIGNED, assigned_team=team,
+                            sla_due=now + timedelta(days=2), **common)
+        html = self.client.get('/triage/').content.decode()
+        for tab in ('triage', 'teams'):
+            with self.subTest(tab=tab):
+                options = html.split(f'id="{tab}-overdue"')[1].split('</select>')[0]
+                self.assertIn(f'data-filter-rows="#{tab} tbody" data-filter-key="overdue"', options)
+                self.assertIn('<option value="1">', options)
+                self.assertIn('<option value="0">', options)
+        rows = {title: html.split(f'<tr data-title="{title}"')[1].split('>')[0]
+                for title in ('Heating off', 'Tap dripping', 'Exit blocked', 'Blind broken')}
+        self.assertIn('data-overdue="1"', rows['Heating off'])
+        self.assertIn('data-overdue="0"', rows['Tap dripping'])
+        self.assertIn('data-overdue="1"', rows['Exit blocked'])
+        self.assertIn('data-overdue="0"', rows['Blind broken'])
+        triage = html.split('id="triage" role="tabpanel"')[1].split('role="tabpanel"')[0]
+        self.assertEqual(triage.count('Past response target</span>'), 1)
+
+    def test_tabs_show_who_reported_each_case(self):
+        user = User.objects.create_user('handler8', 'handler8@example.com', 'not-a-real-password-1')
+        user.profile.role = 'handler'
+        user.profile.save()
+        self.client.force_login(user)
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R Turner')
+        common = dict(description='x', building='Depot', reporter_email='r@example.com')
+        Case.objects.create(title='Lift noisy', reporter_name='Priya Shah', **common)
+        Case.objects.create(title='Monitor flickering', reporter_name='Tomasz Nowak', status=Status.RESOLVED,
+                            assigned_team=team, **common)
+        Case.objects.create(title='Window blind broken', reporter_name='Grace Obi', status=Status.ASSIGNED,
+                            assigned_team=team, **common)
+        html = self.client.get('/triage/').content.decode()
+        for tab, name in [('triage', 'Priya Shah'), ('reply', 'Tomasz Nowak'), ('teams', 'Grace Obi')]:
+            with self.subTest(tab=tab):
+                pane = html.split(f'id="{tab}" role="tabpanel"')[1].split('role="tabpanel"')[0]
+                self.assertIn('Reported by', pane.split('</thead>')[0])
+                self.assertIn(f'<td data-label="Reported by" data-sort-value="{name}">{name}</td>', pane)
+                # The search box also finds cases by the reporter's name
+                self.assertIn('data-search-key="title ref reporter"', pane)
+                self.assertIn(f'data-reporter="{name}"', pane)
+                self.assertNotIn('colspan="5"', pane)
 
 
 @override_settings(
@@ -360,6 +502,38 @@ class OfficerJobPageTests(TestCase):
         self.assertNotIn('Assign this job to me', html)
         self.assertIn('Record your visit', html)
 
+    def test_directions_link_uses_the_map_point_or_the_address(self):
+        # No point and no address: no link
+        self.assertNotIn('Directions', self.client.get(self.url).content.decode())
+        Case.objects.filter(pk=self.case.pk).update(address='10 Example Square, Birmingham')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('href="https://www.google.com/maps/dir/?api=1&amp;destination=10%20Example%20Square,%20Birmingham"', html)
+        Case.objects.filter(pk=self.case.pk).update(latitude='52.47960', longitude='-1.90270')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('destination=52.479600,-1.902700" target="_blank" rel="noopener noreferrer">', html)
+        self.assertIn('Directions<span class="visually-hidden"> to Main Office (Google Maps, opens in a new tab)</span>', html)
+
+    def test_contact_reporter_link_emails_them_with_the_reference(self):
+        Case.objects.filter(pk=self.case.pk).update(preferred_language='pl')
+        html = self.client.get(self.url).content.decode()
+        ref = self.case.reference
+        self.assertIn(f'href="mailto:reporter@example.com?subject={ref}%3A%20Leaking%20tap"', html)
+        self.assertIn('Contact reporter<span class="visually-hidden"> A Reporter by email</span></a>', html)
+        self.assertIn('A Reporter &middot; reporter@example.com &middot; prefers Polski (Polish)', html)
+        # No email address, no link
+        Case.objects.filter(pk=self.case.pk).update(reporter_email='')
+        self.assertNotIn('Contact reporter', self.client.get(self.url).content.decode())
+
+    def test_record_visit_button_only_once_the_job_is_theirs(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertNotIn('data-record-jump', html)
+        self.client.post(self.url, {'take': ''})
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('<a href="#record-visit" class="btn btn-primary btn-lg sticky-record" data-record-jump>', html)
+        self.assertIn('id="record-visit"', html)
+        self.assertIn('id="record-visit-title" tabindex="-1">Record your visit</h2>', html)
+        self.assertIn('js/record-jump.js', html)
+
     def test_job_list_gives_sort_values(self):
         self.client.post(self.url, {'take': ''})
         Case.objects.filter(pk=self.case.pk).update(priority='urgent')
@@ -384,11 +558,24 @@ class OfficerJobPageTests(TestCase):
         self.client.post(self.url, {'take': ''})  # the job set up for this officer is medium
         html = self.client.get('/officer/').content.decode()
         self.assertIn('id="job-priority"', html)
-        self.assertIn('data-search-cards=".job-list" data-search-key="title"', html)
+        self.assertIn('data-search-cards=".job-list" data-search-key="title reporter"', html)
         self.assertIn('data-clear-filters hidden', html)  # shown by the script once something is filtered
         self.assertIn('<option value="2">Medium</option>', html)
         for absent in ('Urgent', 'High', 'Low'):
             self.assertNotIn(f'">{absent}</option>', html)
+
+    def test_job_cards_show_who_reported_them(self):
+        # One job is this officer's and one is unassigned in their team: both lists show the reporter
+        self.client.post(self.url, {'take': ''})
+        Case.objects.create(title='Door sticking', description='x', building='Depot', reporter_name='Grace Obi',
+                            reporter_email='g@example.com', status=Status.ASSIGNED, assigned_team=self.officer.team)
+        html = self.client.get('/officer/').content.decode()
+        mine = html.split('Assigned to me')[1].split('Unassigned in')[0]
+        unassigned = html.split('Unassigned in')[1]
+        self.assertIn('Reported by A Reporter</div>', mine)
+        self.assertIn('Reported by Grace Obi</div>', unassigned)
+        self.assertIn('data-title="Leaking tap" data-reporter="A Reporter"', html)
+        self.assertIn('placeholder="Search by job title or reporter"', html)
 
 
 @override_settings(
@@ -620,6 +807,21 @@ class VisitOutcomeFlowTests(TestCase):
         html = self.client.get(f'/track/{self.ref}/').content.decode()
         self.assertIn('Closed', html)
         self.assertIn(self.DID, html)
+
+    def test_sending_the_letter_asks_first(self):
+        self.record('Valve seized solid.', self.DID, fixed=True)
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/cases/{self.ref}/letter/').content.decode()
+        self.assertIn('<form method="post" class="panel" data-confirm="#confirm-send">', html)
+        self.assertIn('Send this letter to Nina Gallagher?</h2>', html)
+        self.assertIn("It's emailed to <strong>nina@example.com</strong> and shown on their report, in English.", html)
+        self.assertIn(f'<strong>{self.ref} will be closed.</strong>', html)
+        self.assertIn('data-confirm-yes>', html)
+        self.assertIn('js/confirm-send.js', html)
+        # The dialog is only in the browser: sending still works exactly as before
+        self.client.post(f'/cases/{self.ref}/letter/', {'draft_text': 'Dear Nina, all fixed.'})
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.status, Status.CLOSED)
 
     def test_not_fixed_keeps_reporter_informed_and_no_letter_yet(self):
         self.record('Valve seized solid.', 'Ordered a new valve. Return visit booked for Thursday.', fixed=False)
@@ -1048,7 +1250,7 @@ class TeamAlertTests(TestCase):
     def test_case_page_lists_alerts(self):
         self.triage(officer=self.serena.pk)
         page = self.client.get(f'/cases/{self.case.reference}/')
-        self.assertContains(page, 'Team alerts')
+        self.assertContains(page, 'Alerts sent')
         self.assertContains(page, 'Emailed')
         self.assertContains(page, 'fac@example.com, s@example.com')
 
@@ -1091,6 +1293,14 @@ class AlertInboxTests(TestCase):
         self.assertContains(page, 'class="alert-new"')
         self.assertContains(self.page(self.tom), 'Sent to Facilities Helpdesk')
         self.assertContains(self.page(self.priya), 'No alerts yet')
+
+    def test_each_alert_shows_who_reported_the_job(self):
+        self.triage(officer=self.serena.pk)
+        self.case.refresh_from_db()
+        self.assertTrue(self.case.reporter_name)
+        for officer in (self.serena, self.tom):  # sent by name, and to the team
+            with self.subTest(officer=officer.name):
+                self.assertContains(self.page(officer), f'</i> Reported by {self.case.reporter_name}</p>')
 
     def test_navbar_shows_the_unread_count(self):
         self.triage(officer=self.serena.pk)
@@ -1751,10 +1961,10 @@ class VisitMediaTests(TestCase):
         self.client.force_login(handler)
         page = self.client.get(f'/cases/{self.case.reference}/').content.decode()
         visit = self.case.visits.get()
-        self.assertIn(f'src="{visit.audio.url}"', page)
+        self.assertIn(f'src="/files/{visit.audio.name}"', page)
         self.assertIn('Dictation, as heard', page)
         self.assertIn('Valve seized.', page)
-        self.assertIn(visit.photos.get().image.url, page)
+        self.assertIn(f'/files/{visit.photos.get().image.name}', page)
 
     def test_older_visits_with_one_photo_still_show_it(self):
         from .models import SiteVisit
@@ -2046,3 +2256,703 @@ class InfoRequestTests(TestCase):
         response = self.ask(text='  ', next_url='https://example.org/')
         self.assertRedirects(response, f'/cases/{self.ref}/', fetch_redirect_response=False)
         self.assertFalse(self.case.communications.filter(kind='info').exists())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class WordingTests(TestCase):
+    """Small wording fixes: team names, how late a case is, and dates in messages to reporters."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        self.now = timezone.now()
+        self.team = Team.objects.create(name='Security & Access Team', contact_email='s@example.com', manager='M')
+        user = User.objects.create_user('mei', 'mei@example.com', 'not-a-real-password-1')
+        user.profile.role = 'officer'
+        user.profile.save()
+        self.officer = Officer.objects.create(name='Mei Lin', team=self.team, contact_email='m@example.com', user=user)
+        self.case = Case.objects.create(title='Barrier stuck', description='x', building='Main Office',
+                                        reporter_name='Alex Morgan', reporter_email='a@example.com',
+                                        status=Status.ASSIGNED, assigned_team=self.team, assigned_officer=self.officer,
+                                        priority='high')
+        Case.objects.filter(pk=self.case.pk).update(sla_due=self.now - timedelta(days=19, hours=5))
+        self.case.refresh_from_db()
+        self.client.force_login(user)
+
+    def test_team_name_is_not_doubled(self):
+        self.assertEqual(self.team.short_name, 'Security & Access')
+        self.assertEqual(Team(name='Facilities Helpdesk').short_name, 'Facilities Helpdesk')
+        for url in ('/', '/officer/'):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn('Security &amp; Access team', html)
+                self.assertNotIn('Team team', html)
+
+    def test_overdue_says_by_how_much(self):
+        from datetime import timedelta
+        self.assertEqual(self.case.overdue_by, '19 days')
+        self.case.sla_due = self.now - timedelta(hours=1, minutes=5)
+        self.assertEqual(self.case.overdue_by, '1 hour')
+        self.case.sla_due = self.now + timedelta(hours=1)
+        self.assertEqual(self.case.overdue_by, '')
+
+    def test_officer_job_page_says_it_is_overdue_in_words(self):
+        html = self.client.get(f'/officer/{self.case.reference}/').content.decode()
+        self.assertIn('(19 days overdue)</span></span>', html)
+
+    def test_job_cards_and_queue_say_how_long_overdue(self):
+        for url in ('/', '/officer/'):  # the officer's Home and My jobs
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn('(19 days overdue)</span></div>', html)
+                self.assertNotIn('(overdue)', html)
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        html = self.client.get('/triage/').content.decode()  # "With teams" in the Case queue
+        self.assertIn('(19 days overdue)</span></td>', html)
+        self.assertNotIn('(overdue)', html)
+
+    def test_dates_in_english_messages_are_written_out(self):
+        from datetime import datetime
+        from django.utils import timezone
+        from .reporter_messages import _when
+        moment = timezone.make_aware(datetime(2026, 11, 18, 16, 21))
+        self.assertEqual(_when(moment), 'Wednesday 18 November, 16:21')
+        self.assertEqual(_when(moment, 'pl'), '18/11/2026 16:21')
+        self.assertEqual(_when(None), '-')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DraftTests(TestCase):
+    """Half-filled reports and added details are kept on the device (static/js/draft.js), per person."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+
+    def test_report_form_keeps_a_draft_for_this_person(self):
+        html = self.client.get('/report/').content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-report-{self.user.pk}" data-draft-restore>', html)
+        self.assertIn("We've filled in the report you started", html)
+        self.assertIn('Photos and the map location aren', html)
+        self.assertIn('js/draft.js', html)
+
+    def test_a_failed_send_is_not_overwritten_by_the_draft(self):
+        html = self.client.post('/report/', {'title': 'Leak'}).content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-report-{self.user.pk}">', html)
+        self.assertNotIn('data-draft-restore', html)
+
+    def test_added_details_keep_a_draft_for_this_report(self):
+        case = Case.objects.create(title='Tap dripping', description='x', building='Depot', reporter_name='Nina',
+                                   reporter_email='nina@example.com', reporter_user=self.user)
+        html = self.client.get(f'/track/{case.reference}/').content.decode()
+        self.assertIn(f'data-draft-key="fiaw-draft-details-{self.user.pk}-{case.reference}" data-draft-restore>', html)
+        self.assertIn("We've filled in the details you started", html)
+        self.assertNotIn('and the map location', html)
+
+    def test_signing_out_clears_drafts(self):
+        html = self.client.get('/').content.decode()
+        self.assertIn('action="/accounts/logout/" data-clear-drafts>', html)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class SimilarReportTests(TestCase):
+    """While typing a report, open reports that look the same are suggested (static/js/similar-reports.js)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        common = dict(building='Main Office', reporter_name='Someone Else', reporter_email='else@example.com')
+        self.lift = Case.objects.create(title='Lift making grinding noise', location_detail='Main lift',
+                                        description='The lift grinds loudly between floors two and three.', **common)
+        Case.objects.create(title='Printer jammed', description='Paper stuck in tray two.', **common)
+
+    def similar(self, **typed):
+        return self.client.get('/report/similar/', typed).json()['reports']
+
+    def test_a_matching_open_report_is_suggested(self):
+        found = self.similar(title='Lift grinding', description='Loud grinding noise in the lift',
+                             building='Main Office')
+        self.assertEqual([r['reference'] for r in found], [self.lift.reference])
+        self.assertEqual(found[0]['where'], 'Main Office, Main lift')
+        self.assertEqual(found[0]['status'], 'Waiting to be checked')
+        # Only what's needed to recognise it: not the description or who reported it
+        self.assertEqual(set(found[0]), {'reference', 'title', 'where', 'reported', 'status'})
+
+    def test_nothing_for_another_building_a_closed_report_or_too_few_words(self):
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Depot'), [])
+        self.assertEqual(self.similar(title='Lift', building='Main Office'), [])
+        self.assertEqual(self.similar(title='Lift grinding noise'), [])
+        Case.objects.filter(pk=self.lift.pk).update(status=Status.CLOSED)
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Main Office'), [])
+
+    def test_their_own_reports_are_not_suggested(self):
+        Case.objects.filter(pk=self.lift.pk).update(reporter_user=self.user)
+        self.assertEqual(self.similar(title='Lift grinding noise', building='Main Office'), [])
+
+    def test_report_form_has_the_suggestions_box(self):
+        html = self.client.get('/report/').content.decode()
+        self.assertIn('data-similar data-similar-url="/report/similar/" role="status" hidden>', html)
+        self.assertIn('js/similar-reports.js', html)
+
+    def test_signed_out_people_get_nothing(self):
+        self.client.logout()
+        self.assertEqual(self.client.get('/report/similar/', {'title': 'Lift grinding'}).status_code, 302)
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NextStepsTests(TestCase):
+    """A report nobody has checked yet says what happens next, and when."""
+
+    def setUp(self):
+        from .models import SLARule
+        self.user = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(self.user)
+        SLARule.objects.create(priority='high', acknowledge_amount=4, acknowledge_unit='hours',
+                               resolve_amount=24, resolve_unit='hours')
+        self.case = Case.objects.create(title='Leak', description='Water on the floor.', building='Depot',
+                                        reporter_name='Nina', reporter_email='nina@example.com',
+                                        reporter_user=self.user, ai_priority='high')
+
+    def page(self):
+        return self.client.get(f'/track/{self.case.reference}/').content.decode()
+
+    def test_new_report_says_when_it_will_be_checked(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        html = self.page()
+        self.assertIn('What happens next</h2>', html)
+        due = timezone.localtime(self.case.date_reported + timedelta(hours=4))
+        self.assertIn(f'We aim to do this by <strong>{due:%A} {due.day} {due:%B, %H:%M}</strong> (within 4 hours).', html)
+        self.assertIn('We send it to the right team', html)
+        self.assertNotIn("site's emergency number", html)
+
+    def test_late_check_and_danger_advice(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        Case.objects.filter(pk=self.case.pk).update(date_reported=timezone.now() - timedelta(hours=6), hs_risk=True)
+        html = self.page()
+        self.assertIn('This is taking longer than we aim for, sorry.', html)
+        self.assertIn("If someone is in danger right now, don't wait for us: call your site's emergency number.", html)
+
+    def test_gone_once_a_handler_has_checked_it(self):
+        Case.objects.filter(pk=self.case.pk).update(status=Status.ASSIGNED)
+        self.assertNotIn('What happens next', self.page())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NextCaseTests(TestCase):
+    """After triaging a case, the message has a button to the next one in "Needs triage"."""
+
+    make_user = ReassignCaseTests.make_user
+    triage = TeamAlertTests.triage
+
+    def setUp(self):
+        ReassignCaseTests.setUp(self)
+
+    def message(self, response):
+        return response.content.decode().split('class="toast-body"')[1].split('</div>')[0]
+
+    def test_button_goes_to_the_most_urgent_case_waiting(self):
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        Case.objects.create(title='Printer jammed', ai_priority='low', **common)
+        urgent = Case.objects.create(title='Sparks from <socket>', ai_priority='urgent', **common)
+        msg = self.message(self.triage())
+        self.assertIn(f'{self.case.reference} sent to Facilities Helpdesk.', msg)
+        self.assertIn(f'href="/triage/{urgent.reference}/">Next case', msg)
+        self.assertIn('Sparks from &lt;socket&gt; &middot; 2 still waiting', msg)  # titles are escaped
+        self.assertNotIn('<socket>', msg)
+
+    def test_message_with_the_button_stays_until_closed(self):
+        Case.objects.create(title='Printer jammed', description='x', building='Depot', reporter_name='R',
+                            reporter_email='r@example.com', ai_priority='low')
+        html = self.triage().content.decode()
+        toast = html.split('class="toast show site-toast')[1].split('class="toast-body"')[0]
+        self.assertIn('data-bs-autohide="false"', toast)
+
+    def test_says_when_nothing_is_left(self):
+        msg = self.message(self.triage())
+        self.assertNotIn('Next case', msg)
+        self.assertIn('That was the last one: nothing else is waiting for triage.', msg)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardListTests(TestCase):
+    """Every dashboard figure opens the cases behind it (views.dashboard_cases)."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import Category
+        now = timezone.now()
+        self.manager = User.objects.create_user('ade', 'ade@example.com', 'not-a-real-password-1')
+        self.manager.profile.role = 'manager'
+        self.manager.profile.save()
+        self.client.force_login(self.manager)
+        self.fac = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        self.it = Team.objects.create(name='IT Service Desk', contact_email='i@example.com', manager='K')
+        self.heating = Category.objects.create(name='Heating', default_team=self.fac)
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        self.late = Case.objects.create(title='Radiator cold', status=Status.ASSIGNED, assigned_team=self.fac,
+                                        category=self.heating, sla_due=now - timedelta(days=3), **common)
+        self.on_time = Case.objects.create(title='Laptop slow', status=Status.ASSIGNED, assigned_team=self.it,
+                                           sla_due=now + timedelta(days=2), **common)
+        # Fixed: one late and on the second visit, rated 2 with the AI changed; one on time first visit, rated 5
+        self.fixed_late = Case.objects.create(
+            title='Boiler noisy', status=Status.CLOSED, assigned_team=self.fac, category=self.heating,
+            sla_due=now - timedelta(days=4), date_resolved=now - timedelta(days=2), first_time_fix=False,
+            satisfaction=2, satisfaction_comments='Took ages', ai_suggestion_accepted=False, **common)
+        self.fixed_well = Case.objects.create(
+            title='Mouse broken', status=Status.CLOSED, assigned_team=self.it, sla_due=now + timedelta(days=1),
+            date_resolved=now - timedelta(hours=5), first_time_fix=True, satisfaction=5,
+            ai_suggestion_accepted=True, **common)
+        Case.objects.filter(pk=self.fixed_well.pk).update(date_reported=now - timedelta(hours=8))
+        Case.objects.filter(pk=self.fixed_late.pk).update(date_reported=now - timedelta(days=10))
+
+    def listed(self, query):
+        html = self.client.get('/dashboard/cases/?' + query).content.decode()
+        return html, [t for t in ('Radiator cold', 'Laptop slow', 'Boiler noisy', 'Mouse broken') if f'>{t}<br>' in html]
+
+    def test_every_figure_on_the_dashboard_opens_a_list(self):
+        html = self.client.get('/dashboard/').content.decode()
+        for show in ('open', 'overdue', 'first-time-fix', 'within-sla', 'time-to-fix', 'satisfaction', 'ai'):
+            with self.subTest(show=show):
+                self.assertIn(f'href="/dashboard/cases/?show={show}"', html)
+        self.assertNotIn('class="panel kpi h-100"', html)  # no figure left that opens nothing
+        self.assertIn(f'href="/dashboard/cases/?show=overdue&amp;team={self.fac.pk}"', html)
+        self.assertIn(f'href="/dashboard/cases/?show=category&amp;category={self.heating.pk}"', html)
+        self.assertIn('href="/dashboard/cases/?show=duplicates"', html)
+
+    def test_each_list_has_the_right_cases_with_the_ones_to_look_at_first(self):
+        expected = {
+            'open': ['Radiator cold', 'Laptop slow'],
+            'overdue': ['Radiator cold'],
+            'first-time-fix': ['Boiler noisy', 'Mouse broken'],
+            'within-sla': ['Boiler noisy', 'Mouse broken'],
+            'time-to-fix': ['Boiler noisy', 'Mouse broken'],
+            'satisfaction': ['Boiler noisy', 'Mouse broken'],
+            'ai': ['Boiler noisy', 'Mouse broken'],
+        }
+        for show, titles in expected.items():
+            with self.subTest(show=show):
+                html, found = self.listed(f'show={show}')
+                self.assertEqual(sorted(found), sorted(titles))
+                if len(titles) > 1:  # the order puts the one to look at first at the top
+                    self.assertLess(html.index(titles[0]), html.index(titles[1]))
+        html, _ = self.listed('show=within-sla')
+        self.assertIn('2 days late', html)
+        self.assertIn('On time', html)
+        html, _ = self.listed('show=satisfaction')
+        self.assertIn('2/5: &quot;Took ages&quot;', html)
+
+    def test_lists_narrow_to_a_team_or_category(self):
+        _, found = self.listed(f'show=open&team={self.it.pk}')
+        self.assertEqual(found, ['Laptop slow'])
+        html, found = self.listed(f'show=category&category={self.heating.pk}')
+        self.assertEqual(sorted(found), ['Boiler noisy', 'Radiator cold'])
+        self.assertIn('Cases by category: Heating</h1>', html)
+        # Only "Dashboard" is marked in the navbar, not "Case queue"
+        self.assertEqual(html.count('aria-current="page"'), 1)
+        self.assertIn('Dashboard</a>', html.split('aria-current="page"')[1].split('</li>')[0])
+
+    def test_wrong_lists_and_other_roles(self):
+        self.assertEqual(self.client.get('/dashboard/cases/?show=nonsense').status_code, 404)
+        self.assertEqual(self.client.get('/dashboard/cases/?show=open&team=abc').status_code, 404)
+        self.assertEqual(self.client.get('/dashboard/cases/?show=open&team=9999').status_code, 404)
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        self.assertNotEqual(self.client.get('/dashboard/cases/?show=open').status_code, 200)
+        # The handler's own "Overdue with teams" figure opens their Case queue instead
+        self.assertIn('href="/triage/#teams"', self.client.get('/').content.decode())
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class PageTitleTests(TestCase):
+    """Each browser tab says which page it is, what's waiting, and when a form has a problem."""
+
+    def title(self, url, **post):
+        response = self.client.post(url, post) if post else self.client.get(url)
+        html = response.content.decode()
+        return ' '.join(html.split('<title>')[1].split('</title>')[0].split())
+
+    def test_titles_name_the_page_and_the_case(self):
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        case = Case.objects.create(title='Water dripping from ceiling', description='x', building='Depot',
+                                   reporter_name='R', reporter_email='r@example.com')
+        # One case waiting for triage, so every tab starts with (1), like the navbar badge
+        self.assertEqual(self.title('/triage/'), '(1) Case queue – Fix It at Work')
+        self.assertEqual(self.title(f'/triage/{case.reference}/'),
+                         f'(1) Triage {case.reference} Water dripping from ceiling – Fix It at Work')
+        self.assertEqual(self.title('/'), '(1) Home – Fix It at Work')
+
+    def test_a_form_with_a_problem_says_error_first(self):
+        reporter = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+        self.client.force_login(reporter)
+        self.assertEqual(self.title('/report/'), 'Report an issue – Fix It at Work')
+        self.assertEqual(self.title('/report/', title='Leak'), 'Error: Report an issue – Fix It at Work')
+
+    def test_sign_in_pages_get_the_site_name_too(self):
+        self.assertEqual(self.title('/accounts/login/'), 'Sign In – Fix It at Work')
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DarkModeTests(TestCase):
+    """Pages follow the device's light or dark setting, and the footer lets people choose."""
+
+    def test_every_page_sets_the_theme_before_drawing_and_offers_the_choice(self):
+        for user in (None, User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')):
+            if user:
+                self.client.force_login(user)
+            with self.subTest(signed_in=bool(user)):
+                html = self.client.get('/').content.decode()
+                head = html.split('</head>')[0]
+                self.assertIn('<meta name="color-scheme" content="light dark">', head)
+                self.assertIn('prefers-color-scheme: dark', head)  # decided in <head>, so no white flash
+                self.assertIn('data-theme-picker hidden>', html)
+                self.assertIn('<option value="auto">Same as my device</option>', html)
+                self.assertIn('js/theme.js', html)
+
+    def test_dark_colours_cover_the_tokens_and_white_text_stays_on_dark_teal(self):
+        from pathlib import Path
+        from django.conf import settings
+        css = (Path(settings.BASE_DIR) / 'static' / 'css' / 'style.css').read_text(encoding='utf-8')
+        dark = css.split('[data-bs-theme="dark"] {')[1].split('}')[0]
+        for token in ('--ink', '--muted', '--white', '--surface', '--border', '--brand', '--brand-fill', '--urgent',
+                      '--ai', '--warning-bg', '--bs-body-bg', '--bs-link-color'):
+            with self.subTest(token=token):
+                self.assertIn(f'{token}:', dark)
+        # White text never sits on the text teal, which is light in dark mode
+        self.assertNotIn('background: var(--brand); color: var(--on-brand)', css)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class EarlyWarningTests(TestCase):
+    """An urgent or unsafe report warns the case handlers straight away, with a heads-up to the likely team."""
+
+    def setUp(self):
+        from .models import Category
+        self.facilities = Team.objects.create(name='Facilities Helpdesk', contact_email='facilities@example.com',
+                                              manager='R Turner')
+        Category.objects.create(name='Electrical', default_team=self.facilities,
+                                keywords='socket, sparking, sparks, power')
+        self.handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        self.handler.profile.role = 'handler'
+        self.handler.profile.save()
+        officer_user = User.objects.create_user('sam', 'sam@example.com', 'not-a-real-password-1')
+        officer_user.profile.role = 'officer'
+        officer_user.profile.save()
+        self.officer = Officer.objects.create(name='Sam Okafor', team=self.facilities, contact_email='sam@example.com',
+                                              user=officer_user)
+        self.reporter = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+
+    def report(self, **extra):
+        from django.core import mail
+        mail.outbox = []
+        data = {'title': 'Socket sparking', 'description': 'The socket by my desk is sparking when I plug in.',
+                'building': 'Main Office', 'location_detail': 'Desk 12', 'reported_urgency': 'medium',
+                'impact': 'single_user', 'preferred_language': 'en', 'preferred_contact': 'email', **extra}
+        self.client.force_login(self.reporter)
+        self.client.post('/report/', data)
+        return Case.objects.latest('pk')
+
+    def test_urgent_report_warns_handlers_and_gives_the_team_a_heads_up(self):
+        from django.core import mail
+        case = self.report()  # "sparking" makes the AI suggest urgent
+        self.assertEqual(case.status, Status.NEW)  # nothing is routed: a handler still decides
+        kinds = {a.kind: a for a in case.alerts.all()}
+        self.assertEqual(set(kinds), {'urgent', 'heads_up'})
+        handlers_mail = next(m for m in mail.outbox if m.to == ['jo@example.com'])
+        self.assertTrue(handlers_mail.subject.startswith(f'[Urgent - waiting for triage] {case.reference}'))
+        self.assertIn('Why it is urgent: the AI suggests urgent', handlers_mail.body)
+        self.assertIn(f'Triage it now: http://testserver/triage/{case.reference}/', handlers_mail.body)
+        team_mail = next(m for m in mail.outbox if m.to == ['facilities@example.com'])
+        self.assertIn('Heads-up for Facilities Helpdesk', team_mail.body)
+        self.assertEqual(kinds['heads_up'].team, self.facilities)
+
+    def test_could_hurt_someone_counts_as_urgent(self):
+        case = self.report(title='Loose ceiling tile', description='A ceiling tile in the corridor is hanging down.',
+                           hs_risk='on')
+        warning = case.alerts.get(kind='urgent')
+        self.assertIn('the reporter ticked "This could hurt someone"', warning.body)
+        self.assertIn('health and safety risk', warning.subject)
+
+    def test_ordinary_reports_send_no_early_warning(self):
+        case = self.report(title='Printer jammed', description='The printer on floor two keeps jamming paper.')
+        self.assertFalse(case.alerts.exists())
+
+    def test_officers_see_the_heads_up_but_cannot_open_the_job_yet(self):
+        case = self.report()
+        self.client.force_login(self.officer.user)
+        html = self.client.get('/alerts/').content.decode()
+        self.assertIn('fa-bolt', html)
+        self.assertIn('Heads-up</span>', html)
+        self.assertIn(f'{case.reference} is waiting for a case handler.', html)
+        self.assertNotIn('name="open"', html)
+
+    def test_triage_page_says_the_warning_went_out(self):
+        case = self.report()
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/triage/{case.reference}/').content.decode()
+        self.assertIn('<strong>Urgent report:</strong> early warning sent', html)
+        self.assertIn('with a heads-up to Facilities Helpdesk. Please triage it first.', html)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class NewDetailsTests(TestCase):
+    """When a reporter adds to their report, staff see "New details" until they open the case."""
+
+    TAG = 'New details</span>'
+
+    def user(self, name, role):
+        u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+        u.profile.role = role
+        u.profile.save()
+        return u
+
+    def setUp(self):
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='facilities@example.com', manager='R')
+        self.handler = self.user('jo', 'handler')
+        self.officer = Officer.objects.create(name='Sam Okafor', team=self.team, contact_email='sam@example.com',
+                                              user=self.user('sam', 'officer'))
+        self.reporter = self.user('nina', 'reporter')
+        self.case = Case.objects.create(title='Radiator cold', description='x', building='Depot',
+                                        reporter_name='Nina Gallagher', reporter_email='nina@example.com',
+                                        reporter_user=self.reporter, status=Status.ASSIGNED, assigned_team=self.team,
+                                        assigned_officer=self.officer, priority='medium')
+        self.ref = self.case.reference
+
+    def add_details(self, text='It is also leaking now.'):
+        from django.core import mail
+        mail.outbox = []
+        self.client.force_login(self.reporter)
+        self.client.post(f'/track/{self.ref}/', {'add_details': '1', 'text': text})
+
+    def page(self, user, url):
+        self.client.force_login(user)
+        return self.client.get(url).content.decode()
+
+    def test_team_and_officer_are_alerted(self):
+        from django.core import mail
+        self.add_details()
+        alert = self.case.alerts.get(kind='details')
+        self.assertIn('Nina Gallagher has added to this job: "It is also leaking now."', alert.body)
+        self.assertEqual(sorted(m for msg in mail.outbox for m in msg.to if m != 'nina@example.com'),
+                         ['facilities@example.com', 'sam@example.com'])
+        html = self.page(self.officer.user, '/alerts/')
+        self.assertIn('fa-circle-plus', html)
+        self.assertIn('name="open"', html)  # it's their job, so they can open it
+
+    def test_tag_shows_until_each_role_opens_the_case(self):
+        self.add_details()
+        self.assertIn(self.TAG, self.page(self.handler, '/triage/'))
+        self.assertIn(self.TAG, self.page(self.officer.user, '/officer/'))
+        self.assertIn(self.TAG, self.page(self.officer.user, '/'))
+        # The handler opens the case: the addition is marked "New" this once, and their tag goes
+        html = self.page(self.handler, f'/cases/{self.ref}/')
+        self.assertIn('<li class="report-update is-new">', html)
+        self.assertNotIn(self.TAG, self.page(self.handler, '/triage/'))
+        self.assertNotIn('report-update is-new', self.page(self.handler, f'/cases/{self.ref}/'))
+        # ...but the officer still hasn't seen it, until they open the job
+        self.assertIn(self.TAG, self.page(self.officer.user, '/officer/'))
+        self.assertIn('report-update is-new', self.page(self.officer.user, f'/officer/{self.ref}/'))
+        self.assertNotIn(self.TAG, self.page(self.officer.user, '/officer/'))
+
+    def test_counts_more_than_one_addition(self):
+        self.add_details('First thing.')
+        self.add_details('Second thing.')
+        self.assertIn('New details (2)</span>', self.page(self.handler, '/triage/'))
+
+    def test_answer_to_a_request_for_information_shows_in_needs_triage(self):
+        Case.objects.filter(pk=self.case.pk).update(status=Status.NEW, assigned_team=None, assigned_officer=None)
+        self.add_details('It is in room 2.14.')
+        self.assertFalse(self.case.alerts.filter(kind='details').exists())  # no team has it yet
+        html = self.page(self.handler, '/triage/')
+        pane = html.split('id="triage" role="tabpanel"')[1].split('role="tabpanel"')[0]
+        self.assertIn(self.TAG, pane)
+        self.assertIn(self.TAG, self.page(self.handler, '/'))  # "Next to triage" on their home page
+        self.page(self.handler, f'/triage/{self.ref}/')
+        self.assertNotIn(self.TAG, self.page(self.handler, '/triage/'))
+
+
+
+@override_settings(
+    MEDIA_ROOT=MEDIA, ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class PrivateFileTests(TestCase):
+    """Photos and voice notes only reach people who may see their case (cases/files.py)."""
+
+    # Made-up Cloudinary details for the tests that use the Cloudinary storage: nothing is sent anywhere
+    FAKE_CLOUDINARY = {'CLOUDINARY_URL': 'cloudinary://example-key:example-secret@example-cloud'}
+
+    PNG = (b'\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x01\\x08\\x06\\x00\\x00\\x00\\x1f'
+           b'\\x15\\xc4\\x89\\x00\\x00\\x00\\rIDATx\\x9cc\\xf8\\x0f\\x00\\x00\\x01\\x01\\x00\\x05\\x18\\xd8N\\x00\\x00\\x00\\x00IEND'
+           b'\\xaeB`\\x82')
+
+    def user(self, name, role='reporter'):
+        u = User.objects.create_user(name, f'{name}@example.com', 'not-a-real-password-1')
+        u.profile.role = role
+        u.profile.save()
+        return u
+
+    def setUp(self):
+        self.team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        other = Team.objects.create(name='IT Service Desk', contact_email='i@example.com', manager='K')
+        self.reporter = self.user('nina')
+        self.case = Case.objects.create(title='Leak', description='x', building='Depot', reporter_name='Nina',
+                                        reporter_email='nina@example.com', reporter_user=self.reporter,
+                                        status=Status.ASSIGNED, assigned_team=self.team)
+        photo = ReportPhoto.objects.create(case=self.case, image=SimpleUploadedFile('leak.png', self.PNG, 'image/png'))
+        self.name = photo.image.name
+        self.url = f'/files/{self.name}'
+        self.team_officer = self.user('sam', 'officer')
+        Officer.objects.create(name='Sam', team=self.team, contact_email='sam@example.com', user=self.team_officer)
+        self.other_officer = self.user('kim', 'officer')
+        Officer.objects.create(name='Kim', team=other, contact_email='kim@example.com', user=self.other_officer)
+
+    def fetch(self, user):
+        self.client.force_login(user)
+        return self.client.get(self.url)
+
+    def test_people_who_can_see_the_case_get_the_file(self):
+        for user in (self.reporter, self.team_officer, self.user('jo', 'handler'), self.user('ade', 'manager')):
+            with self.subTest(user=user.username):
+                response = self.fetch(user)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(b''.join(response.streaming_content), self.PNG)
+                self.assertEqual(response['Content-Type'], 'image/png')
+                self.assertEqual(response['Cache-Control'], 'private, max-age=300')
+                self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+                self.assertIn('sandbox', response['Content-Security-Policy'])
+
+    def test_everyone_else_gets_not_found(self):
+        for user in (self.user('ann'), self.other_officer):  # another reporter; an officer in another team
+            with self.subTest(user=user.username):
+                self.assertEqual(self.fetch(user).status_code, 404)
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.client.get('/files/reports/not-a-real-file.png').status_code, 404)
+        self.client.logout()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response['Location'])
+
+    def test_the_old_public_address_is_gone_and_pages_link_privately(self):
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.client.get(f'/media/{self.name}').status_code, 404)
+        page = self.client.get(f'/track/{self.case.reference}/').content.decode()
+        self.assertIn(f'src="{self.url}"', page)
+        self.assertNotIn('/media/', page)
+
+    def test_cloudinary_uploads_are_private_and_links_expire(self):
+        import os
+        import time
+        from unittest import mock
+        import cloudinary
+        with mock.patch.dict(os.environ, self.FAKE_CLOUDINARY):
+            from project.storage import CloudinaryMediaStorage
+        cloudinary.config(cloud_name='example-cloud', api_key='example-key', api_secret='example-secret')
+        storage = CloudinaryMediaStorage()
+        with mock.patch('cloudinary.uploader.upload', return_value={'public_id': 'media/reports/leak'}) as upload:
+            storage._upload('reports/leak.png', SimpleUploadedFile('leak.png', self.PNG))
+        self.assertEqual(upload.call_args.kwargs['type'], 'authenticated')
+        link = storage.url('reports/leak')
+        self.assertIn('/download?', link)
+        self.assertIn('type=authenticated', link)
+        expires = int(link.split('expires_at=')[1].split('&')[0])
+        self.assertTrue(time.time() < expires <= time.time() + 5 * 60 + 5)
+        # The app's /files/ address sends people with access to that expiring link
+        with mock.patch('cases.views.default_storage', storage):
+            response = self.fetch(self.reporter)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('type=authenticated', response['Location'])
+        self.assertEqual(response['Cache-Control'], 'private, max-age=300')
+
+    def test_command_makes_older_cloudinary_uploads_private(self):
+        from io import StringIO
+        from unittest import mock
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):  # nothing to do without Cloudinary
+            call_command('make_uploads_private')
+        cloud = {'default': {'BACKEND': 'project.storage.CloudinaryMediaStorage'},
+                 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}}
+        out = StringIO()
+        import os
+        with self.settings(STORAGES=cloud), mock.patch.dict(os.environ, self.FAKE_CLOUDINARY),                 mock.patch('cloudinary.uploader.rename') as rename:
+            call_command('make_uploads_private', stdout=out)
+        rename.assert_called_once()
+        self.assertEqual(rename.call_args.kwargs['to_type'], 'authenticated')
+        self.assertIn('Made private: 1.', out.getvalue())

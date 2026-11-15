@@ -1,0 +1,4 @@
+{% comment %}
+"New details": the reporter has added something since this person's role last opened the case.
+c.new_details is the count of those additions (views.NEW_FOR_HANDLERS or NEW_FOR_OFFICERS).
+{% endcomment %}{% if c.new_details %} <span class="new-details-tag"><i class="fa-solid fa-circle-plus" aria-hidden="true"></i> New details{% if c.new_details > 1 %} ({{ c.new_details }}){% endif %}</span>{% endif %}

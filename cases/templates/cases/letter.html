@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load crispy_forms_tags %}
-{% block head_title %}Outcome letter {{ case.reference }} - Fix It at Work{% endblock %}
+{% block head_title %}{% if form.errors %}Error: {% endif %}Outcome letter: {{ case.reference }} {{ case.title|truncatechars:40 }}{% endblock %}
 {% block main %}
 <section class="container page-lg">
     <p class="mt-3 mb-0"><a href="{% url 'triage_queue' %}">&larr; Back to queue</a></p>
@@ -10,16 +10,43 @@
         <p class="mb-0 small">Check it is accurate, kind and clear before sending. The reporter will see a note saying AI helped write it and who approved it.
         {% if case.preferred_language != 'en' %}<br><strong>Prototype note:</strong> the officer's notes are not translated yet, so check that part.{% endif %}</p>
     </div>
-    <form method="post" class="panel">
+    {% comment %}
+    Sending emails the reporter and closes the case, and can't be undone, so static/js/confirm-send.js asks
+    first in the dialog below. Without JavaScript the button sends straight away, as before.
+    {% endcomment %}
+    <form method="post" class="panel" data-confirm="#confirm-send">
         {% csrf_token %}
         {{ form|crispy }}
         <button type="submit" class="btn btn-primary btn-lg"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Approve and send</button>
     </form>
+    <div class="modal fade" id="confirm-send" tabindex="-1" aria-labelledby="confirm-send-title" aria-describedby="confirm-send-body" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="confirm-send-title">Send this letter to {{ case.reporter_name }}?</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Go back and check the letter"></button>
+                </div>
+                <div class="modal-body" id="confirm-send-body">
+                    <ul class="confirm-list">
+                        <li>It's emailed to <strong>{{ case.reporter_email|default:"the reporter" }}</strong> and shown on their report, in {{ case.get_preferred_language_display }}.</li>
+                        <li><strong>{{ case.reference }} will be closed.</strong> The reporter can then rate the fix.</li>
+                        <li>You're approving it as <strong>{{ user.get_full_name|default:user.username }}</strong>, and once it's sent it can't be changed or unsent.</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-confirm-cancel>Go back and check</button>
+                    <button type="button" class="btn btn-primary" data-confirm-yes><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Yes, send it</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <details class="panel"><summary>What the officer recorded</summary>
         {% for v in case.visits.all %}<p class="mt-2 mb-0"><strong>{{ v.visited_at|date:"j M" }}, {{ v.officer.name }}:</strong> {% if v.action %}Found: {{ v.note }} Did: {{ v.action }}{% else %}{{ v.note }}{% endif %}</p>{% endfor %}
     </details>
 </section>
 {% endblock %}
 {% block extra_body %}
+{% load static %}
+<script src="{% static 'js/confirm-send.js' %}"></script>
 {% if case.preferred_language == 'ur' %}<script>document.getElementById('id_draft_text').dir = 'rtl';</script>{% endif %}
 {% endblock %}

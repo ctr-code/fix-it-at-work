@@ -3,11 +3,16 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+import mimetypes
+
+from django.core.files.storage import FileSystemStorage, default_storage
+from django.http import FileResponse, Http404, JsonResponse
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince, timeuntil
 
@@ -21,9 +26,15 @@ from .models import (
     Holiday, Language, Priority, SLARule, Team, get_role,
 )
 from .permissions import can_view_case, role_required
+from .files import case_for_file
 
 ALL_ROLES = [r.value for r in Role]
 HANDLERS = [Role.HANDLER, Role.MANAGER]
+
+
+# Additions from the reporter that case handlers, or officers, haven't opened the case to see yet
+NEW_FOR_HANDLERS = Count('updates', filter=Q(updates__handler_seen_at__isnull=True))
+NEW_FOR_OFFICERS = Count('updates', filter=Q(updates__officer_seen_at__isnull=True))
 
 
 def display_name(user):
@@ -42,7 +53,8 @@ def home(request):
         ctx['awaiting_feedback'] = [c for c in mine.filter(status=Status.CLOSED, satisfaction__isnull=True)
                                     if c.feedback_open]
     elif role == Role.HANDLER:
-        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team'),
+        ctx['triage'] = sorted(Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team')
+                               .annotate(new_details=NEW_FOR_HANDLERS),
                                key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported))
         ctx['replies'] = Case.objects.filter(status=Status.RESOLVED).count()
         ctx['unhappy'] = _unhappy_reporters().count()
@@ -52,7 +64,8 @@ def home(request):
         ctx['officer'] = officer
         if officer:
             ctx['jobs'] = Case.objects.filter(
-                assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+                assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(
+                new_details=NEW_FOR_OFFICERS).order_by('sla_due')
             ctx['team_unassigned'] = Case.objects.filter(
                 assigned_team=officer.team, assigned_officer__isnull=True,
                 status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).count()
@@ -87,6 +100,7 @@ def report(request):
             case.ai_duplicate_candidate = suggestion['duplicate']
             case.save()
             reporter_messages.received(case)
+            alerts.early_warning(case, request)  # urgent or unsafe: handlers and the likely team hear now
             messages.success(request, f'Thank you - your report has been received. Your reference is {case.reference}.')
             return redirect('track_case', ref=case.reference)
     else:
@@ -99,6 +113,53 @@ def report(request):
                        for b in Building.objects.exclude(latitude=None).exclude(longitude=None)}
     return render(request, 'cases/report.html', {'form': form, 'buildings': buildings,
                                                  'building_points': building_points})
+
+
+# Photos and voice notes: the only way to reach an upload (see cases/files.py)
+FILE_TYPES_SHOWN_INLINE = ('image/', 'audio/', 'video/')
+
+
+@login_required
+def case_file(request, name):
+    """Send an uploaded photo or voice note, but only to someone who may see its case. Anyone else gets
+    "not found", whether or not the file exists, so a copied link gives nothing away."""
+    case = case_for_file(name)
+    if case is None or not can_view_case(request.user, case):
+        raise Http404('No such file')
+    if not isinstance(default_storage, FileSystemStorage):
+        # Cloudinary: a signed link that expires in a few minutes (project/storage.py)
+        response = redirect(default_storage.url(name))
+    else:
+        try:
+            handle = default_storage.open(name, 'rb')
+        except (FileNotFoundError, OSError):
+            raise Http404('No such file')
+        kind = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+        response = FileResponse(handle, content_type=kind,
+                                as_attachment=not kind.startswith(FILE_TYPES_SHOWN_INLINE))
+        # An upload is never run as a page, even if someone disguised one
+        response['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; media-src 'self'; sandbox"
+    response['Cache-Control'] = 'private, max-age=300'  # never kept by shared caches
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@login_required
+def similar_reports(request):
+    """Open reports that look like the one being typed on the report form (static/js/similar-reports.js).
+    Only what's needed to recognise one is shared: no descriptions, reporters or photos."""
+    q = request.GET
+    found = ai.similar_open_reports(q.get('title', '')[:200], q.get('description', '')[:2000],
+                                    q.get('building', '')[:100], q.get('location_detail', '')[:100],
+                                    exclude_user=request.user)
+    return JsonResponse({'reports': [{
+        'reference': c.reference,
+        'title': c.title,
+        'where': ', '.join(p for p in (c.building, c.location_detail) if p),
+        'reported': timesince(c.date_reported).split(',')[0] + ' ago',
+        'status': (f'With {c.assigned_team.short_name} team' if c.assigned_team
+                   else 'Waiting to be checked'),
+    } for c in found]})
 
 
 @login_required
@@ -146,6 +207,7 @@ def track_case(request, ref):
                                                  text=update_form.cleaned_data['text'].strip())
             for photo in update_form.cleaned_data['photo']:
                 ReportPhoto.objects.create(case=case, update=update, image=photo)
+            alerts.alert_new_details(case, update, request)  # the team and officer hear about it
             if answering:
                 messages.success(request, f'Thank you - the information you sent has been added to {case.reference}. '
                                           'The team working on it can see it now.')
@@ -183,11 +245,37 @@ def _render_track(request, case, feedback_form, update_form):
     info_request = case.info_request_pending() if update_form is not None else None
     return render(request, 'cases/track.html', {
         'case': case, 'sent': sent, 'feedback_form': feedback_form, 'update_form': update_form,
-        'updates': updates, 'info_request': info_request,
+        'updates': updates, 'info_request': info_request, 'next_steps': _next_steps(case),
     })
 
 
+def _next_steps(case):
+    """For a report nobody has checked yet: when a person should have looked at it, from the response
+    target for the priority the AI suggested (or the reporter chose). Shown under "What happens next"."""
+    if case.status != Status.NEW:
+        return None
+    rule = SLARule.objects.filter(priority=case.ai_priority or case.reported_urgency).first()
+    if not rule:
+        return {}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
+    check_by = rule.acknowledge_due(case.date_reported, holidays)
+    return {'check_by': check_by, 'check_within': rule.acknowledge_text, 'late': timezone.now() > check_by}
+
+
 # ---------- 2. Triage and route (case handler) ----------
+
+def _past_response_target(new_cases, now):
+    """New reports waiting longer than the response target for the priority the AI suggested (or the
+    reporter chose), which is when the reporter should have heard from a person. Returns their ids."""
+    rules = {r.priority: r for r in SLARule.objects.all()}
+    holidays = set(Holiday.objects.values_list('date', flat=True))
+    late = set()
+    for c in new_cases:
+        rule = rules.get(c.ai_priority or c.reported_urgency)
+        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
+            late.add(c.pk)
+    return late
+
 
 def _unhappy_reporters():
     """Recently closed cases where the reporter gave a low score, for handlers to follow up."""
@@ -199,17 +287,23 @@ def _unhappy_reporters():
 @role_required(*HANDLERS)
 def triage_queue(request):
     new_cases = sorted(
-        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate'),
+        Case.objects.filter(status=Status.NEW).select_related('ai_category__default_team', 'ai_duplicate_candidate')
+        .annotate(new_details=NEW_FOR_HANDLERS),
         key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported),
     )
-    awaiting_reply = Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
+    awaiting_reply = (Case.objects.filter(status=Status.RESOLVED).select_related('assigned_team')
+                      .annotate(new_details=NEW_FOR_HANDLERS))
     in_flight = Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).select_related(
-        'assigned_team', 'assigned_officer').order_by('sla_due')
+        'assigned_team', 'assigned_officer').annotate(new_details=NEW_FOR_HANDLERS).order_by('sla_due')
     # Priorities the AI suggested, and buildings, for cases waiting for triage: the
     # "Priority" and "Location" filters only list what's in the queue
     triage_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
                          if any(c.ai_priority == value for c in new_cases)]
     triage_buildings = sorted({c.building for c in new_cases if c.building}, key=str.lower)
+    # Past the response target, for the "Overdue" filter and the note in the "Reported" column
+    late = _past_response_target(new_cases, timezone.now())
+    for c in new_cases:
+        c.past_target = c.pk in late
     # The same for cases with teams: priorities, teams and officers that are in the "With teams" list
     in_flight = list(in_flight)
     teams_priorities = [(PRIORITY_RANK[value], label) for value, label in Priority.choices
@@ -254,7 +348,7 @@ def triage_case(request, ref):
                 case.ai_suggestion_accepted = case.ai_duplicate_candidate_id == d['duplicate_of'].id
                 case.save()
                 reporter_messages.merged(case, approver)
-                messages.success(request, f'{case.reference} merged into {case.duplicate_of.reference}.')
+                messages.success(request, _with_next_case(f'{case.reference} merged into {case.duplicate_of.reference}.'))
                 return redirect('triage_queue')
 
             case.category = d['category']
@@ -268,7 +362,8 @@ def triage_case(request, ref):
             case.save()
             reporter_messages.routed(case, approver)
             alert = alerts.alert_routed(case, request)
-            messages.success(request, f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}')
+            messages.success(request, _with_next_case(
+                f'{case.reference} sent to {case.assigned_team}.{_alert_note(alert)}'))
             return redirect('triage_queue')
     else:
         form = TriageForm(case=case, initial={
@@ -277,7 +372,30 @@ def triage_case(request, ref):
             'priority': case.ai_priority,
         })
     return render(request, 'cases/triage_case.html', {'case': case, 'form': form, 'by_team': _by_team(),
-                                                      'info_draft': _info_draft(case)})
+                                                      'info_draft': _info_draft(case),
+                                                      'new_update_ids': ReportUpdate.mark_seen(case, 'handler')})
+
+
+def _next_to_triage():
+    """The case at the top of "Needs triage": highest AI-suggested priority first, then waiting longest."""
+    waiting = Case.objects.filter(status=Status.NEW).only('reference', 'title', 'ai_priority', 'date_reported')
+    return min(waiting, key=lambda c: (-PRIORITY_RANK.get(c.ai_priority, 0), c.date_reported), default=None)
+
+
+def _with_next_case(done):
+    """The message after triage, with a button to the next case so a handler can keep going without going
+    back to the list. Everything shown is escaped (case titles come from reporters)."""
+    nxt = _next_to_triage()
+    if not nxt:
+        return format_html('{} <span class="next-case-none">That was the last one: nothing else is waiting for '
+                           'triage.</span>', done)
+    left = Case.objects.filter(status=Status.NEW).count()
+    return format_html(
+        '{} <span class="next-case">'
+        '<a class="btn btn-sm btn-primary" href="{}">Next case <i class="fa-solid fa-arrow-right" aria-hidden="true">'
+        '</i><span class="visually-hidden">: {} {}</span></a> '
+        '<span class="small">{} &middot; {} still waiting</span></span>',
+        done, reverse('triage_case', args=[nxt.reference]), nxt.reference, nxt.title, nxt.title, left)
 
 
 def _by_team():
@@ -298,7 +416,8 @@ def _by_team():
 def case_detail(request, ref):
     case = get_object_or_404(Case, reference=ref)
     return render(request, 'cases/case_detail.html', {'case': case, 'history': case_history(case),
-                                                      'info_draft': _info_draft(case)})
+                                                      'info_draft': _info_draft(case),
+                                                      'new_update_ids': ReportUpdate.mark_seen(case, 'handler')})
 
 
 def _info_draft(case):
@@ -410,10 +529,11 @@ def officer_cases(request):
     cases, team_unassigned = [], []
     if officer:
         cases = Case.objects.filter(
-            assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+            assigned_officer=officer, status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(
+            new_details=NEW_FOR_OFFICERS).order_by('sla_due')
         team_unassigned = Case.objects.filter(
             assigned_team=officer.team, assigned_officer__isnull=True,
-            status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).order_by('sla_due')
+            status__in=[Status.ASSIGNED, Status.IN_PROGRESS]).annotate(new_details=NEW_FOR_OFFICERS).order_by('sla_due')
     # Buildings and priorities the officer has jobs in, for the "Location" and "Priority" filters
     jobs = [*cases, *team_unassigned]
     buildings = sorted({c.building for c in jobs if c.building}, key=str.lower)
@@ -476,7 +596,8 @@ def officer_case(request, ref):
             return redirect('officer_cases')
     else:
         form = VisitForm()
-    return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer})
+    return render(request, 'cases/officer_case.html', {'case': case, 'form': form, 'officer': officer,
+                                                        'new_update_ids': ReportUpdate.mark_seen(case, 'officer')})
 
 
 @role_required(Role.OFFICER)
@@ -606,7 +727,7 @@ def _needs_attention(now):
     Each item is (case, note)."""
     open_cases = (Case.objects.filter(status__in=[Status.ASSIGNED, Status.IN_PROGRESS])
                   .select_related('assigned_team', 'assigned_officer'))
-    overdue = [(c, f'Due {timesince(c.sla_due, now)} ago · {_who(c)}')
+    overdue = [(c, f'{c.overdue_by} overdue · {_who(c)}')
                for c in open_cases.filter(sla_due__lt=now).order_by('sla_due')]
     due_soon = [(c, f'Due in {timeuntil(c.sla_due, now)} · {_who(c)}')
                 for c in open_cases.filter(sla_due__gte=now, sla_due__lt=now + DUE_SOON).order_by('sla_due')]
@@ -618,12 +739,11 @@ def _needs_attention(now):
     # New reports waiting longer than the response target for the priority the AI suggested
     # (or the reporter chose), which is when the reporter should have heard from a person
     rules = {r.priority: r for r in SLARule.objects.all()}
-    holidays = set(Holiday.objects.values_list('date', flat=True))
-    slow_triage = []
-    for c in Case.objects.filter(status=Status.NEW).order_by('date_reported'):
-        rule = rules.get(c.ai_priority or c.reported_urgency)
-        if rule and now > rule.acknowledge_due(c.date_reported, holidays):
-            slow_triage.append((c, f'Waiting {timesince(c.date_reported, now)} · target {rule.acknowledge_text}'))
+    waiting = list(Case.objects.filter(status=Status.NEW).order_by('date_reported'))
+    late = _past_response_target(waiting, now)
+    slow_triage = [(c, f'Waiting {timesince(c.date_reported, now)} · target '
+                       f'{rules[c.ai_priority or c.reported_urgency].acknowledge_text}')
+                   for c in waiting if c.pk in late]
 
     slow_reply = [(c, f'Fixed {timesince(c.date_resolved, now)} ago · {c.assigned_team or "No team"}')
                   for c in Case.objects.filter(status=Status.RESOLVED, date_resolved__lt=now - REPLY_WAIT)
@@ -738,7 +858,7 @@ def dashboard(request):
         t_cases = cases.filter(assigned_team=team)
         t_res = t_cases.exclude(first_time_fix__isnull=True)
         teams.append({
-            'name': team.name,
+            'id': team.pk, 'name': team.name,
             'open': t_cases.filter(status__in=OPEN_STATUSES).count(),
             'overdue': t_cases.filter(status__in=OPEN_STATUSES, sla_due__lt=now).count(),
             'resolved': t_cases.filter(date_resolved__isnull=False).count(),
@@ -762,38 +882,160 @@ def dashboard(request):
     return render(request, 'cases/dashboard.html', ctx)
 
 
+def _span(delta):
+    """A length of time in its largest whole unit: "3 days", "5 hours", "20 minutes"."""
+    seconds = max(delta.total_seconds(), 0)
+    for size, unit in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+        if seconds >= size:
+            n = int(seconds // size)
+            return f'{n} {unit}{"" if n == 1 else "s"}'
+    return 'under a minute'
+
+
+# The lists behind the dashboard's figures: what each shows, and what the last column says about each case.
+# Each list puts the cases to look at first at the top, and can be narrowed to one team or category.
+DASHBOARD_LISTS = {
+    'open': {'title': 'Open cases', 'column': 'Due',
+             'help': 'Reported and not fixed yet, soonest due first.'},
+    'overdue': {'title': 'Overdue cases', 'column': 'Overdue by',
+                'help': 'Open and past the date we promised the reporter, most overdue first.'},
+    'first-time-fix': {'title': 'First-time fix', 'column': 'Result',
+                       'help': 'Fixed cases where the officer recorded whether one visit was enough. '
+                               'Ones that needed another visit are first.'},
+    'within-sla': {'title': 'Resolved within SLA', 'column': 'Against the target',
+                   'help': 'Fixed cases with a target date. Late ones are first.'},
+    'time-to-fix': {'title': 'Time to fix', 'column': 'Took',
+                    'help': 'Fixed cases, from being reported to being fixed. Longest first.'},
+    'satisfaction': {'title': 'Reporter satisfaction', 'column': 'Score',
+                     'help': 'Cases the reporter rated, lowest score first.'},
+    'ai': {'title': 'AI suggestions', 'column': 'Handler',
+           'help': 'Triaged cases, and whether the handler kept the category and priority the AI suggested. '
+                   'Changed ones are first.'},
+    'category': {'title': 'Cases by category', 'column': 'Status',
+                 'help': 'Every case in this category, newest first.'},
+    'duplicates': {'title': 'Duplicates merged', 'column': 'Merged into',
+                   'help': 'Reports linked to a case that was already open, so nobody made a second visit.'},
+}
+
+
+def _due_note(c):
+    if not c.sla_due:
+        return '-'
+    text = f'{timezone.localtime(c.sla_due):%a %d %b, %H:%M}'
+    return f'{text} ({c.overdue_by} overdue)' if c.is_overdue else text
+
+
+def _dashboard_list(show, now):
+    """The cases behind one dashboard figure, in order: (case, note for the last column, needs a look)."""
+    cases = (Case.objects.exclude(status=Status.DUPLICATE)
+             .select_related('assigned_team', 'assigned_officer', 'category'))
+    resolved = cases.filter(date_resolved__isnull=False)
+    if show == 'open':
+        return [(c, _due_note(c), c.is_overdue) for c in cases.filter(status__in=OPEN_STATUSES).order_by('sla_due')]
+    if show == 'overdue':
+        return [(c, c.overdue_by, True)
+                for c in cases.filter(status__in=OPEN_STATUSES, sla_due__lt=now).order_by('sla_due')]
+    if show == 'first-time-fix':
+        return [(c, 'Fixed first time' if c.first_time_fix else 'Needed another visit', not c.first_time_fix)
+                for c in resolved.exclude(first_time_fix__isnull=True).order_by('first_time_fix', '-date_resolved')]
+    if show == 'within-sla':
+        found = list(resolved.exclude(sla_due__isnull=True))
+        found.sort(key=lambda c: (not c.is_overdue, (c.sla_due - c.date_resolved).total_seconds()))
+        return [(c, f'{c.overdue_by} late' if c.is_overdue else 'On time', c.is_overdue) for c in found]
+    if show == 'time-to-fix':
+        found = sorted(resolved, key=lambda c: c.date_reported - c.date_resolved)
+        return [(c, _span(c.date_resolved - c.date_reported), False) for c in found]
+    if show == 'satisfaction':
+        return [(c, f'{c.satisfaction}/5' + (f': "{c.satisfaction_comments}"' if c.satisfaction_comments else ''),
+                 c.satisfaction <= UNHAPPY_SCORE)
+                for c in cases.filter(satisfaction__isnull=False).order_by('satisfaction', '-date_closed')]
+    if show == 'ai':
+        return [(c, 'Kept the suggestion' if c.ai_suggestion_accepted else 'Changed it', not c.ai_suggestion_accepted)
+                for c in Case.objects.exclude(ai_suggestion_accepted__isnull=True)  # as the figure: merges count too
+                .select_related('assigned_team', 'assigned_officer', 'category')
+                .order_by('ai_suggestion_accepted', '-date_acknowledged')]
+    if show == 'category':
+        return [(c, c.get_status_display(), False) for c in cases.order_by('-date_reported')]
+    merged = (Case.objects.filter(status=Status.DUPLICATE)
+              .select_related('assigned_team', 'assigned_officer', 'category', 'duplicate_of').order_by('-date_reported'))
+    return [(c, c.duplicate_of.reference if c.duplicate_of else '-', False) for c in merged]
+
+
+def _pick(model, value):
+    """The team or category chosen in the address, or None; a wrong one is a 404, not a quiet "all"."""
+    if not value:
+        return None
+    if not value.isdigit():
+        raise Http404('Not found')
+    return get_object_or_404(model, pk=value)
+
+
+@role_required(Role.MANAGER)
+def dashboard_cases(request):
+    """The cases behind a dashboard figure (?show=overdue), optionally for one team (&team=3) or category."""
+    show = request.GET.get('show', 'open')
+    if show not in DASHBOARD_LISTS:
+        raise Http404('No such list')
+    team = _pick(Team, request.GET.get('team'))
+    category = _pick(Category, request.GET.get('category'))
+    rows = _dashboard_list(show, timezone.now())
+    if team:
+        rows = [r for r in rows if r[0].assigned_team_id == team.pk]
+    if category:
+        rows = [r for r in rows if r[0].category_id == category.pk]
+    return render(request, 'cases/dashboard_cases.html', {
+        'info': DASHBOARD_LISTS[show], 'show': show, 'team': team, 'category': category,
+        'rows': [{'case': c, 'note': note, 'flag': flag} for c, note, flag in rows],
+        'flagged': sum(1 for r in rows if r[2]),
+    })
+
+
+def _save_role(request, target, form):
+    """Give someone a new role (and a team, for field officers). Returns (saved, message)."""
+    if target == request.user:
+        return False, 'You cannot change your own role.'
+    if not form.is_valid():
+        return False, 'Choose a team for a field officer.'
+    role, team = form.cleaned_data['role'], form.cleaned_data['team']
+    profile, _ = Profile.objects.get_or_create(user=target)
+    profile.role = role
+    profile.save()
+    officer = getattr(target, 'officer', None)
+    if role == Role.OFFICER:
+        if officer:
+            officer.team = team
+            officer.save()
+        else:
+            Officer.objects.create(user=target, team=team, name=display_name(target),
+                                   contact_email=target.email or 'unknown@example.com')
+    elif officer:
+        # Keep the officer record for case history, just unlink the account
+        officer.user = None
+        officer.save()
+    label = Role(role).label + (f', {team.name}' if role == Role.OFFICER else '')
+    return True, f'{display_name(target)} is now: {label}.'
+
+
 @role_required(Role.MANAGER)
 def people(request):
-    """Managers decide who is a case handler, field officer or manager."""
+    """Managers decide who is a case handler, field officer or manager. The page saves each change as soon as
+    a dropdown changes (static/js/people-autosave.js asks for JSON back); without JavaScript, each row has a
+    Save button and the page reloads with a message."""
     User = get_user_model()
     if request.method == 'POST':
         target = get_object_or_404(User, pk=request.POST.get('user_id'))
-        form = RoleForm(request.POST)
-        if target == request.user:
-            messages.error(request, 'You cannot change your own role.')
-        elif form.is_valid():
-            role, team = form.cleaned_data['role'], form.cleaned_data['team']
-            profile, _ = Profile.objects.get_or_create(user=target)
-            profile.role = role
-            profile.save()
-            officer = getattr(target, 'officer', None)
-            if role == Role.OFFICER:
-                if officer:
-                    officer.team = team
-                    officer.save()
-                else:
-                    Officer.objects.create(user=target, team=team, name=display_name(target),
-                                           contact_email=target.email or 'unknown@example.com')
-            elif officer:
-                # Keep the officer record for case history, just unlink the account
-                officer.user = None
-                officer.save()
-            messages.success(request, f'{display_name(target)} is now: {Role(role).label}.')
-        else:
-            messages.error(request, 'Choose a team for a field officer.')
+        saved, message = _save_role(request, target, RoleForm(request.POST))
+        if 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'saved': saved, 'message': message, 'role': get_role(target) if saved else None},
+                                status=200 if saved else 400)
+        (messages.success if saved else messages.error)(request, message)
         return redirect('people')
 
     users = User.objects.select_related('profile', 'officer__team').order_by('first_name', 'username')
     rows = [{'user': u, 'role': get_role(u), 'team_id': getattr(getattr(u, 'officer', None), 'team_id', None)}
             for u in users]
-    return render(request, 'cases/people.html', {'rows': rows, 'roles': Role.choices, 'teams': Team.objects.all()})
+    # The "Role" filter lists each role that someone has, with how many people have it
+    role_counts = [(value, label, n) for value, label in Role.choices
+                   if (n := sum(1 for r in rows if r['role'] == value))]
+    return render(request, 'cases/people.html', {'rows': rows, 'roles': Role.choices, 'teams': Team.objects.all(),
+                                                 'role_counts': role_counts})

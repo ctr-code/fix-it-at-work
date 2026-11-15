@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block head_title %}Fix It at Work{% endblock %}
+{% block head_title %}Home{% endblock %}
 {% block main %}
 <section class="container">
 
@@ -53,15 +53,15 @@
     {# ---------- Case handler ---------- #}
     <h1>Hello {{ user.first_name|default:user.username }}</h1>
     <div class="row g-3">
-        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
-        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
-        <div class="col-6 col-md-3"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue }}</div><div class="label">Overdue with teams</div></div></div>
-        <div class="col-6 col-md-3"><a class="panel kpi d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#unhappy"><div class="value{% if unhappy %} is-urgent{% endif %}">{{ unhappy }}</div><div class="label">Unhappy reporters to contact</div></a></div>
+        <div class="col-6 col-md-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ triage|length }}</div><div class="label">Waiting for triage</div></a></div>
+        <div class="col-6 col-md-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'triage_queue' %}"><div class="value">{{ replies }}</div><div class="label">Fixed - reply needed</div></a></div>
+        <div class="col-6 col-md-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#teams"><div class="value is-urgent">{{ overdue }}</div><div class="label">Overdue with teams</div></a></div>
+        <div class="col-6 col-md-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'triage_queue' %}#unhappy"><div class="value{% if unhappy %} is-urgent{% endif %}">{{ unhappy }}</div><div class="label">Unhappy reporters to contact</div></a></div>
     </div>
     <h2 class="mt-4">Next to triage</h2>
     {% for c in triage|slice:":5" %}
     <a href="{% url 'triage_case' c.reference %}" class="panel case-row pri-border-{{ c.ai_priority }} d-block">
-        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.ai_priority %}</div>
+        <div class="d-flex justify-content-between gap-2"><span><strong>{{ c.title }}</strong>{% include "cases/_new_details.html" %}</span>{% include "cases/_pri.html" with p=c.ai_priority %}</div>
         <div class="small text-muted">{{ c.reference }} &middot; {{ c.building }} &middot; AI suggests {% if c.ai_category %}{{ c.ai_category.default_team }} / {{ c.ai_category }}{% else %}no team{% endif %} ({{ c.ai_confidence }}% confident){% if c.ai_duplicate_candidate_id %} &middot; possible duplicate{% endif %}</div>
     </a>
     {% empty %}<p>Nothing waiting. Nice.</p>{% endfor %}
@@ -71,12 +71,12 @@
     {# ---------- Field officer ---------- #}
     <h1>Hello {{ user.first_name|default:user.username }}</h1>
     {% if officer %}
-    <p class="text-muted">{{ officer.team }} team &middot; {{ jobs|length }} job{{ jobs|length|pluralize }} assigned to you{% if team_unassigned %} &middot; {{ team_unassigned }} unassigned in your team{% endif %}</p>
+    <p class="text-muted">{{ officer.team.short_name }} team &middot; {{ jobs|length }} job{{ jobs|length|pluralize }} assigned to you{% if team_unassigned %} &middot; {{ team_unassigned }} unassigned in your team{% endif %}</p>
     {% for c in jobs %}
     <a href="{% url 'officer_case' c.reference %}" class="panel case-row pri-border-{{ c.priority }}">
-        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div class="d-flex justify-content-between gap-2"><span><strong>{{ c.title }}</strong>{% include "cases/_new_details.html" %}</span>{% include "cases/_pri.html" with p=c.priority %}</div>
         <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ c.building }}{% if c.location_detail %}, {{ c.location_detail }}{% endif %}</div>
-        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} (overdue){% endif %}</div>
+        <div class="small {% if c.is_overdue %}overdue{% else %}text-muted{% endif %}">{{ c.reference }} &middot; due {{ c.sla_due|date:"D j M, H:i" }}{% if c.is_overdue %} <span class="text-nowrap">({{ c.overdue_by }} overdue)</span>{% endif %}</div>
     </a>
     {% empty %}<p>No jobs assigned to you right now.</p>{% endfor %}
     <a href="{% url 'officer_cases' %}" class="btn btn-primary">All my jobs</a>
@@ -88,16 +88,16 @@
     {# ---------- Manager ---------- #}
     <h1>Hello {{ user.first_name|default:user.username }}</h1>
     <div class="row g-3">
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ open_count }}</div><div class="label">Open cases</div></div></div>
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div></div></div>
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div></div></div>
-        <div class="col-6 col-lg-3"><div class="panel kpi h-100"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }})</div></div></div>
+        <div class="col-6 col-lg-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=open"><div class="value">{{ open_count }}</div><div class="label">Open cases</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-lg-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=overdue"><div class="value is-urgent">{{ overdue|length }}</div><div class="label">Overdue</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-lg-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=first-time-fix"><div class="value">{{ ftf_rate|default_if_none:"-" }}%</div><div class="label">First-time fix rate</div><span class="visually-hidden"> - see these cases</span></a></div>
+        <div class="col-6 col-lg-3"><a class="panel kpi kpi-link d-block text-decoration-none h-100" href="{% url 'dashboard_cases' %}?show=satisfaction"><div class="value">{{ avg_satisfaction|default_if_none:"-" }}<span class="small">/5</span></div><div class="label">Reporter satisfaction ({{ feedback_count }})</div><span class="visually-hidden"> - see these cases</span></a></div>
     </div>
     <h2 class="mt-4">Most overdue</h2>
     {% for c in overdue|slice:":5" %}
     <a href="{% url 'case_detail' c.reference %}" class="panel case-row pri-border-{{ c.priority }} d-block">
-        <div class="d-flex justify-content-between"><strong>{{ c.title }}</strong>{% include "cases/_pri.html" with p=c.priority %}</div>
-        <div class="small overdue">{{ c.reference }} &middot; {{ c.assigned_team }} &middot; due {{ c.sla_due|timesince }} ago</div>
+        <div class="d-flex justify-content-between gap-2"><span><strong>{{ c.title }}</strong>{% include "cases/_new_details.html" %}</span>{% include "cases/_pri.html" with p=c.priority %}</div>
+        <div class="small overdue">{{ c.reference }} &middot; {{ c.assigned_team }} &middot; {{ c.overdue_by }} overdue</div>
     </a>
     {% empty %}<p>Nothing overdue.</p>{% endfor %}
     <a href="{% url 'dashboard' %}" class="btn btn-primary">Full dashboard</a>

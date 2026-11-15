@@ -4,6 +4,7 @@
 {% url 'account_signup' as signup_url %}
 {% url 'profile' as profile_url %}
 {% url 'report' as report_url %}
+{% url 'index' as home_url %}
 
 <!DOCTYPE html>
 <html lang="en-gb">
@@ -11,11 +12,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% comment %}
+    Light or dark: follows the device unless the person chose one in the footer (static/js/theme.js). Set here,
+    before anything is drawn, so a dark page never flashes white first.
+    {% endcomment %}
+    <meta name="color-scheme" content="light dark">
+    <script>
+        (function () {
+            var choice = null;
+            try { choice = window.localStorage.getItem("fiaw-theme"); } catch (e) { /* blocked */ }
+            var dark = choice === "dark" || (choice !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+            document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
+        })();
+    </script>
     <meta name="description" content="Fix It at Work - report a workplace issue and track it to resolution">
-    <title>
-        {% block head_title %}
-        {% endblock head_title %}
-    </title>
+    {% comment %}
+    The browser tab: what's waiting for this person (the same count as the navbar badge), the page, then the
+    site name, e.g. "(3) Triage TKT-2026-0030 Water dripping from ceiling – Fix It at Work". Each page gives
+    the middle part in head_title, starting with "Error: " when a form on it couldn't be sent.
+    {% endcomment %}
+    <title>{% if unread_total %}({{ unread_total }}) {% endif %}{% block head_title %}{% endblock head_title %} – Fix It at Work</title>
     {# favicon #}
     <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}">
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon-32x32.png' %}">
@@ -53,11 +69,13 @@
                 {% with p=request.path %}
                 {% if user.is_authenticated %}
                 <ul class="navbar-nav main-nav mx-lg-auto">
+                    {# Home is the page each role lands on after signing in (cases.views.home shows it for their role) #}
+                    <li class="nav-item"><a class="nav-link{% if p == home_url %} active" aria-current="page{% endif %}" href="{{ home_url }}"><i class="fa-solid fa-house" aria-hidden="true"></i> Home</a></li>
                     <li class="nav-item"><a class="nav-link{% if p == report_url %} active" aria-current="page{% endif %}" href="{% url 'report' %}"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> Report an issue</a></li>
                     {# A report's tracking page belongs under "My reports" #}
                     <li class="nav-item"><a class="nav-link{% if '/my-reports' in p or '/track' in p %} active" aria-current="page{% endif %}" href="{% url 'my_reports' %}"><span class="nav-icon{% if unread_messages %} has-badge{% endif %}"><i class="fa-solid fa-folder-open" aria-hidden="true"></i>{% if unread_messages %}<span class="nav-badge" aria-hidden="true">{{ unread_messages_label }}</span>{% endif %}</span> My reports{% if unread_messages %}<span class="visually-hidden">, {{ unread_messages }} new message{{ unread_messages|pluralize }}</span>{% endif %}</a></li>
                     {% if user_role == 'handler' or user_role == 'manager' %}
-                    <li class="nav-item"><a class="nav-link{% if '/triage' in p or '/cases' in p %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><span class="nav-icon{% if queue_waiting %} has-badge{% endif %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i>{% if queue_waiting %}<span class="nav-badge" aria-hidden="true">{{ queue_waiting_label }}</span>{% endif %}</span> Case queue{% if queue_waiting %}<span class="visually-hidden">, {{ queue_waiting }} case{{ queue_waiting|pluralize }} waiting</span>{% endif %}</a></li>
+                    <li class="nav-item"><a class="nav-link{% if '/triage' in p or p|slice:':7' == '/cases/' %} active" aria-current="page{% endif %}" href="{% url 'triage_queue' %}"><span class="nav-icon{% if queue_waiting %} has-badge{% endif %}"><i class="fa-solid fa-inbox" aria-hidden="true"></i>{% if queue_waiting %}<span class="nav-badge" aria-hidden="true">{{ queue_waiting_label }}</span>{% endif %}</span> Case queue{% if queue_waiting %}<span class="visually-hidden">, {{ queue_waiting }} case{{ queue_waiting|pluralize }} waiting</span>{% endif %}</a></li>
                     {% endif %}
                     {% if user_role == 'officer' %}
                     <li class="nav-item"><a class="nav-link{% if '/officer' in p %} active" aria-current="page{% endif %}" href="{% url 'officer_cases' %}"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> My jobs</a></li>
@@ -85,7 +103,7 @@
                             </li>
                             <li><a class="dropdown-item" href="{% url 'profile' %}"{% if p == profile_url %} aria-current="page"{% endif %}><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><form method="post" action="{% url 'account_logout' %}">{% csrf_token %}<button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
+                            <li><form method="post" action="{% url 'account_logout' %}" data-clear-drafts>{% csrf_token %}<button class="dropdown-item"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Sign out</button></form></li>
                         </ul>
                     </li>
                 </ul>
@@ -100,19 +118,29 @@
         </div>
     </nav>
 
-    {# Display Django messages #}
-    <div id="messages" class="container">
-        <div class="row">
-            <div class="col-md-10 offset-md-1">
-                {% for message in messages %}
-                <div class="alert {{ message.tags }} alert-dismissible
-        fade show" id="msg" role="alert">
-                    {{ message | safe }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    {% comment %}
+    Messages after an action ("Report sent", "Saved") show as toasts in the top corner (static/js/toasts.js).
+    Confirmations fade after a few seconds, but wait while the pointer or keyboard focus is on them.
+    Problems and warnings, and any message with a link or button in it (such as "Next case"), stay until
+    closed. Without JavaScript they simply stay on screen. #messages also keeps the page clear of the
+    fixed header.
+    {% endcomment %}
+    <div id="messages">
+        {% if messages %}
+        <div class="toast-stack">
+            {% for message in messages %}
+            <div class="toast show site-toast {% if message.level >= 40 %}is-error{% elif message.level >= 30 %}is-warning{% else %}is-success{% endif %}"
+                 role="{% if message.level >= 30 %}alert{% else %}status{% endif %}" aria-live="{% if message.level >= 30 %}assertive{% else %}polite{% endif %}" aria-atomic="true"
+                 data-bs-autohide="{% if message.level >= 30 or '<a ' in message.message %}false{% else %}true{% endif %}">
+                <div class="toast-row">
+                    <i class="fa-solid {% if message.level >= 40 %}fa-circle-exclamation{% elif message.level >= 30 %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %} toast-icon" aria-hidden="true"></i>
+                    <div class="toast-body">{{ message|safe }}</div>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close message"></button>
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
+        {% endif %}
     </div>
 
     {% block header %}
@@ -129,6 +157,15 @@
     <footer class="mt-auto site-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center">
             <p class="mb-3 mb-md-0">© 2026 Cloud Crew &middot; Prototype using fictional data only</p>
+            {# Light, dark or the device's setting; shown by static/js/theme.js #}
+            <div class="theme-picker mb-3 mb-md-0" data-theme-picker hidden>
+                <label for="theme-choice" class="small">Colours</label>
+                <select id="theme-choice" class="form-select form-select-sm">
+                    <option value="auto">Same as my device</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
             <div class="social-links">
                 <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook"><i
                         class="fab fa-facebook-f"></i></a>
@@ -150,6 +187,11 @@
     {% endblock extra_body %}
     {# Header menu: closes after choosing a link or pressing Escape; adds a shadow when scrolled #}
     <script src="{% static 'js/nav.js' %}"></script>
+    {# Unsent report drafts: kept on this device, removed on sign-out #}
+    <script src="{% static 'js/draft.js' %}"></script>
+    {# Messages fade after a few seconds (see #messages above) #}
+    <script src="{% static 'js/toasts.js' %}"></script>
+    <script src="{% static 'js/theme.js' %}"></script>
 </body>
 
 </html>
