@@ -4,7 +4,7 @@
 {% block main %}
 <section class="container">
     <h1>People and roles</h1>
-    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. Search by name, filter by role, or select Name or Email to sort.</p>
+    <p class="text-muted">Everyone who signs up starts as a Reporter. Only managers can give someone a staff role. Field officers also need a team. <span data-autosave-hint hidden>Changes are saved as soon as you choose. </span>Search by name, filter by role, or select Name or Email to sort.</p>
     {# Search by name and filter by role; both must match (static/js/table-filter.js). Shown by the script. #}
     <div class="sort-bar" data-row-filter-bar data-row-noun="people" hidden>
         <div class="sort-bar-field sort-bar-search">
@@ -26,7 +26,7 @@
         </div>
     </div>
     <div class="table-responsive panel p-0">
-        <table class="table align-middle mb-0 table-sortable table-cards" id="people-table">
+        <table class="table align-middle mb-0 table-sortable table-cards" id="people-table" data-autosave>
             <caption class="visually-hidden">People and their roles</caption>
             <thead><tr><th scope="col" data-sort="text">{% include "cases/_sort_button.html" with label="Name" %}</th><th scope="col" class="d-none d-md-table-cell" data-sort="text">{% include "cases/_sort_button.html" with label="Email" %}</th><th scope="col">Role</th><th scope="col">Team (officers)</th><th scope="col"><span class="visually-hidden">Save</span></th></tr></thead>
             <tbody>
@@ -51,7 +51,11 @@
                         {% for t in teams %}<option value="{{ t.pk }}" {% if t.pk == r.team_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
                     </select>
                 </td>
-                <td class="card-action"><button form="role-{{ r.user.pk }}" class="btn btn-sm btn-primary">Save<span class="visually-hidden"> {{ r.user.username }}</span></button></td>
+                <td class="card-action">
+                    {# Shown without JavaScript; with it, each change saves itself and the result shows here #}
+                    <button form="role-{{ r.user.pk }}" class="btn btn-sm btn-primary" data-save-button>Save<span class="visually-hidden"> {{ r.user.username }}</span></button>
+                    <span class="save-status" data-save-status role="status" aria-live="polite"></span>
+                </td>
                 {% endif %}
             </tr>
             {% endfor %}
@@ -65,4 +69,5 @@
 {% block extra_body %}
 <script src="{% static 'js/sort-table.js' %}"></script>
 <script src="{% static 'js/table-filter.js' %}"></script>
+<script src="{% static 'js/people-autosave.js' %}"></script>
 {% endblock extra_body %}

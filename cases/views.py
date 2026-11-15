@@ -942,35 +942,45 @@ def dashboard_cases(request):
     })
 
 
+def _save_role(request, target, form):
+    """Give someone a new role (and a team, for field officers). Returns (saved, message)."""
+    if target == request.user:
+        return False, 'You cannot change your own role.'
+    if not form.is_valid():
+        return False, 'Choose a team for a field officer.'
+    role, team = form.cleaned_data['role'], form.cleaned_data['team']
+    profile, _ = Profile.objects.get_or_create(user=target)
+    profile.role = role
+    profile.save()
+    officer = getattr(target, 'officer', None)
+    if role == Role.OFFICER:
+        if officer:
+            officer.team = team
+            officer.save()
+        else:
+            Officer.objects.create(user=target, team=team, name=display_name(target),
+                                   contact_email=target.email or 'unknown@example.com')
+    elif officer:
+        # Keep the officer record for case history, just unlink the account
+        officer.user = None
+        officer.save()
+    label = Role(role).label + (f', {team.name}' if role == Role.OFFICER else '')
+    return True, f'{display_name(target)} is now: {label}.'
+
+
 @role_required(Role.MANAGER)
 def people(request):
-    """Managers decide who is a case handler, field officer or manager."""
+    """Managers decide who is a case handler, field officer or manager. The page saves each change as soon as
+    a dropdown changes (static/js/people-autosave.js asks for JSON back); without JavaScript, each row has a
+    Save button and the page reloads with a message."""
     User = get_user_model()
     if request.method == 'POST':
         target = get_object_or_404(User, pk=request.POST.get('user_id'))
-        form = RoleForm(request.POST)
-        if target == request.user:
-            messages.error(request, 'You cannot change your own role.')
-        elif form.is_valid():
-            role, team = form.cleaned_data['role'], form.cleaned_data['team']
-            profile, _ = Profile.objects.get_or_create(user=target)
-            profile.role = role
-            profile.save()
-            officer = getattr(target, 'officer', None)
-            if role == Role.OFFICER:
-                if officer:
-                    officer.team = team
-                    officer.save()
-                else:
-                    Officer.objects.create(user=target, team=team, name=display_name(target),
-                                           contact_email=target.email or 'unknown@example.com')
-            elif officer:
-                # Keep the officer record for case history, just unlink the account
-                officer.user = None
-                officer.save()
-            messages.success(request, f'{display_name(target)} is now: {Role(role).label}.')
-        else:
-            messages.error(request, 'Choose a team for a field officer.')
+        saved, message = _save_role(request, target, RoleForm(request.POST))
+        if 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'saved': saved, 'message': message, 'role': get_role(target) if saved else None},
+                                status=200 if saved else 400)
+        (messages.success if saved else messages.error)(request, message)
         return redirect('people')
 
     users = User.objects.select_related('profile', 'officer__team').order_by('first_name', 'username')

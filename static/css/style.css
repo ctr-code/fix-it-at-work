@@ -769,6 +769,13 @@ a.kpi-link:hover .label { color: var(--brand); text-decoration: underline; }
 }
 .btn-outline-secondary { --bs-btn-color: var(--muted); }
 
+/* People page: what happened to each row's change (static/js/people-autosave.js) */
+.save-status { display: inline-block; min-width: 5.5rem; font-size: var(--fs-small); color: var(--muted); }
+.save-status.is-ok { color: var(--low); font-weight: var(--fw-semibold); }
+.save-status.is-ok::before { content: "\2713  "; }
+.save-status.is-waiting { color: var(--warning-ink); font-weight: var(--fw-semibold); }
+.save-status.is-error { color: var(--urgent); font-weight: var(--fw-semibold); }
+
 /* Dark mode =============================================================== */
 /* <html data-bs-theme="dark"> (set in templates/base.html from the device setting or the person's choice in the
    footer). Every colour above is a token, so dark mode only swaps the tokens. Contrast was checked for each

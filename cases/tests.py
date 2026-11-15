@@ -194,6 +194,43 @@ class HeaderTests(TestCase):
         # No messages, no toast area
         self.assertNotIn('toast-stack', self.client.get('/').content.decode())
 
+    def test_people_page_saves_each_change_straight_away(self):
+        manager = self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        team = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        save = lambda **data: self.client.post('/people/', {'user_id': ann.pk, 'team': '', **data},
+                                               HTTP_ACCEPT='application/json')
+        # Saved, with the new role sent back so the page can update its filter
+        response = save(role='handler')
+        self.assertEqual(response.json(), {'saved': True, 'message': 'ann is now: Case handler.', 'role': 'handler'})
+        ann.refresh_from_db()
+        self.assertEqual(ann.profile.role, 'handler')
+        # A field officer needs a team: nothing changes without one
+        response = save(role='officer')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['message'], 'Choose a team for a field officer.')
+        ann.refresh_from_db()
+        self.assertEqual(ann.profile.role, 'handler')
+        response = save(role='officer', team=team.pk)
+        self.assertEqual(response.json()['message'], 'ann is now: Field officer, Facilities Helpdesk.')
+        # Not their own role, and no message is left waiting for the next page
+        response = self.client.post('/people/', {'user_id': manager.pk, 'role': 'reporter', 'team': ''},
+                                    HTTP_ACCEPT='application/json')
+        self.assertEqual(response.json()['message'], 'You cannot change your own role.')
+        self.assertNotIn('toast-stack', self.client.get('/people/').content.decode())
+
+    def test_people_page_has_the_autosave_and_keeps_save_buttons_without_it(self):
+        self.user_with_role('manager')
+        ann = User.objects.create_user('ann', 'ann@example.com', 'not-a-real-password-1')
+        html = self.client.get('/people/').content.decode()
+        self.assertIn('id="people-table" data-autosave>', html)
+        self.assertIn('js/people-autosave.js', html)
+        self.assertIn('data-save-status role="status" aria-live="polite"', html)
+        self.assertIn('data-save-button>Save', html)
+        # The Save button still works on its own, with a message after the reload
+        response = self.client.post('/people/', {'user_id': ann.pk, 'role': 'manager', 'team': ''}, follow=True)
+        self.assertContains(response, 'ann is now: Manager.')
+
     def test_people_page_filters_by_role(self):
         manager = self.user_with_role('manager')
         for name, role in [('ann', 'reporter'), ('bob', 'reporter'), ('cat', 'handler')]:
