@@ -66,7 +66,7 @@ messages (receipt, progress updates) are fixed templates, not AI.
 ## 5. How would we know?
 
 **Already built in**
-- **Automated tests (151).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
+- **Automated tests (192).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
   60/63) that fails if accuracy drops, and **fairness tests** that fail if any report in poor English or another
   language is suggested below the reporter's urgency, or if danger is missed in any language.
 - **Dashboard measures:** how often staff accept the AI's suggestion, first-time fix rate, resolved within SLA,

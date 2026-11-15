@@ -1,7 +1,7 @@
 # Functional gaps
 
 What the app still doesn't do, compared with the WMCA challenge brief and with what a real deployment would need.
-Written 13 November 2026.
+Written 13 November 2026, updated 15 November 2026.
 
 ## Already closed
 
@@ -21,6 +21,23 @@ Since then, a teammate's work (merged from main) closed most of another gap:
 | Gap | Now |
 |---|---|
 | Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production. The links are still public (see below) |
+
+### Usability improvements (14 and 15 November)
+
+A walk through the app as each person found things that slowed them down. These weren't gaps against the brief,
+but they make the journey quicker and clearer. All of them are built, tested and checked on phones.
+
+| Who | What changed |
+|---|---|
+| **Reporters** | Half-filled reports and added details are kept as drafts on the device, and removed when sent or on sign-out. "Already reported?" lists matching open reports in the same building while they type. A "What happens next" panel says when a person will check a new report. English messages write dates out ("Wednesday 18 November, 16:21") |
+| **Case handlers** | "Reported by" in the Case queue, and the search finds reporters' names. An Overdue filter on Needs triage (past the response target) and With teams. A "Next case" button after triage. A check before the outcome letter is sent. The queue reopens on the last tab used |
+| **Field officers** | "Reported by" on My jobs and every alert. Overdue jobs say by how much ("19 days overdue"). On the job page: Directions (Google Maps, from where they are), Contact reporter (email with the reference as the subject) and a Record visit button that stays in reach |
+| **Managers** | Every dashboard figure opens the cases behind it, for all teams or one team or category. The People page filters by role, and saves a role or team as soon as it's chosen |
+| **Everyone** | A Home link in the navbar. Messages appear as toasts: confirmations fade after a few seconds, problems stay. Browser tabs name the page and the case, show what's waiting and start with "Error:" when a form needs fixing. Dark mode, following the device or chosen in the footer, checked to WCAG AA |
+
+"Already reported?" also means fewer duplicates reach the Case queue, but a handler still checks every report for
+duplicates at triage. The Directions link uses Google Maps, an outside service, only when an officer opens it
+(see the [security notes](security.md)).
 
 ## Still open
 
