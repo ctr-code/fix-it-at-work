@@ -22,12 +22,13 @@ Since then, a teammate's work (merged from main) closed most of another gap:
 |---|---|
 | Uploads didn't work in production (not served, and lost when Heroku restarts) | Photos and voice notes are stored in **Cloudinary** when `CLOUDINARY_URL` is set, so they're kept and served in production. The links are still public (see below) |
 
-And two more from the list below, on 15 November:
+And three more from the list below, on 15 November:
 
 | Gap | Now |
 |---|---|
 | No early warning for urgent or unsafe reports | As soon as a report arrives that's urgent (by the reporter's choice or the AI's) or marked "This could hurt someone", the case handlers are emailed with a link to triage it, and the team the AI suggests gets a heads-up on their Alerts page. Nothing is routed until a handler decides, and the triage page says the warning went out |
 | No "new details" flag | When a reporter adds details or photos, or answers a request for more information, the case shows "New details" in the Case queue, on the handler's Home, on My jobs and the officer's Home, until a handler (or the officer) opens it. The additions are marked "New" on the case page that once, and the team and officer get a "New details" alert |
+| Misspelled danger and leak words weren't recognised | Common misspellings ("leek", "sparkin", "flodded", "electic shock", "slipery" and others) count like the words themselves and are explained (for example: leak (spelt "leek")). It's a fixed list rather than fuzzy matching, which would also catch real words such as "flooring" or "parking". "watter leek from celing" is now high, like the clear version |
 
 ### Usability improvements (14 and 15 November)
 
@@ -69,7 +70,7 @@ These are explained in more detail in the [responsible-design checklist](respons
 
 | Gap | Effect | Suggested fix |
 |---|---|---|
-| Misspelled danger and leak words ("leek", "celing") aren't recognised | The suggested priority can be lower than for the same report in clear English. It never drops below the reporter's own urgency, and a person approves it | Add common misspellings to the danger words, and extend near-miss matching to them |
+| Unusual misspellings of danger words | Common ones are recognised now, but one not on the list can still mean a lower suggested priority. It never drops below the reporter's own urgency, and a person approves it | Grow the list from real reports where staff raised the priority |
 | Reports in other languages often get no category | Safe (marked low confidence for a person to choose) but more work for handlers | More category words in Polish, Urdu and Spanish, or a multilingual AI model |
 | One known false duplicate match | Same room and category, but a different problem | Weigh the description more heavily than the room |
 | Sentences split at abbreviations; "Dr" taken as a first name | Visit summaries can cut a sentence short, and a letter can greet someone as "Dear Dr" | Recognise common abbreviations and titles |
@@ -93,9 +94,8 @@ These are explained in more detail in the [responsible-design checklist](respons
 
 ## Suggested order
 
-1. **Misspelled danger words**, which is a quick improvement to fairness.
-2. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
-3. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
-4. Everything else as time allows.
+1. **Private links for uploaded files**, before any real (non-fictional) photos or voice notes are uploaded.
+2. A **"Followed up" button for unhappy reporters**, the last missing piece of the staff journey.
+3. Everything else as time allows.
 
 If the demo runs on Heroku, check that `CLOUDINARY_URL` is set there, or uploads will be lost on each restart.

@@ -148,6 +148,28 @@ class TriageBenchmarkTests(TestCase):
                 s = self.suggest(title, desc, 'Main Office', '', 'low', 'single_user', False)
                 self.assertEqual(s['category'].name, expected, s['reasoning'])
 
+    def test_misspelt_danger_words_count_like_the_real_ones(self):
+        for title, desc, expected, explained in [
+            ('watter leek', 'water coming from celing on desk pls help', 'high', 'leak (spelt "leek")'),
+            ('socket sparkin', 'the socket is sparkin when i plug in', 'urgent', 'sparking (spelt "sparkin")'),
+            ('toilet flodded', 'the toilet is flodded all over the floor', 'urgent', 'flooding (spelt "flodded")'),
+            ('electic shock', 'i got a electic shock from the kettle', 'urgent', 'electric shock (spelt "electic shock")'),
+            ('slipery floor', 'the floor by the kitchen sink is slipery', 'high', 'slip (spelt "slipery")'),
+        ]:
+            with self.subTest(title=title):
+                s = self.suggest(title, desc, 'Main Office', '', 'low', 'single_user', False)
+                self.assertEqual(s['priority'], expected, s['reasoning'])
+                self.assertIn(explained, s['reasoning'])
+
+    def test_real_words_close_to_danger_words_are_not_dangers(self):
+        # Why the misspellings are a fixed list and not fuzzy matching: these are one letter away from danger words
+        for title, desc in [('Flooring lifting', 'The flooring by the door is lifting at the edge.'),
+                            ('Parking bay', 'The parking bay lines have faded.'),
+                            ('Leaflets', 'The leaflet rack in reception is full.')]:
+            with self.subTest(title=title):
+                s = self.suggest(title, desc, 'Main Office', '', 'low', 'single_user', False)
+                self.assertNotIn('Raised to', s['reasoning'])  # its category may be high, but no danger word was found
+
     def test_misspelling_is_matched_and_explained(self):
         s = self.suggest('Radiater broke', 'radiater not wokring', 'Depot', '', 'low', 'single_user', False)
         self.assertEqual(s['category'].name, 'Heating')
@@ -157,7 +179,8 @@ class TriageBenchmarkTests(TestCase):
 class TriageFairnessTests(TestCase):
     """The same problem written in clear English, poor English and another language. Measured 13 Nov 2026
     (see docs/responsible-design.md): danger is caught in every version, and nothing is ever suggested
-    below the urgency the reporter chose. Categories and some priorities still differ, so a person checks."""
+    below the urgency the reporter chose. Since 15 Nov the misspelt leak ("watter leek") is high like the
+    others. Categories still differ in other languages, so a person checks."""
 
     setUpTestData = TriageBenchmarkTests.setUpTestData
     suggest = TriageBenchmarkTests.suggest
@@ -169,7 +192,7 @@ class TriageFairnessTests(TestCase):
         ('high', [('No heating', 'There is no heating in the office and it is freezing.'),
                   ('heater no work', 'heater not work very cold all people cold'),
                   ('Sin calefacción', 'No hay calefacción en la oficina y hace mucho frío.')]),
-        ('medium', [('Water leaking from ceiling', 'Water is leaking through the ceiling onto a desk in the office.'),
+        ('high', [('Water leaking from ceiling', 'Water is leaking through the ceiling onto a desk in the office.'),
                     ('watter leek', 'water coming from celing on desk pls help'),
                     ('Przeciek z sufitu', 'Woda kapie z sufitu na biurko w biurze.')]),
         ('medium', [('Printer not working', 'The printer on the second floor is jammed and will not print.'),

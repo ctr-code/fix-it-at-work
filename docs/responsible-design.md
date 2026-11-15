@@ -20,7 +20,7 @@ It at Work, with the evidence behind it. The [accessibility notes](accessibility
 |---|---|---|---|
 | People who don't read English well | Forms and replies in English; the AI matches English words | Reporters choose English, Polish, Urdu or Spanish, and every message to them is in that language (Urdu right to left). The AI recognises danger words in all four, and **never suggests a lower priority than the reporter chose** | The page itself is in English. The AI misses some categories in other languages (see 4). Translations need checking by native speakers |
 | Disabled people | Screen readers, keyboard-only use, low vision, motion sensitivity | Checked against WCAG AA on 14 pages at three widths, with problems fixed. Several ways to do each thing (type, dictate or record; pick a building, type an address or drop a pin) | Not yet tested with screen readers or with disabled users |
-| People who write briefly or with spelling mistakes | The AI has less to go on | The AI tolerates near-miss spellings and flags short or unclear reports as low confidence so a person checks them | Misspelled key words can still lower the suggested priority (see 4) |
+| People who write briefly or with spelling mistakes | The AI has less to go on | The AI tolerates near-miss spellings and flags short or unclear reports as low confidence so a person checks them | Common misspellings of danger words are now recognised; an unusual one could still be missed (see 4) |
 | People without a smartphone or computer at work | The service is online only | Works on any phone browser; nothing to install | A phone line or kiosk would be needed for full reach |
 | Officers in poor signal | Visits recorded on site | Light pages; voice notes and photos are optional | No offline mode |
 
@@ -55,7 +55,7 @@ messages (receipt, progress updates) are fixed templates, not AI.
 
 | Risk | Likelihood | What we did | What's left |
 |---|---|---|---|
-| **A report in poor English or another language gets a lower priority** | Medium | The AI never goes below the reporter's own urgency; danger words are recognised in four languages; a person approves every priority | In our test, a leak written as "watter leek from celing" got **medium** where the clear version got **high** (see *Fairness*) |
+| **A report in poor English or another language gets a lower priority** | Medium | The AI never goes below the reporter's own urgency; danger words are recognised in four languages; a person approves every priority | Fixed on 15 November: common misspellings of the danger words count like the words themselves, so "watter leek from celing" is now **high** like the clear version. An unusual misspelling could still be missed (see *Fairness*) |
 | **A safety risk is missed** | Low | Danger words such as fire, sparks, gas, flood and injured raise the priority to urgent; the reporter can tick "This could hurt someone"; urgent and unsafe jobs with no officer go to the top of the dashboard | Unusual wording could still be missed, which is why a person triages every report |
 | **The AI puts a report in the wrong team** | Low to medium | Confidence scores, written reasons, a person approves, and routing can be changed later with a logged reason | Reports in other languages may get no category and need a person to choose |
 | **Staff over-trust the AI** ("automation bias") | Medium | Low-confidence and short reports are flagged "a person should check"; the dashboard shows the acceptance rate so a suspiciously high rate can be noticed | Needs training and review in real use |
@@ -66,8 +66,8 @@ messages (receipt, progress updates) are fixed templates, not AI.
 ## 5. How would we know?
 
 **Already built in**
-- **Automated tests (192).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
-  60/63) that fails if accuracy drops, and **fairness tests** that fail if any report in poor English or another
+- **Automated tests (203).** These include an AI benchmark of 63 realistic reports (category 63/63, priority
+  59/63) that fails if accuracy drops, and **fairness tests** that fail if any report in poor English or another
   language is suggested below the reporter's urgency, or if danger is missed in any language.
 - **Dashboard measures:** how often staff accept the AI's suggestion, first-time fix rate, resolved within SLA,
   reporter satisfaction, weekly reports in against fixes out, and the median time at each stage.
@@ -95,10 +95,10 @@ explain how you reduced the risk."*
 | Group | Reports | Right category | Right priority | Under-prioritised |
 |---|---|---|---|---|
 | Polish, Spanish or Urdu | 5 | 5 | 5 | **0** |
-| English | 58 | 58 | 55 | **0** |
+| English | 58 | 58 | 54 | **0** |
 | (Written after tuning) | 16 | 16 | 16 | 0 |
 
-The three priority misses were all set **higher** than expected, never lower. Five non-English reports is a small
+The four priority misses were all set **higher** than expected, never lower. The fourth appeared on 15 November, when misspellings were added: a flooded toilet is now urgent because "flodded" is read as "flooding". Five non-English reports is a small
 sample, so we ran a second test.
 
 **Test 2: the same problem, written three ways.** The reporter chose "medium" each time.
@@ -107,14 +107,14 @@ sample, so we ran a second test.
 |---|---|---|---|
 | Socket sparking | Urgent, right team | Urgent, right team | Urgent (Urdu), **no category: a person chooses** |
 | No heating | High, right team | High, right team | High, right team (Spanish) |
-| Water through the ceiling | **High**, right team | **Medium**, right team: "leek" and "celing" weren't recognised | High (Polish), plumbing rather than roof |
+| Water through the ceiling | **High**, right team | **High**, right team (since 15 November; before then "leek" wasn't recognised and it was medium) | High (Polish), plumbing rather than roof |
 | Printer jammed | Medium, right team | Medium, right team | Medium (Polish), **no category: a person chooses** |
 
 **What this shows**
 - **Safety risks were caught in every language and style**, and nothing was suggested below what the reporter
   asked for. These two guarantees are now automated tests.
-- **The risk is reduced, not removed.** Poor spelling of a key word can still mean a lower suggested priority, and
-  reports in other languages often get no category. In both cases the report is marked as low confidence, and a
+- **The risk is reduced, not removed.** Common misspellings are now recognised, but an unusual misspelling of a
+  key word could still mean a lower suggested priority, and reports in other languages often get no category. In both cases the report is marked as low confidence, and a
   person makes the decision.
 
 **How we reduced the risk**
@@ -123,9 +123,10 @@ sample, so we ran a second test.
 3. **Near-miss spellings** of category words are matched (e.g. "radiater").
 4. Reports the AI can't place get **low confidence and a plain note** asking a person to choose, rather than a
    confident wrong answer.
-5. A **person approves every priority**, and the reporter can tick "This could hurt someone", which raises the
+5. **Common misspellings of danger words** ("leek", "sparkin", "flodded") count like the words themselves.
+6. A **person approves every priority**, and the reporter can tick "This could hurt someone", which raises the
    priority to at least high whatever the wording.
 
-**Next steps:** add misspellings of the danger and leak words, more category words in each language, and a much
+**Next steps:** more category words in each language, and a much
 larger set of real (anonymised) reports in each language to test against; then compare outcomes by language in
 real use (see 5).

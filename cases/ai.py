@@ -39,6 +39,30 @@ SAFETY_TERMS = {
     ],
 }
 
+# Common misspellings of the danger words, and the word each one means. They count exactly like the word
+# itself, so "watter leek from celing" is raised to high just like "water leak from ceiling". This is a fixed
+# list, not fuzzy matching: a near-miss rule would also catch real words one letter away, such as "flooring"
+# for "flooding" or "parking" for "sparking", and push ordinary reports up the queue.
+SAFETY_MISSPELLINGS = {
+    'urgent': {
+        'sparkin': 'sparking', 'sparkng': 'sparking', 'spraking': 'sparking', 'sparkes': 'sparks', 'sparkz': 'sparks',
+        'smoak': 'smoke', 'smokeing': 'smoke', 'burnin': 'burning', 'burnning': 'burning', 'buring': 'burning',
+        'flodding': 'flooding', 'floding': 'flooding', 'flodded': 'flooding', 'flooded': 'flooding',
+        'electic shock': 'electric shock', 'eletric shock': 'electric shock', 'electrick shock': 'electric shock',
+        'elecrtic shock': 'electric shock', 'gass leak': 'gas leak', 'gas leek': 'gas leak', 'gass smell': 'gas smell',
+        'smell of gass': 'smell of gas', 'injurd': 'injured', 'injerd': 'injured', 'injuried': 'injured',
+        'exposed wires': 'exposed wire', 'live wires': 'live wire', 'pooring through': 'pouring through',
+        'pooring in': 'pouring in',
+    },
+    'high': {
+        'leek': 'leak', 'leeks': 'leak', 'leeking': 'leaking', 'leakin': 'leaking', 'leeky': 'leak', 'leaky': 'leak',
+        'leakage': 'leak', 'no heeting': 'no heating', 'no heatin': 'no heating', 'no heat': 'no heating',
+        'freezin': 'freezing', 'freesing': 'freezing', 'powercut': 'power cut', 'power cutt': 'power cut',
+        'no electric': 'no power', 'no electricity': 'no power', 'trip hazzard': 'trip hazard',
+        'tripping hazard': 'trip hazard', 'slippery': 'slip', 'slipery': 'slip',
+    },
+}
+
 # Phrases that contain a danger word but aren't a danger in themselves. They're blanked out before
 # the danger words are checked, so "fire extinguisher missing" or "locked out of my account" doesn't
 # jump the queue. The category's own default priority still applies (e.g. Fire Equipment is high).
@@ -153,7 +177,10 @@ def triage(case):
     # 2. Priority: highest of category default, safety words, and reporter's own view
     priority = category.default_priority if category else Priority.MEDIUM
     for level in ('urgent', 'high'):
-        found = _danger_terms(SAFETY_TERMS[level], text)
+        misspelt = SAFETY_MISSPELLINGS[level]
+        # A misspelling is explained with the word it stands for: 'leak (spelt "leek")'
+        found = [f'{misspelt[t]} (spelt "{t}")' if t in misspelt else t
+                 for t in _danger_terms([*SAFETY_TERMS[level], *misspelt], text)]
         if found:
             if PRIORITY_RANK[level] > PRIORITY_RANK[priority]:
                 reasons.append(f'Raised to {level} because of: {", ".join(found[:3])}.')

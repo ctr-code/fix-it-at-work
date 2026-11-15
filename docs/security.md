@@ -60,7 +60,7 @@ hiding a link is never the only protection:
 | Case handler | Triage, merge duplicates, change priority or assignment, approve letters | Use the Dashboard or People page |
 | Manager | Everything a handler can, plus the Dashboard and roles | Change their own role |
 
-Automated tests (192 in total) cover these rules, for example that officers and reporters are refused the
+Automated tests (203 in total) cover these rules, for example that officers and reporters are refused the
 Change assignment page, that officers can't see another team's alerts, and that staff opening a report don't
 mark the reporter's messages as read.
 
