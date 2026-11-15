@@ -96,7 +96,7 @@ explain how you reduced the risk."*
 |---|---|---|---|---|
 | Polish, Spanish or Urdu | 5 | 5 | 5 | **0** |
 | English | 58 | 58 | 54 | **0** |
-| (Written after tuning) | 16 | 16 | 16 | 0 |
+| (Written after tuning) | 16 | 16 | 15 | 0 |
 
 The four priority misses were all set **higher** than expected, never lower. The fourth appeared on 15 November, when misspellings were added: a flooded toilet is now urgent because "flodded" is read as "flooding". Five non-English reports is a small
 sample, so we ran a second test.
