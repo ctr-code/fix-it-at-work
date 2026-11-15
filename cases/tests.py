@@ -1250,7 +1250,7 @@ class TeamAlertTests(TestCase):
     def test_case_page_lists_alerts(self):
         self.triage(officer=self.serena.pk)
         page = self.client.get(f'/cases/{self.case.reference}/')
-        self.assertContains(page, 'Team alerts')
+        self.assertContains(page, 'Alerts sent')
         self.assertContains(page, 'Emailed')
         self.assertContains(page, 'fac@example.com, s@example.com')
 
@@ -2679,3 +2679,82 @@ class DarkModeTests(TestCase):
                 self.assertIn(f'{token}:', dark)
         # White text never sits on the text teal, which is light in dark mode
         self.assertNotIn('background: var(--brand); color: var(--on-brand)', css)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class EarlyWarningTests(TestCase):
+    """An urgent or unsafe report warns the case handlers straight away, with a heads-up to the likely team."""
+
+    def setUp(self):
+        from .models import Category
+        self.facilities = Team.objects.create(name='Facilities Helpdesk', contact_email='facilities@example.com',
+                                              manager='R Turner')
+        Category.objects.create(name='Electrical', default_team=self.facilities,
+                                keywords='socket, sparking, sparks, power')
+        self.handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        self.handler.profile.role = 'handler'
+        self.handler.profile.save()
+        officer_user = User.objects.create_user('sam', 'sam@example.com', 'not-a-real-password-1')
+        officer_user.profile.role = 'officer'
+        officer_user.profile.save()
+        self.officer = Officer.objects.create(name='Sam Okafor', team=self.facilities, contact_email='sam@example.com',
+                                              user=officer_user)
+        self.reporter = User.objects.create_user('nina', 'nina@example.com', 'not-a-real-password-1')
+
+    def report(self, **extra):
+        from django.core import mail
+        mail.outbox = []
+        data = {'title': 'Socket sparking', 'description': 'The socket by my desk is sparking when I plug in.',
+                'building': 'Main Office', 'location_detail': 'Desk 12', 'reported_urgency': 'medium',
+                'impact': 'single_user', 'preferred_language': 'en', 'preferred_contact': 'email', **extra}
+        self.client.force_login(self.reporter)
+        self.client.post('/report/', data)
+        return Case.objects.latest('pk')
+
+    def test_urgent_report_warns_handlers_and_gives_the_team_a_heads_up(self):
+        from django.core import mail
+        case = self.report()  # "sparking" makes the AI suggest urgent
+        self.assertEqual(case.status, Status.NEW)  # nothing is routed: a handler still decides
+        kinds = {a.kind: a for a in case.alerts.all()}
+        self.assertEqual(set(kinds), {'urgent', 'heads_up'})
+        handlers_mail = next(m for m in mail.outbox if m.to == ['jo@example.com'])
+        self.assertTrue(handlers_mail.subject.startswith(f'[Urgent - waiting for triage] {case.reference}'))
+        self.assertIn('Why it is urgent: the AI suggests urgent', handlers_mail.body)
+        self.assertIn(f'Triage it now: http://testserver/triage/{case.reference}/', handlers_mail.body)
+        team_mail = next(m for m in mail.outbox if m.to == ['facilities@example.com'])
+        self.assertIn('Heads-up for Facilities Helpdesk', team_mail.body)
+        self.assertEqual(kinds['heads_up'].team, self.facilities)
+
+    def test_could_hurt_someone_counts_as_urgent(self):
+        case = self.report(title='Loose ceiling tile', description='A ceiling tile in the corridor is hanging down.',
+                           hs_risk='on')
+        warning = case.alerts.get(kind='urgent')
+        self.assertIn('the reporter ticked "This could hurt someone"', warning.body)
+        self.assertIn('health and safety risk', warning.subject)
+
+    def test_ordinary_reports_send_no_early_warning(self):
+        case = self.report(title='Printer jammed', description='The printer on floor two keeps jamming paper.')
+        self.assertFalse(case.alerts.exists())
+
+    def test_officers_see_the_heads_up_but_cannot_open_the_job_yet(self):
+        case = self.report()
+        self.client.force_login(self.officer.user)
+        html = self.client.get('/alerts/').content.decode()
+        self.assertIn('fa-bolt', html)
+        self.assertIn('Heads-up</span>', html)
+        self.assertIn(f'{case.reference} is waiting for a case handler.', html)
+        self.assertNotIn('name="open"', html)
+
+    def test_triage_page_says_the_warning_went_out(self):
+        case = self.report()
+        self.client.force_login(self.handler)
+        html = self.client.get(f'/triage/{case.reference}/').content.decode()
+        self.assertIn('<strong>Urgent report:</strong> early warning sent', html)
+        self.assertIn('with a heads-up to Facilities Helpdesk. Please triage it first.', html)

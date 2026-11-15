@@ -89,6 +89,7 @@ def report(request):
             case.ai_duplicate_candidate = suggestion['duplicate']
             case.save()
             reporter_messages.received(case)
+            alerts.early_warning(case, request)  # urgent or unsafe: handlers and the likely team hear now
             messages.success(request, f'Thank you - your report has been received. Your reference is {case.reference}.')
             return redirect('track_case', ref=case.reference)
     else:

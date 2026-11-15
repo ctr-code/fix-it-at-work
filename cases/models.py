@@ -455,11 +455,15 @@ class CaseChange(models.Model):
 
 
 class Alert(models.Model):
-    """An email telling a team (and its officer) about a case sent to them, kept so staff can see who was
-    told what and when. Written by cases/alerts.py."""
+    """An email telling a team (and its officer) about a case sent to them, or warning about an urgent report
+    before it's triaged, kept so staff can see who was told what and when. Written by cases/alerts.py."""
     class Kind(models.TextChoices):
         ROUTED = 'routed', 'New job'
         CHANGED = 'changed', 'Job changed'
+        # Early warning when an urgent or unsafe report arrives, before anyone has triaged it:
+        # to the case handlers, and a heads-up to the team the AI thinks it's for
+        URGENT = 'urgent', 'Urgent report'
+        HEADS_UP = 'heads_up', 'Heads-up'
 
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='alerts')
     kind = models.CharField(max_length=10, choices=Kind.choices)

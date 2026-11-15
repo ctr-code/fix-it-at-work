@@ -603,6 +603,10 @@ a.kpi-link:hover .label { color: var(--brand); text-decoration: underline; }
 .alert-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
 .alert-new { padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--brand-fill); color: var(--on-brand); font-size: var(--fs-caption); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .04em; }
 .alert-kind { font-size: var(--fs-caption); font-weight: var(--fw-semibold); color: var(--brand-dark); text-transform: uppercase; letter-spacing: .04em; }
+.alert-kind-heads_up { color: var(--warning-ink); }
+/* On the triage page of an urgent report: the early warning has gone out */
+.early-warning-note { padding: var(--space-2) var(--space-3); border-left: 4px solid var(--warning-border); border-radius: var(--radius-md); background: var(--warning-bg); }
+.early-warning-note i { color: var(--warning-ink); margin-right: var(--space-1); }
 .alert-meta { font-size: var(--fs-small); color: var(--muted); }
 .alert-subject { margin: 0 0 var(--space-1); font-size: var(--fs-label); font-weight: var(--fw-semibold); }
 .alert-item:not(.is-unread) .alert-subject { font-weight: var(--fw-medium); }

@@ -5,6 +5,10 @@
 <section class="container">
     <p class="mt-3 mb-0"><a href="{% url 'triage_queue' %}">&larr; Back to queue</a></p>
     <h1>Triage {{ case.reference }}</h1>
+    {% with warned=case.alerts.all %}{% if warned %}
+    <p class="early-warning-note"><i class="fa-solid fa-bolt" aria-hidden="true"></i>
+        <strong>Urgent report:</strong> early warning sent {{ warned.0.sent_at|date:"H:i" }}{% for a in warned %}{% if a.kind == 'heads_up' %}, with a heads-up to {{ a.team }}{% endif %}{% endfor %}. Please triage it first.</p>
+    {% endif %}{% endwith %}
     <div class="row g-4">
         <div class="col-lg-6">
             {% include "cases/_case_facts.html" %}
