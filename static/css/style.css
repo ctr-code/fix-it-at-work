@@ -372,6 +372,10 @@ main { margin-bottom: var(--space-10); }
 .kpi .value.is-urgent { color: var(--urgent); }
 .kpi .value.is-ai { color: var(--ai); }
 .kpi .label { color: var(--muted); font-size: var(--fs-small); }
+/* A figure that opens the cases behind it */
+a.kpi-link { color: inherit; transition: border-color .15s, box-shadow .15s; }
+a.kpi-link:hover { border-color: var(--brand); box-shadow: 0 2px 10px rgba(7, 52, 71, .12); }
+a.kpi-link:hover .label { color: var(--brand); text-decoration: underline; }
 .bar { height: 14px; background: var(--brand); border-radius: var(--radius-sm); min-width: 2px; }
 .bar-track { background: var(--surface-sunken); border-radius: var(--radius-sm); }
 

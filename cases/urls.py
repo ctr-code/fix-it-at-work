@@ -19,5 +19,6 @@ urlpatterns = [
     path('alerts/', views.alerts_inbox, name='alerts'),
     path('officer/<str:ref>/', views.officer_case, name='officer_case'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('dashboard/cases/', views.dashboard_cases, name='dashboard_cases'),
     path('people/', views.people, name='people'),
 ]

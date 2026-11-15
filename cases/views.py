@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -810,7 +810,7 @@ def dashboard(request):
         t_cases = cases.filter(assigned_team=team)
         t_res = t_cases.exclude(first_time_fix__isnull=True)
         teams.append({
-            'name': team.name,
+            'id': team.pk, 'name': team.name,
             'open': t_cases.filter(status__in=OPEN_STATUSES).count(),
             'overdue': t_cases.filter(status__in=OPEN_STATUSES, sla_due__lt=now).count(),
             'resolved': t_cases.filter(date_resolved__isnull=False).count(),
@@ -832,6 +832,114 @@ def dashboard(request):
                 'trend_chart': {'weeks': trends['weeks'], 'stages': trends['stages']},
                 'attention': attention, 'attention_shown': ATTENTION_SHOWN, 'attention_total': len(set().union(*(g['case_ids'] for g in attention)))})
     return render(request, 'cases/dashboard.html', ctx)
+
+
+def _span(delta):
+    """A length of time in its largest whole unit: "3 days", "5 hours", "20 minutes"."""
+    seconds = max(delta.total_seconds(), 0)
+    for size, unit in ((86400, 'day'), (3600, 'hour'), (60, 'minute')):
+        if seconds >= size:
+            n = int(seconds // size)
+            return f'{n} {unit}{"" if n == 1 else "s"}'
+    return 'under a minute'
+
+
+# The lists behind the dashboard's figures: what each shows, and what the last column says about each case.
+# Each list puts the cases to look at first at the top, and can be narrowed to one team or category.
+DASHBOARD_LISTS = {
+    'open': {'title': 'Open cases', 'column': 'Due',
+             'help': 'Reported and not fixed yet, soonest due first.'},
+    'overdue': {'title': 'Overdue cases', 'column': 'Overdue by',
+                'help': 'Open and past the date we promised the reporter, most overdue first.'},
+    'first-time-fix': {'title': 'First-time fix', 'column': 'Result',
+                       'help': 'Fixed cases where the officer recorded whether one visit was enough. '
+                               'Ones that needed another visit are first.'},
+    'within-sla': {'title': 'Resolved within SLA', 'column': 'Against the target',
+                   'help': 'Fixed cases with a target date. Late ones are first.'},
+    'time-to-fix': {'title': 'Time to fix', 'column': 'Took',
+                    'help': 'Fixed cases, from being reported to being fixed. Longest first.'},
+    'satisfaction': {'title': 'Reporter satisfaction', 'column': 'Score',
+                     'help': 'Cases the reporter rated, lowest score first.'},
+    'ai': {'title': 'AI suggestions', 'column': 'Handler',
+           'help': 'Triaged cases, and whether the handler kept the category and priority the AI suggested. '
+                   'Changed ones are first.'},
+    'category': {'title': 'Cases by category', 'column': 'Status',
+                 'help': 'Every case in this category, newest first.'},
+    'duplicates': {'title': 'Duplicates merged', 'column': 'Merged into',
+                   'help': 'Reports linked to a case that was already open, so nobody made a second visit.'},
+}
+
+
+def _due_note(c):
+    if not c.sla_due:
+        return '-'
+    text = f'{timezone.localtime(c.sla_due):%a %d %b, %H:%M}'
+    return f'{text} ({c.overdue_by} overdue)' if c.is_overdue else text
+
+
+def _dashboard_list(show, now):
+    """The cases behind one dashboard figure, in order: (case, note for the last column, needs a look)."""
+    cases = (Case.objects.exclude(status=Status.DUPLICATE)
+             .select_related('assigned_team', 'assigned_officer', 'category'))
+    resolved = cases.filter(date_resolved__isnull=False)
+    if show == 'open':
+        return [(c, _due_note(c), c.is_overdue) for c in cases.filter(status__in=OPEN_STATUSES).order_by('sla_due')]
+    if show == 'overdue':
+        return [(c, c.overdue_by, True)
+                for c in cases.filter(status__in=OPEN_STATUSES, sla_due__lt=now).order_by('sla_due')]
+    if show == 'first-time-fix':
+        return [(c, 'Fixed first time' if c.first_time_fix else 'Needed another visit', not c.first_time_fix)
+                for c in resolved.exclude(first_time_fix__isnull=True).order_by('first_time_fix', '-date_resolved')]
+    if show == 'within-sla':
+        found = list(resolved.exclude(sla_due__isnull=True))
+        found.sort(key=lambda c: (not c.is_overdue, (c.sla_due - c.date_resolved).total_seconds()))
+        return [(c, f'{c.overdue_by} late' if c.is_overdue else 'On time', c.is_overdue) for c in found]
+    if show == 'time-to-fix':
+        found = sorted(resolved, key=lambda c: c.date_reported - c.date_resolved)
+        return [(c, _span(c.date_resolved - c.date_reported), False) for c in found]
+    if show == 'satisfaction':
+        return [(c, f'{c.satisfaction}/5' + (f': "{c.satisfaction_comments}"' if c.satisfaction_comments else ''),
+                 c.satisfaction <= UNHAPPY_SCORE)
+                for c in cases.filter(satisfaction__isnull=False).order_by('satisfaction', '-date_closed')]
+    if show == 'ai':
+        return [(c, 'Kept the suggestion' if c.ai_suggestion_accepted else 'Changed it', not c.ai_suggestion_accepted)
+                for c in Case.objects.exclude(ai_suggestion_accepted__isnull=True)  # as the figure: merges count too
+                .select_related('assigned_team', 'assigned_officer', 'category')
+                .order_by('ai_suggestion_accepted', '-date_acknowledged')]
+    if show == 'category':
+        return [(c, c.get_status_display(), False) for c in cases.order_by('-date_reported')]
+    merged = (Case.objects.filter(status=Status.DUPLICATE)
+              .select_related('assigned_team', 'assigned_officer', 'category', 'duplicate_of').order_by('-date_reported'))
+    return [(c, c.duplicate_of.reference if c.duplicate_of else '-', False) for c in merged]
+
+
+def _pick(model, value):
+    """The team or category chosen in the address, or None; a wrong one is a 404, not a quiet "all"."""
+    if not value:
+        return None
+    if not value.isdigit():
+        raise Http404('Not found')
+    return get_object_or_404(model, pk=value)
+
+
+@role_required(Role.MANAGER)
+def dashboard_cases(request):
+    """The cases behind a dashboard figure (?show=overdue), optionally for one team (&team=3) or category."""
+    show = request.GET.get('show', 'open')
+    if show not in DASHBOARD_LISTS:
+        raise Http404('No such list')
+    team = _pick(Team, request.GET.get('team'))
+    category = _pick(Category, request.GET.get('category'))
+    rows = _dashboard_list(show, timezone.now())
+    if team:
+        rows = [r for r in rows if r[0].assigned_team_id == team.pk]
+    if category:
+        rows = [r for r in rows if r[0].category_id == category.pk]
+    return render(request, 'cases/dashboard_cases.html', {
+        'info': DASHBOARD_LISTS[show], 'show': show, 'team': team, 'category': category,
+        'rows': [{'case': c, 'note': note, 'flag': flag} for c, note, flag in rows],
+        'flagged': sum(1 for r in rows if r[2]),
+    })
 
 
 @role_required(Role.MANAGER)

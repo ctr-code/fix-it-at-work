@@ -2440,3 +2440,102 @@ class NextCaseTests(TestCase):
         msg = self.message(self.triage())
         self.assertNotIn('Next case', msg)
         self.assertIn('That was the last one: nothing else is waiting for triage.', msg)
+
+
+
+@override_settings(
+    ALLOWED_HOSTS=['testserver'],
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    },
+)
+class DashboardListTests(TestCase):
+    """Every dashboard figure opens the cases behind it (views.dashboard_cases)."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from .models import Category
+        now = timezone.now()
+        self.manager = User.objects.create_user('ade', 'ade@example.com', 'not-a-real-password-1')
+        self.manager.profile.role = 'manager'
+        self.manager.profile.save()
+        self.client.force_login(self.manager)
+        self.fac = Team.objects.create(name='Facilities Helpdesk', contact_email='f@example.com', manager='R')
+        self.it = Team.objects.create(name='IT Service Desk', contact_email='i@example.com', manager='K')
+        self.heating = Category.objects.create(name='Heating', default_team=self.fac)
+        common = dict(description='x', building='Depot', reporter_name='R', reporter_email='r@example.com')
+        self.late = Case.objects.create(title='Radiator cold', status=Status.ASSIGNED, assigned_team=self.fac,
+                                        category=self.heating, sla_due=now - timedelta(days=3), **common)
+        self.on_time = Case.objects.create(title='Laptop slow', status=Status.ASSIGNED, assigned_team=self.it,
+                                           sla_due=now + timedelta(days=2), **common)
+        # Fixed: one late and on the second visit, rated 2 with the AI changed; one on time first visit, rated 5
+        self.fixed_late = Case.objects.create(
+            title='Boiler noisy', status=Status.CLOSED, assigned_team=self.fac, category=self.heating,
+            sla_due=now - timedelta(days=4), date_resolved=now - timedelta(days=2), first_time_fix=False,
+            satisfaction=2, satisfaction_comments='Took ages', ai_suggestion_accepted=False, **common)
+        self.fixed_well = Case.objects.create(
+            title='Mouse broken', status=Status.CLOSED, assigned_team=self.it, sla_due=now + timedelta(days=1),
+            date_resolved=now - timedelta(hours=5), first_time_fix=True, satisfaction=5,
+            ai_suggestion_accepted=True, **common)
+        Case.objects.filter(pk=self.fixed_well.pk).update(date_reported=now - timedelta(hours=8))
+        Case.objects.filter(pk=self.fixed_late.pk).update(date_reported=now - timedelta(days=10))
+
+    def listed(self, query):
+        html = self.client.get('/dashboard/cases/?' + query).content.decode()
+        return html, [t for t in ('Radiator cold', 'Laptop slow', 'Boiler noisy', 'Mouse broken') if f'>{t}<br>' in html]
+
+    def test_every_figure_on_the_dashboard_opens_a_list(self):
+        html = self.client.get('/dashboard/').content.decode()
+        for show in ('open', 'overdue', 'first-time-fix', 'within-sla', 'time-to-fix', 'satisfaction', 'ai'):
+            with self.subTest(show=show):
+                self.assertIn(f'href="/dashboard/cases/?show={show}"', html)
+        self.assertNotIn('class="panel kpi h-100"', html)  # no figure left that opens nothing
+        self.assertIn(f'href="/dashboard/cases/?show=overdue&amp;team={self.fac.pk}"', html)
+        self.assertIn(f'href="/dashboard/cases/?show=category&amp;category={self.heating.pk}"', html)
+        self.assertIn('href="/dashboard/cases/?show=duplicates"', html)
+
+    def test_each_list_has_the_right_cases_with_the_ones_to_look_at_first(self):
+        expected = {
+            'open': ['Radiator cold', 'Laptop slow'],
+            'overdue': ['Radiator cold'],
+            'first-time-fix': ['Boiler noisy', 'Mouse broken'],
+            'within-sla': ['Boiler noisy', 'Mouse broken'],
+            'time-to-fix': ['Boiler noisy', 'Mouse broken'],
+            'satisfaction': ['Boiler noisy', 'Mouse broken'],
+            'ai': ['Boiler noisy', 'Mouse broken'],
+        }
+        for show, titles in expected.items():
+            with self.subTest(show=show):
+                html, found = self.listed(f'show={show}')
+                self.assertEqual(sorted(found), sorted(titles))
+                if len(titles) > 1:  # the order puts the one to look at first at the top
+                    self.assertLess(html.index(titles[0]), html.index(titles[1]))
+        html, _ = self.listed('show=within-sla')
+        self.assertIn('2 days late', html)
+        self.assertIn('On time', html)
+        html, _ = self.listed('show=satisfaction')
+        self.assertIn('2/5: &quot;Took ages&quot;', html)
+
+    def test_lists_narrow_to_a_team_or_category(self):
+        _, found = self.listed(f'show=open&team={self.it.pk}')
+        self.assertEqual(found, ['Laptop slow'])
+        html, found = self.listed(f'show=category&category={self.heating.pk}')
+        self.assertEqual(sorted(found), ['Boiler noisy', 'Radiator cold'])
+        self.assertIn('Cases by category: Heating</h1>', html)
+        # Only "Dashboard" is marked in the navbar, not "Case queue"
+        self.assertEqual(html.count('aria-current="page"'), 1)
+        self.assertIn('Dashboard</a>', html.split('aria-current="page"')[1].split('</li>')[0])
+
+    def test_wrong_lists_and_other_roles(self):
+        self.assertEqual(self.client.get('/dashboard/cases/?show=nonsense').status_code, 404)
+        self.assertEqual(self.client.get('/dashboard/cases/?show=open&team=abc').status_code, 404)
+        self.assertEqual(self.client.get('/dashboard/cases/?show=open&team=9999').status_code, 404)
+        handler = User.objects.create_user('jo', 'jo@example.com', 'not-a-real-password-1')
+        handler.profile.role = 'handler'
+        handler.profile.save()
+        self.client.force_login(handler)
+        self.assertNotEqual(self.client.get('/dashboard/cases/?show=open').status_code, 200)
+        # The handler's own "Overdue with teams" figure opens their Case queue instead
+        self.assertIn('href="/triage/#teams"', self.client.get('/').content.decode())
