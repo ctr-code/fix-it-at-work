@@ -66,6 +66,7 @@
                     {% endif %}
                     {% if user_role == 'manager' %}
                     <li class="nav-item"><a class="nav-link{% if '/dashboard' in p %} active" aria-current="page{% endif %}" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="https://app.powerbi.com/view?r=eyJrIjoiNWIxMDlkNWYtMTU0Mi00NjYyLWI1NTgtODc4YWUxYWE4M2RkIiwidCI6ImMyMzNjMDcyLTEzNWItNDMxZC1hZjU5LTM1ZTA1YmFiZjk0MSIsImMiOjh9" target="_blank" rel="noreferrer"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> Analysis<span class="visually-hidden"> (opens in a new tab)</span></a></li>
                     <li class="nav-item"><a class="nav-link{% if '/people' in p %} active" aria-current="page{% endif %}" href="{% url 'people' %}"><i class="fa-solid fa-users" aria-hidden="true"></i> People</a></li>
                     {% endif %}
                 </ul>
