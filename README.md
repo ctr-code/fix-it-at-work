@@ -57,7 +57,16 @@ Responsible AI choices:
   vague reports get low confidence and a "check carefully" flag instead of a low priority.
 - The dashboard tracks how often staff accept the AI's suggestion.
 
+### 📊 Power BI Dashboard
+
+Explore our interactive Power BI dashboard, featuring four pages: Executive Overview, SLA Performance, Case Management, and Predictive Analytics.
+
+The dashboard uses simulated data to demonstrate performance monitoring, trend analysis, and machine learning insights.
+
+**🔗 [View Interactive Power BI Dashboard](https://app.powerbi.com/view?r=eyJrIjoiNWIxMDlkNWYtMTU0Mi00NjYyLWI1NTgtODc4YWUxYWE4M2RkIiwidCI6ImMyMzNjMDcyLTEzNWItNDMxZC1hZjU5LTM1ZTA1YmFiZjk0MSIsImMiOjh9 )**
+
 ## Accessibility, security and responsible design
+
 
 - [Accessibility notes](docs/accessibility.md): what's built in, the check we ran on 14 pages at three screen
   widths, what it found and fixed, and what still needs testing (screen readers).
